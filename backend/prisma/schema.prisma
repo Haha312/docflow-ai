@@ -1,0 +1,83 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表
+model User {
+  id                  String             @id @default(uuid())
+  email               String             @unique
+  passwordHash        String
+  subscriptionStatus  SubscriptionStatus @default(FREE)
+  subscriptionEndDate DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  usageLogs           UsageLog[]
+  orders              Order[]
+  documents           Document[]
+}
+
+// 订阅状态枚举
+enum SubscriptionStatus {
+  FREE // 免费用户,每日3次限制
+  PRO  // 基础会员 (100篇/月)
+  PRO_PLUS // 进阶会员 (500篇/月)
+  ULTRA // 旗舰会员 (无限)
+}
+
+// 用量日志表
+model UsageLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actionType String
+  presetUsed String
+  tokenUsage Int?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// 订单表
+model Order {
+  id        String      @id // Stripe Session ID / Alipay Order No
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Decimal     @db.Decimal(10, 2) // PostgreSQL 使用 Decimal
+  currency  String
+  planType  String
+  status    OrderStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([userId])
+}
+
+// 文档历史表
+model Document {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  content     String   // 原始内容或生成的 HTML
+  wordCount   Int?
+  preset      String   // 使用的预设
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// 订单状态枚举
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+}
