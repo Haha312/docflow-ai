@@ -5,9 +5,20 @@ import { extractRawTextWithFormulas } from '../utils/docxParser';
 
 interface Props {
   onFileLoaded: (content: string, fileName: string) => void;
+  userTier?: 'FREE' | 'PRO' | 'PRO_PLUS' | 'ULTRA';
 }
 
-export const FileDropzone: React.FC<Props> = ({ onFileLoaded }) => {
+// 根据用户等级获取文件大小限制 (MB)
+const getFileSizeLimit = (tier?: string): number => {
+  switch (tier) {
+    case 'ULTRA': return 1024;      // 1GB
+    case 'PRO_PLUS': return 500;    // 500MB
+    case 'PRO': return 200;         // 200MB
+    default: return 200;            // FREE: 200MB
+  }
+};
+
+export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -22,77 +33,70 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded }) => {
     setIsDragOver(false);
   }, []);
 
+  const MAX_FILE_SIZE_MB = getFileSizeLimit(userTier);
+  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
   const processFile = async (file: File) => {
     setError(null);
     setIsLoading(true);
 
+    // 文件大小检查
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
+      setError(`文件过大 (${fileSizeMB}MB)，最大支持 ${MAX_FILE_SIZE_MB}MB`);
+      setIsLoading(false);
+      return;
+    }
+
     try {
-        if (file.name.endsWith('.docx')) {
-           const arrayBuffer = await file.arrayBuffer();
-           
-           // 1. Standard HTML conversion (Layout, tables, images)
-           // Mammoth strips OMML formulas, so the visual preview usually lacks them.
-           const result = await mammoth.convertToHtml({ arrayBuffer });
-           let finalContent = result.value;
+      if (file.name.endsWith('.docx')) {
+        const arrayBuffer = await file.arrayBuffer();
 
-           // 2. Advanced: Extract raw XML text to capture Native Word Formulas (OMML)
-           try {
-               const rawContext = await extractRawTextWithFormulas(arrayBuffer);
-               
-               // We append this visible block so the user knows formulas were captured, 
-               // even if Mammoth didn't render them in the main view.
-               if (rawContext && rawContext.includes("$$")) {
-                   const escapedContext = rawContext.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                   finalContent += `
-                    <div style="margin-top: 48px; border-top: 2px dashed #e4e4e7; padding-top: 24px; font-family: sans-serif;">
-                      <div style="background: #fafafa; border: 1px solid #e4e4e7; border-radius: 12px; overflow: hidden;">
-                        <div style="background: #f4f4f5; padding: 12px 16px; border-bottom: 1px solid #e4e4e7; display: flex; align-items: center; justify-content: space-between;">
-                           <div style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #18181b;">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M16 13H8"></path><path d="M16 17H8"></path><path d="M10 9H8"></path></svg>
-                              系统已捕获公式数据 (AI Context)
-                           </div>
-                           <span style="font-size: 11px; color: #16a34a; background: #dcfce7; padding: 2px 8px; border-radius: 99px; font-weight: 500;">
-                             增强识别已启用
-                           </span>
-                        </div>
-                        <div style="padding: 16px;">
-                           <div style="margin-bottom: 12px; font-size: 12px; color: #71717a; line-height: 1.5;">
-                              <strong>提示：</strong> 上方的可视化预览由浏览器直接渲染，可能无法显示 Word 原生公式。但无需担心，系统已通过底层解析提取到了以下数据（包含 $$ 包裹的公式），它们将完整提交给 AI 进行排版重构。
-                           </div>
-                           <pre style="white-space: pre-wrap; word-break: break-all; background: white; padding: 16px; border: 1px solid #e4e4e7; border-radius: 8px; max-height: 240px; overflow-y: auto; font-family: monospace; font-size: 12px; color: #52525b; box-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);">${escapedContext}</pre>
-                        </div>
-                      </div>
-                    </div>
-                   `;
-               }
-           } catch (xmlErr) {
-               console.warn("Failed to extract raw XML context", xmlErr);
-           }
-           
-           onFileLoaded(finalContent, file.name);
+        // 1. Standard HTML conversion (Layout, tables, images)
+        // Mammoth strips OMML formulas, so the visual preview usually lacks them.
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        let finalContent = result.value;
 
-        } else if (file.type === "application/vnd.ms-word" || file.name.endsWith('.doc')) {
-            throw new Error("暂不支持旧版 .doc 格式，请另存为 .docx 或 .txt 后上传。");
-        } else {
-            const textContent = await new Promise<string>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => resolve(e.target?.result as string);
-                reader.onerror = () => reject(new Error("文件读取失败"));
-                reader.readAsText(file);
-            });
-            onFileLoaded(textContent, file.name);
+        // 2. Advanced: Extract raw XML text to capture Native Word Formulas (OMML)
+        try {
+          const rawContext = await extractRawTextWithFormulas(arrayBuffer);
+
+          // 简单的小字提示,表示已捕获公式
+          if (rawContext && rawContext.includes("$$")) {
+            finalContent += `
+              <p style="margin-top: 24px; font-size: 12px; color: #71717a; text-align: center;">
+                ✓ 已自动识别并提取 Word 公式数据
+              </p>
+            `;
+          }
+        } catch (xmlErr) {
+          console.warn("Failed to extract raw XML context", xmlErr);
         }
+
+        onFileLoaded(finalContent, file.name);
+
+      } else if (file.type === "application/vnd.ms-word" || file.name.endsWith('.doc')) {
+        throw new Error("暂不支持旧版 .doc 格式，请另存为 .docx 或 .txt 后上传。");
+      } else {
+        const textContent = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = () => reject(new Error("文件读取失败"));
+          reader.readAsText(file);
+        });
+        onFileLoaded(textContent, file.name);
+      }
     } catch (e: any) {
-         setError(e.message || "读取 .docx 文件失败，请确认文件未损坏。");
+      setError(e.message || "读取 .docx 文件失败，请确认文件未损坏。");
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    
+
     if (isLoading) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
@@ -108,39 +112,39 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded }) => {
   };
 
   return (
-    <div 
+    <div
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`
         relative border border-dashed rounded-2xl p-8 text-center transition-all duration-500 ease-out group overflow-hidden
-        ${isDragOver 
-          ? 'border-indigo-500 bg-indigo-50/50 scale-[1.01] shadow-xl shadow-indigo-100/50' 
+        ${isDragOver
+          ? 'border-indigo-500 bg-indigo-50/50 scale-[1.01] shadow-xl shadow-indigo-100/50'
           : 'border-zinc-300 bg-zinc-50/50 hover:border-indigo-400 hover:bg-white'
         }
         ${isLoading ? 'cursor-wait bg-zinc-50 border-zinc-200' : ''}
       `}
     >
-      <input 
-        type="file" 
+      <input
+        type="file"
         accept=".txt,.md,.doc,.docx"
         onChange={handleInputChange}
         disabled={isLoading}
         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-wait"
       />
-      
+
       {isLoading ? (
         <div className="flex flex-col items-center justify-center gap-4 py-2 animate-in fade-in zoom-in duration-300">
-           <div className="relative w-12 h-12">
-             <svg className="animate-spin absolute inset-0 w-full h-full text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-             </svg>
-           </div>
-           <div>
-             <h3 className="text-zinc-700 font-bold">正在解析文件...</h3>
-             <p className="text-zinc-400 text-xs mt-1">深度提取 Word 结构与公式</p>
-           </div>
+          <div className="relative w-12 h-12">
+            <svg className="animate-spin absolute inset-0 w-full h-full text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-zinc-700 font-bold">正在解析文件...</h3>
+            <p className="text-zinc-400 text-xs mt-1">深度提取 Word 结构与公式</p>
+          </div>
         </div>
       ) : (
         <div className="pointer-events-none flex flex-col items-center gap-4 transition-transform duration-300 group-hover:-translate-y-1">
@@ -149,16 +153,13 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded }) => {
           </div>
           <div>
             <h3 className={`text-lg font-bold transition-colors ${isDragOver ? 'text-indigo-700' : 'text-zinc-700'}`}>拖拽文件至此</h3>
-            <p className="text-sm text-zinc-500 mt-1.5 font-light">支持 .docx, .txt, .md</p>
+            <p className="text-sm text-zinc-500 mt-1.5 font-light">支持 .docx, .txt, .md (最大 {MAX_FILE_SIZE_MB >= 1024 ? `${MAX_FILE_SIZE_MB / 1024}GB` : `${MAX_FILE_SIZE_MB}MB`})</p>
           </div>
           <span className="bg-white border border-zinc-200 text-zinc-600 px-5 py-2 rounded-full text-xs font-semibold shadow-sm tracking-wide group-hover:border-indigo-200 group-hover:text-indigo-600 transition-all">
             浏览文件
           </span>
-          
-          <div className="mt-1 px-3 py-1 bg-green-50 text-green-700 text-[10px] leading-tight rounded-full border border-green-100 flex items-center gap-1.5">
-             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-             <span>公式深度提取已就绪</span>
-          </div>
+
+
         </div>
       )}
 

@@ -75,39 +75,43 @@ const cleanOutput = (text: string): string => {
     return text.replace(/```html/g, '').replace(/```/g, '').trim();
 };
 
-// Helper to convert HTML string with base64 images into Gemini Parts (Vertex/New SDK style parts -> Generative AI SDK parts)
-// The new SDK accepts: { inlineData: { mimeType, data } } or { text }
-// This format is actually compatible with the new SDK too.
-const htmlToParts = (html: string): any[] => {
-    const parts: any[] = [];
-    const imgRegex = /(<img\s+[^>]*src="data:image\/([^;]+);base64,([^"]+)"[^>]*>)/g;
+// ===== 图片占位符处理 =====
+// 提取图片并替换为占位符,返回纯文本和图片映射表
+interface ImageMap {
+    [placeholder: string]: string; // placeholder -> original img tag
+}
 
-    let lastIndex = 0;
-    let match;
+const extractImagesAsPlaceholders = (html: string): { textOnly: string; imageMap: ImageMap } => {
+    const imageMap: ImageMap = {};
+    // 支持单引号和双引号的 src
+    const imgRegex = /<img\s+[^>]*src=["'][^"']*["'][^>]*>/gi;
+    let index = 0;
 
-    while ((match = imgRegex.exec(html)) !== null) {
-        const mimeType = match[2];
-        const base64Data = match[3];
+    const textOnly = html.replace(imgRegex, (match) => {
+        // 使用更明显的占位符,防止 AI 误修改
+        const placeholder = `__IMG_${index}__`;
+        imageMap[placeholder] = match;
+        index++;
+        return placeholder;
+    });
 
-        const preText = html.substring(lastIndex, match.index);
-        if (preText) parts.push({ text: preText });
+    return { textOnly, imageMap };
+};
 
-        parts.push({
-            inlineData: {
-                mimeType: `image/${mimeType}`,
-                data: base64Data
-            }
-        });
-
-        parts.push({ text: "\n[The image above is likely a formula or figure. If it's a formula, transcribe it to LaTeX wrapped in $$. If it's a diagram, describe it.]\n" });
-
-        lastIndex = imgRegex.lastIndex;
+// 将占位符还原为原始图片标签
+const restoreImages = (text: string, imageMap: ImageMap): string => {
+    let result = text;
+    for (const [placeholder, imgTag] of Object.entries(imageMap)) {
+        // 全局替换
+        result = result.split(placeholder).join(imgTag);
     }
+    return result;
+};
 
-    const remaining = html.substring(lastIndex);
-    if (remaining) parts.push({ text: remaining });
-
-    return parts.length > 0 ? parts : [{ text: html }];
+// Helper to convert text to parts for Gemini (仅用于 Gemini API)
+const htmlToParts = (html: string): any[] => {
+    // 不再发送图片给 AI,只发送文本
+    return [{ text: html }];
 };
 
 // Tier Configuration
@@ -125,6 +129,85 @@ const TIER_MODELS = {
     'PRO_PLUS': 'gemini-2.0-flash-exp',
     'ULTRA': 'gemini-2.0-flash-exp'
 };
+
+// 豆包模型配置 (用于 FREE 和 PRO 用户) - 使用256k版本支持超长文档
+const DOUBAO_MODELS = {
+    'FREE': 'doubao-seed-1-6-251015',           // Seed 1.6 256k 版本
+    'PRO': 'doubao-seed-1-6-251015',            // Seed 1.6 256k 版本
+};
+
+// 豆包 API 配置
+const DOUBAO_API_ENDPOINT = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+
+// 使用豆包API的用户等级
+const USE_DOUBAO_TIERS = ['FREE', 'PRO'];
+
+// 豆包 API 流式调用函数
+async function* callDoubaoAPI(
+    apiKey: string,
+    endpointId: string,
+    systemPrompt: string,
+    userContent: string,
+    modelName: string
+): AsyncGenerator<string> {
+    const response = await fetch(DOUBAO_API_ENDPOINT, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+            model: endpointId || modelName,  // 优先使用 endpoint ID
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userContent }
+            ],
+            stream: true,
+            temperature: 0.7,
+            max_tokens: 16000
+        })
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`豆包 API 错误 (${response.status}): ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+        throw new Error('无法读取豆包 API 响应流');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data:')) continue;
+
+            const data = trimmed.slice(5).trim();
+            if (data === '[DONE]') continue;
+
+            try {
+                const json = JSON.parse(data);
+                const content = json.choices?.[0]?.delta?.content;
+                if (content) {
+                    yield content;
+                }
+            } catch (e) {
+                // 忽略解析错误
+            }
+        }
+    }
+}
 
 /**
  * POST /api/generate
@@ -146,11 +229,25 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             return;
         }
 
-        // 检查 API Key
-        const apiKey = process.env.GOOGLE_API_KEY;
-        if (!apiKey) {
-            res.status(500).json(errorResponse('服务器配置错误: 缺少 GOOGLE_API_KEY', 500));
-            return;
+        // 获取用户等级
+        const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
+
+        // 检查 API Key (根据用户等级检查对应的 API Key)
+        const useDoubao = USE_DOUBAO_TIERS.includes(userTier);
+        const doubaoApiKey = process.env.DOUBAO_API_KEY;
+        const doubaoEndpointId = process.env.DOUBAO_ENDPOINT_ID;
+        const geminiApiKey = process.env.GOOGLE_API_KEY;
+
+        if (useDoubao) {
+            if (!doubaoApiKey) {
+                res.status(500).json(errorResponse('服务器配置错误: 缺少 DOUBAO_API_KEY', 500));
+                return;
+            }
+        } else {
+            if (!geminiApiKey) {
+                res.status(500).json(errorResponse('服务器配置错误: 缺少 GOOGLE_API_KEY', 500));
+                return;
+            }
         }
 
         // ===== NEW: Tier Usage Check =====
@@ -168,7 +265,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             }
         });
 
-        const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
+        // userTier 已在上面声明
         const limit = TIER_LIMITS[userTier] || 10;
 
         if (usageCount >= limit) {
@@ -176,14 +273,14 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             return;
         }
 
-        // Determine Model
-        const modelName = TIER_MODELS[userTier] || 'gemini-1.5-flash';
+        // Determine Model based on tier and provider
+        const doubaoModelName = DOUBAO_MODELS[userTier as keyof typeof DOUBAO_MODELS] || 'doubao-1-5-lite-32k-250115';
+        const geminiModelName = TIER_MODELS[userTier] || 'gemini-1.5-flash';
 
         // 构建系统指令
-        let systemInstruction = BASE_SYSTEM_PROMPTS[preset];
         const numberingRules = getNumberingInstruction(styleConfig.headingNumbering);
 
-        systemInstruction += `
+        const BASE_SHARED_PROMPT = `
       \nFormatting & Structural Analysis Rules:
       1. **DOCUMENT TITLE vs HEADINGS (CRITICAL)**:
          - Identify the **Document Title**. Wrap it in \`<h1 class="doc-title">\`. NO numbering.
@@ -198,62 +295,33 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
       4. **Content Integrity (STRICT)**: 
          - **ZERO DATA LOSS**. Output every sentence, row, and list item.
          - **VERBATIM BODY TEXT**. Do not summarize.
+         - **PRESERVE IMAGES**. You will see placeholders like "__IMG_0__". You MUST keep them exactly as is, in their original relative position. DO NOT remove or modify them.
 
       5. **MATH & FORMULAS (HIGHEST PRIORITY)**:
          - All mathematical formulas MUST be output as **LaTeX wrapped in $$**.
          - DO NOT use HTML <sub>, <sup>, or entities for math. Use LaTeX.
 
-      6. **Output**: Return ONLY raw semantic HTML body content.
+      6. **IMAGES & FIGURES (CRITICAL)**:
+         - Keep all __IMG_N__ markers exactly as they appear.
+         - Figure captions (图注) MUST be placed AFTER the image placeholder.
+         - Format: __IMG_0__ followed by <p>图 1 xxxx</p>
+
+      7. **TABLES (CRITICAL)**:
+         - Table titles (表题) MUST be placed BEFORE the table.
+         - Format: <div class="table-caption">表 1 xxxx</div>
+         - Use standard HTML <table> structure.
+
+      8. **FIGURE CAPTIONS**:
+         - Place captions BELOW images.
+         - Format: <div class="figure-caption">图 1 xxxx</div>
+
+      9. **TOC HANDLING**:
+         - Do NOT output the actual TOC items - the system will generate Word native TOC.
+
+      10. **Output**: Return ONLY raw semantic HTML body content.
     `;
 
-        // 初始化 Gemini AI (Standard SDK with Proxy Support)
-        const httpProxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
-        let genAI: GoogleGenerativeAI;
-
-        if (httpProxy) {
-            console.log(`Using Proxy: ${httpProxy}`);
-            const dispatcher = new ProxyAgent(httpProxy);
-            const customFetch = (url: any, init?: any) => {
-                return undiciFetch(url, {
-                    ...init,
-                    dispatcher
-                });
-            };
-            // @ts-ignore - customFetch is supported but typings might be strict
-            genAI = new GoogleGenerativeAI(apiKey);
-            // Note: Official SDK might not expose fetch override in constructor easily in v0.1
-            // But checking latest docs, we can pass requestOptions in getGenerativeModel? No.
-            // Wait, for Node environment, the SDK uses `fetch` globally if available.
-            // We can overwrite global.fetch or pass it if the SDK allows.
-            // Actually, the new SDK allows setting a custom fetch implementation via RequestOptions? No.
-
-            // Hack/Workaround for Node: Overwrite global fetch if we really need proxy 
-            // But that affects everything.
-            // Better Check: Does `GoogleGenerativeAI` constructor options support `fetch`?
-            // current typings: constructor(apiKey: string)
-
-            // Let's try the `global.fetch` patch method locally for this scope if possible, 
-            // OR use `undici` global dispatcher.
-
-            // Preferred: Use the SDK's RequestOptions if available. 
-            // Since I am already using `model.generateContentStream`, let's see if 
-            // `getGenerativeModel` supports `requestOptions`.
-            // definition: getGenerativeModel(modelParams: ModelParams, requestOptions?: RequestOptions): GenerativeModel
-            // RequestOptions = { timeout?: number; apiVersion?: string; ... customHeaders? }
-            // No fetch override.
-
-            // So we MUST patch global fetch or set global dispatcher.
-            // Ideally, set global dispatcher for undici if node 18+ uses undici internally.
-
-            // Let's try patching global.fetch for this scope effectively or globally.
-            // @ts-ignore
-            global.fetch = customFetch as any;
-            genAI = new GoogleGenerativeAI(apiKey);
-        } else {
-            genAI = new GoogleGenerativeAI(apiKey);
-        }
-
-        const contentParts = htmlToParts(content);
+        const systemInstruction = BASE_SYSTEM_PROMPTS[preset] + BASE_SHARED_PROMPT;
 
         // 设置 SSE 响应头
         res.setHeader('Content-Type', 'text/event-stream');
@@ -261,70 +329,114 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         res.setHeader('Connection', 'keep-alive');
 
         let fullText = '';
-        let hasError = false;
 
         try {
-            // Fallback Strategy: Try models in order until one works
-            const candidateModels = [
-                'gemini-3-pro-preview'             // Legacy
-            ];
-            // const candidateModels = [
-            //     modelName,               // Custom per tier
-            //     'gemini-2.0-flash-exp',  // Latest Preview
-            //     'gemini-1.5-pro',        // Standard High Quality
-            //     'gemini-1.5-flash',      // Standard Fast
-            //     'gemini-1.5-pro-latest', // Alias
-            //     'gemini-pro'             // Legacy
-            // ];
-
-            // Remove duplicates
-            const uniqueModels = [...new Set(candidateModels)];
-
-            let lastError: any = null;
-            let success = false;
-
-            for (const currentModel of uniqueModels) {
-                try {
-                    console.log(`Attempting to generate with model: ${currentModel}`);
-
-                    // Standard SDK Usage
-                    const model = genAI.getGenerativeModel({
-                        model: currentModel,
-                        systemInstruction: systemInstruction
-                    });
-
-                    // Streaming Call (SDK format: .stream)
-                    const result = await model.generateContentStream([
-                        `Filename: ${fileName}\n\nContent to reformat:\n`,
-                        ...contentParts
-                    ]);
-
-                    for await (const chunk of result.stream) {
-                        const chunkText = chunk.text(); // .text() is a function in this SDK
-                        if (chunkText) {
-                            fullText += chunkText;
-                            res.write(`data: ${JSON.stringify({ text: cleanOutput(fullText) })}\n\n`);
-                        }
-                    }
-
-                    success = true;
-                    console.log(`✅ Success with model: ${currentModel}`);
-                    break; // Stop if successful
-
-                } catch (err: any) {
-                    console.warn(`⚠️ Failed with model ${currentModel}: ${err.message?.split('\n')[0]}`);
-                    lastError = err;
-
-                    // IF error is NOT a 404/Not Found, might be a real issue (like rate limit), so maybe don't loop?
-                    if (err.message?.includes('API key') || err.message?.includes('403')) {
-                        throw err;
-                    }
-                    // For other errors (404, 503, Overloaded), continue to next model
-                }
+            // ===== 图片占位符处理 =====
+            const { textOnly: contentWithoutImages, imageMap } = extractImagesAsPlaceholders(content);
+            const imageCount = Object.keys(imageMap).length;
+            if (imageCount > 0) {
+                console.log(`📷 Extracted ${imageCount} images as placeholders`);
             }
 
-            if (!success) {
-                throw lastError;
+            // ===== 根据用户等级选择 API =====
+            if (useDoubao) {
+                // 使用豆包 API (FREE 和 PRO 用户)
+                console.log(`🤖 Using Doubao API for ${userTier} user, model: ${doubaoModelName}`);
+
+                const userContent = `Filename: ${fileName}\n\nContent to reformat:\n${contentWithoutImages}`;
+
+                try {
+                    for await (const chunk of callDoubaoAPI(
+                        doubaoApiKey!,
+                        doubaoEndpointId || doubaoModelName,
+                        systemInstruction,
+                        userContent,
+                        doubaoModelName
+                    )) {
+                        fullText += chunk;
+                        res.write(`data: ${JSON.stringify({ text: cleanOutput(fullText) })}\n\n`);
+                    }
+                    console.log(`✅ Doubao API generation successful`);
+                } catch (doubaoError: any) {
+                    console.error('❌ Doubao API Error:', doubaoError.message);
+                    throw doubaoError;
+                }
+            } else {
+                // 使用 Gemini API (PRO_PLUS 和 ULTRA 用户)
+                console.log(`🤖 Using Gemini API for ${userTier} user, model: ${geminiModelName}`);
+
+                // 初始化 Gemini AI (Standard SDK with Proxy Support)
+                const httpProxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+                let genAI: GoogleGenerativeAI;
+
+                if (httpProxy) {
+                    console.log(`Using Proxy: ${httpProxy}`);
+                    const dispatcher = new ProxyAgent(httpProxy);
+                    const customFetch = (url: any, init?: any) => {
+                        return undiciFetch(url, {
+                            ...init,
+                            dispatcher
+                        });
+                    };
+                    // @ts-ignore
+                    global.fetch = customFetch as any;
+                    genAI = new GoogleGenerativeAI(geminiApiKey!);
+                } else {
+                    genAI = new GoogleGenerativeAI(geminiApiKey!);
+                }
+
+                const contentParts = htmlToParts(contentWithoutImages);
+
+                // Fallback Strategy: Try models in order until one works
+                const candidateModels = [
+                    geminiModelName,
+                    'gemini-2.0-flash-exp',
+                    'gemini-1.5-flash'
+                ];
+
+                const uniqueModels = Array.from(new Set(candidateModels));
+                let lastError: any = null;
+                let success = false;
+
+                for (const currentModel of uniqueModels) {
+                    try {
+                        console.log(`Attempting to generate with model: ${currentModel}`);
+
+                        const model = genAI.getGenerativeModel({
+                            model: currentModel,
+                            systemInstruction: systemInstruction
+                        });
+
+                        const result = await model.generateContentStream([
+                            `Filename: ${fileName}\n\nContent to reformat:\n`,
+                            ...contentParts
+                        ]);
+
+                        for await (const chunk of result.stream) {
+                            const chunkText = chunk.text();
+                            if (chunkText) {
+                                fullText += chunkText;
+                                res.write(`data: ${JSON.stringify({ text: cleanOutput(fullText) })}\n\n`);
+                            }
+                        }
+
+                        success = true;
+                        console.log(`✅ Success with Gemini model: ${currentModel}`);
+                        break;
+
+                    } catch (err: any) {
+                        console.warn(`⚠️ Failed with model ${currentModel}: ${err.message?.split('\n')[0]}`);
+                        lastError = err;
+
+                        if (err.message?.includes('API key') || err.message?.includes('403')) {
+                            throw err;
+                        }
+                    }
+                }
+
+                if (!success) {
+                    throw lastError;
+                }
             }
 
             // 记录使用日志
@@ -336,8 +448,17 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 }
             });
 
+            // ===== 还原图片 =====
+            let cleanContent = cleanOutput(fullText);
+            if (imageCount > 0) {
+                cleanContent = restoreImages(cleanContent, imageMap);
+                console.log(`📷 Restored ${imageCount} images in output`);
+            }
+
+            // 发送最终结果(含图片)
+            res.write(`data: ${JSON.stringify({ text: cleanContent })}\n\n`);
+
             // 保存生成的文档到数据库
-            const cleanContent = cleanOutput(fullText);
             await prisma.document.create({
                 data: {
                     userId: user.id,
@@ -353,9 +474,8 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             res.end();
 
         } catch (aiError: any) {
-            hasError = true;
-            console.error('Gemini API Error:', aiError);
-            console.error('DEBUG: API Key configured:', !!apiKey, 'Length:', apiKey?.length, 'Ends with:', apiKey?.slice(-4));
+            console.error('AI API Error:', aiError);
+            console.error('DEBUG: useDoubao:', useDoubao, 'doubaoApiKey:', !!doubaoApiKey, 'geminiApiKey:', !!geminiApiKey);
 
             let errorMessage = 'AI 服务暂时不可用,请稍后重试';
 

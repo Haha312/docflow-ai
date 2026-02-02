@@ -16,6 +16,11 @@ import { PRESETS } from './constants';
 import { DocPreset, AIState, StyleConfig } from './types';
 import katex from 'katex';
 
+// 辅助函数:计算纯文本字数 (不含 HTML 标签)
+const getTextCount = (html: string) => {
+  return html.replace(/<[^>]+>/g, '').replace(/\s/g, '').length;
+};
+
 function App() {
   const [inputText, setInputText] = useState<string>('');
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
@@ -464,7 +469,7 @@ function App() {
               <span className="flex items-center justify-center w-6 h-6 rounded-full bg-zinc-900 text-white text-xs font-bold">1</span>
               <h2 className="text-sm font-bold text-zinc-900 tracking-wide">导入源文档</h2>
             </div>
-            <FileDropzone onFileLoaded={handleFileLoaded} />
+            <FileDropzone onFileLoaded={handleFileLoaded} userTier={user?.subscriptionStatus} />
             {inputText && (
               <div className="mt-4 flex items-center justify-between text-sm bg-white p-3 rounded-xl border border-zinc-200 shadow-sm animate-in fade-in slide-in-from-top-2">
                 <div className="flex items-center gap-3 overflow-hidden">
@@ -475,7 +480,7 @@ function App() {
                     {inputFileName}
                   </span>
                 </div>
-                <span className="text-xs font-mono text-zinc-400 bg-zinc-50 px-2 py-1 rounded-md">{inputText.length} 字符</span>
+                <span className="text-xs font-mono text-zinc-400 bg-zinc-50 px-2 py-1 rounded-md">约 {getTextCount(inputText)} 字 (纯文本)</span>
               </div>
             )}
           </section>

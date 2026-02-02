@@ -72,7 +72,7 @@ export const PRESETS: PresetConfig[] = [
     styleConfig: {
       fontFamily: '"SimSun", "Times New Roman", serif',
       headingFont: '"Microsoft YaHei", "Arial", sans-serif',
-      baseSize: '10.5pt', // 五号
+      baseSize: '12pt', // 小四
       h1Size: '15pt', // 小三
       h1Bold: true,
       h1Italic: false,
@@ -82,20 +82,20 @@ export const PRESETS: PresetConfig[] = [
       h3Size: '12pt', // 小四
       h3Bold: true,
       h3Italic: false,
-      h4Size: '10.5pt', // 五号
+      h4Size: '12pt', // 小四
       h4Bold: true,
       h4Italic: false,
-      h5Size: '10.5pt', // 五号
+      h5Size: '12pt', // 小四
       h5Bold: true,
       h5Italic: false,
       h5Indent: '0',
-      h6Size: '10.5pt', // 五号
+      h6Size: '12pt', // 小四
       h6Bold: true,
       h6Italic: true,
       h6Indent: '0',
-      
+
       lineHeight: '1.5',
-      
+
       h1Align: 'justify',
       h2Align: 'left',
       bodyAlign: 'justify',
@@ -111,15 +111,15 @@ export const PRESETS: PresetConfig[] = [
       headingNumbering: 'decimal-nested',
 
       figureNumbering: 'chapter-relative',
-      figureFont: '"SimHei", sans-serif',
-      figureSize: '9pt', // 小五
+      figureFont: '"SimHei", sans-serif', // 黑体
+      figureSize: '10.5pt', // 五号
       figureAlign: 'center',
 
       tableNumbering: 'chapter-relative',
       tableFont: '"SimSun", serif',
-      tableSize: '9pt', // 小五
+      tableSize: '10.5pt', // 五号
       tableCaptionAlign: 'center',
-      tableCaptionFont: '"SimHei", sans-serif',
+      tableCaptionFont: '"SimHei", sans-serif', // 黑体
       tableCaptionSize: '10.5pt', // 五号
       columns: 1
     }
@@ -135,38 +135,38 @@ export const PRESETS: PresetConfig[] = [
       fontFamily: '"SimSun", "Times New Roman", serif', // 正文：宋体 (五号)
       headingFont: '"SimHei", sans-serif', // 标题：黑体 (默认)
       baseSize: '10.5pt', // 正文：五号
-      
+
       h1Size: '14pt', // 一级标题：4号黑体
-      h1Bold: true, 
+      h1Bold: true,
       h1Italic: false,
       h1Font: '"SimHei", sans-serif', // Explicitly set H1 to Hei
-      
+
       h2Size: '10.5pt', // 二级标题：5号黑体
       h2Bold: true,
       h2Italic: false,
       h2Font: '"SimHei", sans-serif', // Explicitly set H2 to Hei
-      
+
       h3Size: '10.5pt', // 三级标题：5号
       h3Bold: false, // 5号宋体 (Normal weight usually)
       h3Italic: false,
       h3Font: '"SimSun", "Songti SC", serif', // Explicitly set H3 to Song
-      
+
       h4Size: '10.5pt', // 四级标题：5号
       h4Bold: false,
       h4Italic: false,
 
-      h5Size: '10.5pt', 
+      h5Size: '10.5pt',
       h5Bold: false,
       h5Italic: true,
       h5Indent: '0',
-      
+
       h6Size: '10.5pt',
       h6Bold: false,
       h6Italic: true,
       h6Indent: '0',
-      
+
       lineHeight: '1', // 默认1倍行距
-      
+
       h1Align: 'left',
       h2Align: 'left',
       bodyAlign: 'justify',
@@ -189,7 +189,7 @@ export const PRESETS: PresetConfig[] = [
       authorSize: '16pt', // 3号
       affiliationFont: '"SimSun", serif', // 单位：6号宋体
       affiliationSize: '7.5pt', // 6号
-      
+
       abstractFont: '"SimSun", serif', // 中文摘要：小5号宋体
       abstractSize: '9pt', // 小5号
 
@@ -202,12 +202,12 @@ export const PRESETS: PresetConfig[] = [
       figureAlign: 'center',
 
       tableNumbering: 'sequential',
-      tableFont: '"SimSun", serif', 
+      tableFont: '"SimSun", serif',
       tableSize: '9pt', // 表内：小5号
       tableCaptionAlign: 'center',
       tableCaptionFont: '"SimHei", sans-serif', // 表题：黑体
       tableCaptionSize: '9pt', // 小5号
-      
+
       columns: 2 // Enable Two-Column layout
     }
   },
@@ -243,7 +243,7 @@ export const PRESETS: PresetConfig[] = [
       h6Italic: true,
       h6Indent: '0',
       lineHeight: '2',
-      
+
       h1Align: 'center',
       h2Align: 'left',
       bodyAlign: 'justify',
@@ -295,7 +295,7 @@ export const PRESETS: PresetConfig[] = [
       h4Size: '16pt', // 三号
       h4Bold: true,
       h4Italic: false,
-      h5Size: '16pt', 
+      h5Size: '16pt',
       h5Bold: true,
       h5Italic: false,
       h5Indent: '0',
@@ -303,10 +303,10 @@ export const PRESETS: PresetConfig[] = [
       h6Bold: true,
       h6Italic: false,
       h6Indent: '0',
-      
-      lineHeight: '1.8', 
-      
-      h1Align: 'justify', 
+
+      lineHeight: '1.8',
+
+      h1Align: 'justify',
       h2Align: 'left',
       bodyAlign: 'justify',
 

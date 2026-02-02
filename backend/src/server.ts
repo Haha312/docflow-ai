@@ -27,9 +27,9 @@ app.use(cors(corsOptions));
 // Stripe Webhook 需要原始请求体,所以在这里特殊处理
 app.use('/api/webhook/stripe', express.raw({ type: 'application/json' }));
 
-// JSON 解析中间件
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// JSON 解析中间件 - 增加限制支持大文档
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 
 // 请求日志中间件 (开发环境)
 if (process.env.NODE_ENV === 'development') {

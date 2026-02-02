@@ -65,22 +65,21 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
       monthly: { CNY: 38, USD: 4.99 },
       yearly: { CNY: 388, USD: 49.99 },
       badge: '入门优选',
-      features: ['<strong>Gemini 3 Pro Preview</strong>', '每月 <strong>30 docs</strong> 生成额度', '去除水印', '标准客服支持']
-    },
-    pro_plus: {
+      features: ['<strong>豆包 + Gemini 2.5</strong>', '每月 <strong>30 docs</strong> 生成额度', '去除水印', '标准客服支持']
+    }, pro_plus: {
       title: 'Pro+',
       popular: true,
       monthly: { CNY: 98, USD: 12.99 },
       yearly: { CNY: 988, USD: 129.99 },
       badge: '最受欢迎',
-      features: ['<strong>Gemini 3 Pro Preview</strong>', '每月 <strong>100 docs</strong> 生成额度', '高级学术预设', '优先客服支持']
+      features: ['<strong>GPT-5 + Claude 3.5 + Gemini 3 Pro Preview</strong>', '每月 <strong>100 docs</strong> 生成额度', '高级学术预设', '优先客服支持']
     },
     ultra: {
       title: 'Ultra',
       monthly: { CNY: 228, USD: 29.99 },
       yearly: { CNY: 2288, USD: 299.99 },
       badge: '旗舰尊享',
-      features: ['<strong>Gemini 3 Pro Preview</strong>', '每月 <strong>300 docs</strong> 生成额度', '处理 2M+ Token 超长文档', '专属排版顾问']
+      features: ['<strong>GPT-5 + Claude 3.5 Opus + Gemini 3 Pro Preview</strong>', '每月 <strong>300 docs</strong> 生成额度', '处理 2M+ Token 超长文档', '专属排版顾问']
     }
   };
 
