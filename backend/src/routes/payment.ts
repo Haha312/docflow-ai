@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import Stripe from 'stripe';
 import AlipaySdk from 'alipay-sdk';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AuthRequest, CreateCheckoutRequest } from '../types';
 import { successResponse, errorResponse } from '../utils/response';
 import { authenticate } from '../middleware/auth';
@@ -109,33 +111,131 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
         if (paymentMethod === 'alipay') {
             const alipayAppId = process.env.ALIPAY_APP_ID;
             const alipayPrivateKey = process.env.ALIPAY_PRIVATE_KEY;
+            // Public Key is optional if using Cert Mode
             const alipayPublicKey = process.env.ALIPAY_PUBLIC_KEY;
 
-            if (!alipayAppId || !alipayPrivateKey || !alipayPublicKey) {
-                res.status(503).json(errorResponse('支付宝支付服务暂未配置', 503));
+            // Certificate Paths
+            const certDir = path.join(process.cwd(), 'Alipay');
+            const alipayRootCertPath = path.join(certDir, 'alipayRootCert.crt');
+            const alipayPublicCertPath = path.join(certDir, 'alipayCertPublicKey_RSA2.crt');
+            // Allow dynamic finding of App Cert (contains AppID)
+            const appCertFiles = fs.existsSync(certDir) ? fs.readdirSync(certDir).filter(f => f.startsWith('appCertPublicKey_') && f.endsWith('.crt')) : [];
+            const appCertPath = appCertFiles.length > 0 ? path.join(certDir, appCertFiles[0]) : null;
+
+            // Determine Validity (Key Mode OR Cert Mode)
+            const hasKeyMode = alipayAppId && alipayPrivateKey && alipayPublicKey;
+            const hasCertMode = alipayPrivateKey && appCertPath && fs.existsSync(alipayRootCertPath) && fs.existsSync(alipayPublicCertPath);
+
+            console.log('Payment Debug:', { hasKeyMode, hasCertMode, appCertPath, certDir });
+
+            // 检查配置，如果不完整则进入模拟模式
+            if (!hasKeyMode && !hasCertMode) {
+                // MOCK MODE (Face-to-Face Style)
+                console.log('Alipay keys/certs missing, initializing MOCK F2F payment mode.');
+                const outTradeNo = `MOCK_${Date.now()}_${user.id.substring(0, 8)}`;
+
+                const mockQrCode = `https://docuflow.ai/pay/mock/${outTradeNo}`;
+
+                await prisma.order.create({
+                    data: {
+                        id: outTradeNo,
+                        userId: user.id,
+                        amount: plan.amountCNY,
+                        currency: 'CNY',
+                        planType: planType,
+                        status: 'PENDING'
+                    }
+                });
+
+                res.json(successResponse({
+                    paymentMethod: 'alipay',
+                    orderId: outTradeNo,
+                    qrCode: mockQrCode,
+                    isMock: true
+                }, '模拟支付宝当面付订单创建成功'));
                 return;
             }
 
             // 初始化支付宝 SDK
-            const alipaySdk: any = new (AlipaySdk as any)({
-                appId: alipayAppId,
-                privateKey: alipayPrivateKey,
-                alipayPublicKey: alipayPublicKey,
-                gateway: process.env.ALIPAY_GATEWAY || 'https://openapi.alipay.com/gateway.do',
-                signType: 'RSA2'
-            });
+            let alipaySdk: any;
+
+            try {
+                // Fix for Import issue: handle default export, named export, and require fallback
+                let AlipaySdkConstructor = AlipaySdk;
+                let pkg: any = AlipaySdk; // Start by assuming imports worked
+
+                // 1. Try .default from standard import
+                if ((AlipaySdk as any)?.default) {
+                    pkg = (AlipaySdk as any).default;
+                    AlipaySdkConstructor = pkg;
+                }
+
+                // 2. Try .AlipaySdk (named export) from standard import or derived pkg
+                if ((AlipaySdk as any)?.AlipaySdk) {
+                    AlipaySdkConstructor = (AlipaySdk as any).AlipaySdk;
+                } else if (pkg?.AlipaySdk) {
+                    AlipaySdkConstructor = pkg.AlipaySdk;
+                }
+
+                // 3. If not a function yet, try dynamic require
+                if (typeof AlipaySdkConstructor !== 'function') {
+                    try {
+                        console.log('AlipaySdk import was not a constructor, trying dynamic require...');
+                        pkg = require('alipay-sdk');
+                        // Try default, then named export, then the package itself
+                        AlipaySdkConstructor = pkg.default || pkg.AlipaySdk || pkg;
+                    } catch (e) {
+                        console.error('Dynamic require failed:', e);
+                    }
+                }
+
+                console.log('Resolved AlipaySdkConstructor:', AlipaySdkConstructor);
+
+                if (typeof AlipaySdkConstructor !== 'function') {
+                    throw new Error(`AlipaySdk is not a constructor (type: ${typeof AlipaySdkConstructor}). Available keys: ${Object.keys(AlipaySdkConstructor || {})}`);
+                }
+
+                if (hasCertMode && appCertPath) {
+                    // Certificate Mode
+                    // Extract AppID from filename if not provided in env: appCertPublicKey_2021006130670626.crt
+                    const certAppId = alipayAppId || path.basename(appCertPath).split('_')[1].split('.')[0];
+
+                    console.log(`Initializing Alipay SDK in CERT MODE (AppID: ${certAppId})`);
+
+                    alipaySdk = new AlipaySdkConstructor({
+                        appId: certAppId,
+                        privateKey: alipayPrivateKey,
+                        alipayRootCertPath: alipayRootCertPath,
+                        alipayPublicCertPath: alipayPublicCertPath,
+                        appCertPath: appCertPath,
+                        gateway: process.env.ALIPAY_GATEWAY || 'https://openapi.alipay.com/gateway.do',
+                        signType: 'RSA2'
+                    });
+                } else {
+                    // Key Mode
+                    console.log(`Initializing Alipay SDK in KEY MODE`);
+                    alipaySdk = new AlipaySdkConstructor({
+                        appId: alipayAppId,
+                        privateKey: alipayPrivateKey,
+                        alipayPublicKey: alipayPublicKey,
+                        gateway: process.env.ALIPAY_GATEWAY || 'https://openapi.alipay.com/gateway.do',
+                        signType: 'RSA2'
+                    });
+                }
+            } catch (initError: any) {
+                const errorMsg = `Alipay SDK Init Error: ${initError.message}\nStack: ${initError.stack}\n`;
+                console.error(errorMsg);
+                fs.appendFileSync(path.join(process.cwd(), 'payment_error.log'), `${new Date().toISOString()} - ${errorMsg}\n`);
+                throw new Error('支付宝 SDK 初始化失败: ' + initError.message);
+            }
 
             // 生成订单号
             const outTradeNo = `DOCUFLOW_${Date.now()}_${user.id.substring(0, 8)}`;
 
-            // 创建支付宝订单
-            const formData = new alipaySdk.AlipayFormData();
-            formData.setMethod('get');
-            formData.addField('returnUrl', `${frontendUrl}?payment=success`);
-            formData.addField('notifyUrl', `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/webhook/alipay`);
-            formData.addField('bizContent', {
+            // 构造支付宝请求参数 (使用普通对象，不再使用 AlipayFormData)
+            // alipay.trade.precreate 不需要 multipart/form-data
+            const bizContent = {
                 outTradeNo: outTradeNo,
-                productCode: 'FAST_INSTANT_TRADE_PAY',
                 totalAmount: plan.amountCNY.toFixed(2),
                 subject: `DocFlow AI - ${plan.title}`,
                 body: '解锁高级AI排版功能',
@@ -143,14 +243,44 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
                     userId: user.id,
                     planType: planType
                 }))
-            });
+            };
 
-            // 生成支付链接
-            const result = await alipaySdk.exec(
-                'alipay.trade.page.pay',
-                {},
-                { formData: formData }
-            );
+            const params = {
+                bizContent: bizContent,
+                notifyUrl: `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/webhook/alipay`
+            };
+
+            console.log('Sending request to Alipay (Plain Object Mode)...');
+
+            // 调用当面付接口
+            let result;
+            try {
+                result = await alipaySdk.exec(
+                    'alipay.trade.precreate',
+                    params
+                );
+            } catch (execError: any) {
+                console.error('Alipay Exec Error:', execError);
+                // Print detailed response if available
+                if (execError.serverResult) {
+                    console.error('Alipay Server Result:', JSON.stringify(execError.serverResult));
+                }
+                throw new Error('支付宝接口调用失败: ' + execError.message);
+            }
+
+            console.log('Real Alipay Precreate Result:', result);
+
+            // Check for Alipay Business Logic Errors (e.g., App Not Online)
+            if (result.code !== '10000') {
+                const errorMsg = result.subMsg || result.msg || '支付宝创建订单失败';
+                console.error(`Alipay API Failed: ${result.code} - ${errorMsg}`);
+                throw new Error(`支付宝接口错误: ${errorMsg}`);
+            }
+
+            if (!result.qr_code) {
+                console.error('Missing qr_code in result:', result);
+                throw new Error('支付宝返回数据异常: 缺少二维码');
+            }
 
             // 创建待支付订单记录
             await prisma.order.create({
@@ -167,8 +297,8 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
             res.json(successResponse({
                 paymentMethod: 'alipay',
                 orderId: outTradeNo,
-                url: result
-            }, '支付宝支付订单创建成功'));
+                qrCode: result.qr_code
+            }, '支付宝当面付订单创建成功'));
             return;
         }
 
@@ -176,6 +306,81 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
         console.error('Create checkout session error:', error);
         res.status(500).json(errorResponse('创建支付会话失败', 500));
     }
+});
+
+/**
+ * GET /api/payment/mock-alipay-gateway
+ * 模拟支付宝支付页面
+ */
+router.get('/mock-alipay-gateway', async (req: Request, res: Response) => {
+    const { outTradeNo, amount, returnUrl } = req.query;
+
+    // Check if we need to update order status here? 
+    // Usually Gateway just redirects. Real webhook updates status. 
+    // For mock, let's update status right here or assume success.
+    // To be proper, we should update the order to PAID here since there is no callback.
+
+    if (typeof outTradeNo === 'string') {
+        const order = await prisma.order.findUnique({ where: { id: outTradeNo } });
+        if (order && order.status === 'PENDING') {
+            await prisma.order.update({
+                where: { id: outTradeNo },
+                data: { status: 'PAID' }
+            });
+            // Update user status
+            const plan = Object.values(PRICING).find(p => p.amountCNY === order.amount || p.amountUSD === order.amount); // loose match
+            // Better: store plan details in order. Oh wait order has planType.
+            if (order.planType && PRICING[order.planType]) {
+                const p = PRICING[order.planType];
+                const endDate = new Date();
+                endDate.setDate(endDate.getDate() + p.duration);
+                let tier: 'PRO' | 'TEAM' = order.planType.includes('team') ? 'TEAM' : 'PRO';
+
+                await prisma.user.update({
+                    where: { id: order.userId },
+                    data: { subscriptionStatus: tier, subscriptionEndDate: endDate }
+                });
+            }
+        }
+    }
+
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>支付宝支付 (模拟)</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f5f5f5; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+            .card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; max-width: 400px; width: 90%; }
+            .logo { width: 80px; height: 80px; margin-bottom: 20px; }
+            .amount { font-size: 40px; font-weight: bold; color: #333; margin: 20px 0; }
+            .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #1677ff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            p { color: #666; margin-bottom: 30px; }
+            .btn { background: #1677ff; color: white; border: none; padding: 12px 30px; border-radius: 8px; font-size: 16px; cursor: pointer; text-decoration: none; display: inline-block; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <img src="https://img.alicdn.com/tfs/TB1e0.5w4n1gK0jSZKPXXbDwXXa-200-200.png" class="logo" />
+            <h2>DocFlow AI 收银台</h2>
+            <div class="amount">¥${amount}</div>
+            <div class="spinner"></div>
+            <p>正在连接支付宝安全网关...</p>
+            <p style="font-size: 12px; color: #999;">(开发环境模拟支付模式)</p>
+        </div>
+        <script>
+            setTimeout(() => {
+                window.location.href = "${returnUrl || '/'}";
+            }, 3000);
+        </script>
+    </body>
+    </html>
+    `;
+
+    res.send(html);
 });
 
 /**

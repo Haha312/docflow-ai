@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { paymentService } from '../services/paymentService';
 import alipayLogo from '../image/Alipay.png';
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface PricingModalProps {
   isOpen: boolean;
@@ -20,15 +21,22 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // New state for 2-step flow
-  const [step, setStep] = useState<'plans' | 'payment'>('plans');
+  // New state for 2-step flow + QR Code
+  const [step, setStep] = useState<'plans' | 'payment' | 'qrcode' | 'success'>('plans');
   const [selectedTier, setSelectedTier] = useState<Tier | null>(null);
+  const [qrCodeData, setQrCodeData] = useState<string>('');
+  const [currentOrderId, setCurrentOrderId] = useState<string>('');
+  const [isMockOrder, setIsMockOrder] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       // Reset state on open
       setStep('plans');
       setSelectedTier(null);
+      setQrCodeData('');
+      setCurrentOrderId('');
+      setIsMockOrder(false);
+      setIsLoading(false);
 
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const lang = navigator.language;
@@ -36,6 +44,29 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
       setPaymentMethod(isChina ? 'alipay' : 'stripe');
     }
   }, [isOpen]);
+
+  // Polling for payment status
+  useEffect(() => {
+    let interval: any;
+    if (step === 'qrcode' && currentOrderId) {
+      interval = setInterval(async () => {
+        try {
+          const status = await paymentService.checkPaymentStatus(currentOrderId);
+          if (status === 'PAID') {
+            setStep('success');
+            clearInterval(interval);
+            // Refresh user profile after short delay or immediately
+            setTimeout(() => {
+              window.location.reload(); // Simple reload to refresh auth state
+            }, 2000);
+          }
+        } catch (e) {
+          console.error('Polling error', e);
+        }
+      }, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [step, currentOrderId]);
 
   if (!isOpen) return null;
 
@@ -50,13 +81,34 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
     setIsLoading(true);
     const planKey = `${selectedTier}_${billingCycle}`;
     try {
-      await paymentService.redirectToCheckout(planKey as any, method);
+      const result = await paymentService.redirectToCheckout(planKey as any, method);
+
+      // If Stripe or Legacy Alipay (Redirect Mode)
+      if (result.url && method === 'stripe' && !result.qrCode) {
+        // window.location.href handled in service for legacy compatibility, or we do it here if service returned object.
+        // Service handles redirect for Stripe usually.
+        if (method === 'stripe') return; // Service did redirect
+      }
+
+      // If QR Code (Alipay F2F or Mock)
+      if (result.qrCode && result.orderId) {
+        setQrCodeData(result.qrCode);
+        setCurrentOrderId(result.orderId);
+        setIsMockOrder(!!result.isMock);
+        setStep('qrcode');
+        setIsLoading(false);
+      } else if (result.url && method === 'alipay') {
+        // Fallback for Page Pay if backend returned URL but no QR (shouldn't happen with new backend logic)
+        window.location.href = result.url;
+      }
+
     } catch (err: any) {
       setError(err.message || '创建支付失败,请重试');
       setIsLoading(false);
     }
   };
 
+  // ... (pricingData and helpers) ...
   // Determine display currency based on current 'paymentMethod' state (which defaults based on locale)
   // But allow switching it implicitly? Or just stick to the detected one for Step 1?
   // User can toggle region/currency via a small control if needed, but per request, main selector is gone.
@@ -107,6 +159,57 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="relative z-10 w-full max-w-4xl mx-4 bg-white rounded-3xl shadow-2xl overflow-hidden transition-all duration-300" style={{ minHeight: '600px' }}>
+
+        {/* ================= STEP 4: SUCCESS ================= */}
+        {step === 'success' && (
+          <div className="absolute inset-0 bg-white z-30 flex flex-col items-center justify-center p-8 animate-in fade-in zoom-in duration-500">
+            <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 text-green-600 animate-bounce">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
+            </div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">支付成功！</h2>
+            <p className="text-gray-500 text-lg mb-8">您的会员权益已激活</p>
+            <div className="text-sm text-gray-400">正在刷新账户状态...</div>
+          </div>
+        )}
+
+        {/* ================= STEP 3: QR CODE SCAN ================= */}
+        {step === 'qrcode' && selectedTier && (
+          <div className="absolute inset-0 bg-white z-20 flex flex-col p-8 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div className="flex items-center mb-4">
+              <button
+                onClick={() => setStep('payment')}
+                className="group flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors px-2 py-1 -ml-2 rounded-lg hover:bg-gray-100"
+              >
+                <span className="text-sm font-medium">{'< 返回支付方式'}</span>
+              </button>
+            </div>
+
+            <div className="flex-1 flex flex-col items-center justify-center text-center">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">打开支付宝 [扫一扫]</h2>
+              <p className="text-gray-500 mb-8">
+                支付 <span className="text-blue-600 font-bold text-xl">¥{getPrice(selectedTier, 'alipay')}</span> 元
+              </p>
+
+              <div className="p-4 bg-white border-2 border-blue-100 rounded-3xl shadow-lg relative">
+                <QRCodeCanvas value={qrCodeData} size={220} level={"H"} />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-1 rounded-lg shadow-sm">
+                  <img src={alipayLogo} className="w-8 h-8 rounded-md" alt="logo" />
+                </div>
+              </div>
+
+              <div className="mt-8 flex items-center gap-2 text-gray-400 text-sm">
+                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <span>正在等待支付结果...</span>
+              </div>
+
+              {isMockOrder && (
+                <div className="mt-6 p-2 bg-yellow-50 text-yellow-700 text-xs rounded-lg max-w-xs">
+                  * 开发模拟模式：请直接等待3秒，系统将自动模拟支付成功。无需实际扫码。
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ================= STEP 2: PAYMENT SELECTION OVERLAY ================= */}
         {step === 'payment' && selectedTier && (

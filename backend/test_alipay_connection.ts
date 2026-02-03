@@ -1,0 +1,102 @@
+
+import * as path from 'path';
+import * as fs from 'fs';
+import AlipaySdk from 'alipay-sdk';
+
+async function testAlipay() {
+    console.log('--- Starting Alipay SDK Self-Test ---');
+
+    let AlipaySdkConstructor: any = AlipaySdk;
+    let AlipayFormDataConstructor: any;
+    let pkg: any = AlipaySdk;
+
+    // 1. Resolve AlipaySdk Constructor
+    if ((AlipaySdk as any)?.default) {
+        pkg = (AlipaySdk as any).default;
+        AlipaySdkConstructor = pkg;
+    }
+
+    if ((AlipaySdk as any)?.AlipaySdk) {
+        AlipaySdkConstructor = (AlipaySdk as any).AlipaySdk;
+    } else if (pkg?.AlipaySdk) {
+        AlipaySdkConstructor = pkg.AlipaySdk;
+    }
+
+    if (typeof AlipaySdkConstructor !== 'function') {
+        try {
+            console.log('Trying dynamic require for AlipaySdk...');
+            pkg = require('alipay-sdk');
+            AlipaySdkConstructor = pkg.default || pkg.AlipaySdk || pkg;
+        } catch (e) {
+            console.error('Dynamic require failed:', e);
+        }
+    }
+
+    console.log('Resolved AlipaySdkConstructor:', AlipaySdkConstructor);
+    console.log('Type:', typeof AlipaySdkConstructor);
+
+    if (typeof AlipaySdkConstructor !== 'function') {
+        console.error('❌ FAILED: AlipaySdk is not a constructor');
+        return;
+    }
+
+    // 2. Resolve AlipayFormData Constructor
+    if (pkg?.AlipayFormData) {
+        AlipayFormDataConstructor = pkg.AlipayFormData;
+    } else if ((AlipaySdk as any)?.AlipayFormData) {
+        AlipayFormDataConstructor = (AlipaySdk as any).AlipayFormData;
+    } else {
+        try {
+            console.log('Trying dynamic require for AlipayFormData...');
+            const r = require('alipay-sdk');
+            AlipayFormDataConstructor = r.AlipayFormData;
+        } catch (e) {
+            console.error('Failed to require AlipayFormData', e);
+        }
+    }
+
+    console.log('Resolved AlipayFormDataConstructor:', AlipayFormDataConstructor);
+    console.log('Type:', typeof AlipayFormDataConstructor);
+
+    if (typeof AlipayFormDataConstructor !== 'function') {
+        console.error('❌ FAILED: AlipayFormData Constructor not found');
+        return;
+    }
+
+    // 3. Try Instantiation and Execution
+    try {
+        console.log('Attempting to instantiate AlipaySdk...');
+        const sdk = new AlipaySdkConstructor({
+            appId: '2021006130670626',
+            privateKey: 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCTOWHDYuxWdTUWSbnl755TRADSNE0Fc+hmfxRzyw8x4on4VQ2An0JUgOsC3ZMT1eEZW5LgKf8c0DYhFqbzU2m3bAmu/dlpEGjCGfSQvTvqPChAKHaJ8ZI9yIWdnsUnurjl1V3uSAuP5htO7So+ddkwF1a49mIu5UsKCNYNFJzkpRmOQe0HCiPTGMJXnxpbEI2mLUQ+mrCReYBooqeKXnYbv/6X+C0gu7SkwpFMZXHA2bQWMVimUm8i9MHCWqnTJOF2iRI0BI25bYUOut6ocsTPE+WP+UcvB0RAN5DuAxQi3jPVSZdk5jjeayc3ClSqLNUsxGJYURGpMcMuYl9MN3CdAgMBAAECggEAKbo20lkkYTDhNgr5bIlo13LLxMhcGDKM6RgVpOgly17I+iCpLg51j1vmwC4q9JFHNpe03mIo03LUFLbF5Ot8aCdv6zA5wcSL3I/cuHVaGP6p7d1KE7jrWSWPcWhBuwv6QfIiqFm1JTjz/n/L3F4si6vhwZTbqS0GArcUbCqueUM9S9YG/VTacRcaejVbGXyns2x5iBbp4uaJVkskZddR0NAbD1yqxv8gF4OQnWxahPpAKFUQ7xAseBuCrdXDe7Vdom1KU7uOgnSjTGLK/fweva4Xa1iOXkqeQ7GH2ZxkAeqFM8cBMgHAgSiIZ4x5ZhpzVXC/nIn+b9KsRhKmwCMXIQKBgQDzLOYBfwT7JDnz17siyYi/HAdCCE4VJlc02wctlLidNQt7H+HXU3S2N4qRBdVee4F+kea0boyqlMtt16d6HG198QnKIrG9N8BIzG4iGB8NmXa3Rvn6r5oi7PBV5oLC2CXkrXtvghoWwR1ooGxfdTB9O+tkzBXNBC+yZCTfDcUoBQKBgQCa/QypkN7OjMChTeDHeLnxaCxq+Y5VaJ6skRZqcPkGsmPO4Kefan1SN1DuTdqYW9cD2jEEYvo9/4S0hgtNyxMMQcYOJ9E4JZHeJ8gwsZTTUEjOZeJ1BNJ2GAhLbYoitGEGwTWhlJzvz8CG1tQwys/AugIPWaEsHX0N9FTWFLeBuQKBgA0ENjuWRPn8cm2u+oFeMEeqhGjwcN2I89oMb1HtSASCNl8c0cXo3bJzPqOMoGMyUTgpLyQxVq460LjMdlZ+9w1qvY9oVANA3LYI20xP5jmgIU6mKfNVOvbrn+G5OP6c+0pGTvklCah2JdDX5XUmnLXXYz49/ly/AJ6X5bFa11bRAoGAFMwD2PUBkMG+T2a91MZUXRpXa3tVKAzDzfAiC+Jg6A8j6Wyn0XJeopt7PJ7hyDP6pB+xGB+X6J3S1s5t0eCAC9L/moKpRll0O1UnPbF2gOxy+I8fVghxnTsYUda/BG0j394pLidc76j28qD9FBcCzZ+oCxtBz0OdtjOk9p0NCrECgYEA1JUzZqwNCVL5/0ZTykPM7L09buK42BLAAi3FsfSsfz1TSPzFyWSS5z3rIk2UqgsNQ0ma26TCKiX54Tfp+8TYYFP/KEwDf7uyiF/zosFjqsR5EXUzfTCpXmobMkjToMPIpceFqUDmindAsGEA6/wJhUQvl1tLI6pbucR5sPkKH14=',
+            gateway: 'https://openapi.alipay.com/gateway.do'
+        });
+        console.log('✅ AlipaySdk instantiated.');
+
+        // Test with Plain Object (Correct way for precreate)
+        console.log('Testing exec calling with plain object...');
+        try {
+            // Mocking the result to avoid actual network call if possible, or expect failure due to bad keys/network
+            // But here we just want to see if it throws the TypeError about formData
+            const result = await sdk.exec('alipay.trade.precreate', {
+                bizContent: {
+                    outTradeNo: 'TEST_' + Date.now(),
+                    totalAmount: '0.01',
+                    subject: 'Test Payment'
+                },
+                notifyUrl: 'http://localhost:3001/notify'
+            });
+            console.log('✅ Exec called successfully (result may be error from Alipay but not TypeError). Result:', result);
+        } catch (e: any) {
+            console.log('⚠️ Exec failed (expected signature/network error, but check if TypeError):', e.message);
+            if (e.message.includes('formData')) {
+                console.error('❌ STILL FAILING with FormData error!');
+            }
+        }
+
+    } catch (e) {
+        console.error('❌ Instantiation / Usage Error:', e);
+    }
+}
+
+testAlipay();
