@@ -30,7 +30,6 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         await register(email, password);
       }
       onClose();
-      // 清空表单
       setEmail('');
       setPassword('');
     } catch (err: any) {
@@ -46,247 +45,141 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={onClose}>×</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-        <h2>{mode === 'login' ? '登录' : '注册'}</h2>
+      <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="px-8 pt-8 pb-6">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="email">邮箱</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
-              required
-              disabled={isLoading}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="password">密码</label>
-            <div className="input-wrapper">
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="输入密码 (至少6位)"
-                minLength={6}
-                required
-                disabled={isLoading}
-              />
-              <button
-                type="button"
-                className="toggle-password"
-                onClick={() => setShowPassword(!showPassword)}
-                tabIndex={-1}
-              >
-                {showPassword ? (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                ) : (
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
-                )}
-              </button>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">{mode === 'login' ? '欢迎回来' : '创建账号'}</h2>
+              <p className="text-sm text-gray-500">{mode === 'login' ? '登录以继续使用' : '注册开始使用'}</p>
             </div>
           </div>
+        </div>
 
-          {error && <div className="error-message">{error}</div>}
+        {/* Form */}
+        <div className="px-8 pb-8">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
+                邮箱地址
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                disabled={isLoading}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+              />
+            </div>
 
-          <button type="submit" className="submit-button" disabled={isLoading}>
-            {isLoading ? '处理中...' : mode === 'login' ? '登录' : '注册'}
-          </button>
-        </form>
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
+                密码
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="至少 6 位字符"
+                  minLength={6}
+                  required
+                  disabled={isLoading}
+                  className="w-full px-4 py-3 pr-12 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {showPassword ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                  )}
+                </button>
+              </div>
+            </div>
 
-        <div className="auth-switch">
-          {mode === 'login' ? (
-            <p>
-              还没有账号?{' '}
-              <button type="button" onClick={switchMode} disabled={isLoading}>
-                立即注册
-              </button>
-            </p>
-          ) : (
-            <p>
-              已有账号?{' '}
-              <button type="button" onClick={switchMode} disabled={isLoading}>
-                立即登录
-              </button>
-            </p>
-          )}
+            {error && (
+              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  处理中...
+                </span>
+              ) : (
+                mode === 'login' ? '登录' : '创建账号'
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-gray-100 text-center text-sm text-gray-500">
+            {mode === 'login' ? (
+              <p>
+                还没有账号?{' '}
+                <button
+                  type="button"
+                  onClick={switchMode}
+                  disabled={isLoading}
+                  className="text-gray-900 font-medium hover:underline disabled:text-gray-400"
+                >
+                  立即注册
+                </button>
+              </p>
+            ) : (
+              <p>
+                已有账号?{' '}
+                <button
+                  type="button"
+                  onClick={switchMode}
+                  disabled={isLoading}
+                  className="text-gray-900 font-medium hover:underline disabled:text-gray-400"
+                >
+                  立即登录
+                </button>
+              </p>
+            )}
+          </div>
         </div>
       </div>
-
-      <style>{`
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.7);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          backdrop-filter: blur(4px);
-        }
-
-        .modal-content {
-          background: white;
-          padding: 2rem;
-          border-radius: 12px;
-          width: 90%;
-          max-width: 400px;
-          position: relative;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        }
-
-        .modal-close {
-          position: absolute;
-          top: 1rem;
-          right: 1rem;
-          background: none;
-          border: none;
-          font-size: 2rem;
-          cursor: pointer;
-          color: #666;
-          line-height: 1;
-          padding: 0;
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 4px;
-          transition: all 0.2s;
-        }
-
-        .modal-close:hover {
-          background: #f0f0f0;
-          color: #333;
-        }
-
-        .modal-content h2 {
-          margin: 0 0 1.5rem 0;
-          color: #333;
-          font-size: 1.75rem;
-        }
-
-        .form-group {
-          margin-bottom: 1.25rem;
-        }
-
-        .form-group label {
-          display: block;
-          margin-bottom: 0.5rem;
-          color: #555;
-          font-weight: 500;
-        }
-
-        .input-wrapper {
-          position: relative;
-          width: 100%;
-        }
-
-        .form-group input {
-          width: 100%;
-          padding: 0.75rem;
-          padding-right: 2.5rem; /* Make room for the eye icon */
-          border: 2px solid #e0e0e0;
-          border-radius: 6px;
-          font-size: 1rem;
-          transition: border-color 0.2s;
-        }
-
-        .toggle-password {
-          position: absolute;
-          right: 0.75rem;
-          top: 50%;
-          transform: translateY(-50%);
-          background: none;
-          border: none;
-          color: #999;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          padding: 0;
-          transition: color 0.2s;
-        }
-
-        .toggle-password:hover {
-          color: #666;
-        }
-
-        .form-group input:focus {
-          outline: none;
-          border-color: #4a90e2;
-        }
-
-        .form-group input:disabled {
-          background: #f5f5f5;
-          cursor: not-allowed;
-        }
-
-        .error-message {
-          background: #fee;
-          color: #c33;
-          padding: 0.75rem;
-          border-radius: 6px;
-          margin-bottom: 1rem;
-          font-size: 0.9rem;
-        }
-
-        .submit-button {
-          width: 100%;
-          padding: 0.875rem;
-          background: #4a90e2;
-          color: white;
-          border: none;
-          border-radius: 6px;
-          font-size: 1rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-
-        .submit-button:hover:not(:disabled) {
-          background: #357abd;
-        }
-
-        .submit-button:disabled {
-          background: #ccc;
-          cursor: not-allowed;
-        }
-
-        .auth-switch {
-          margin-top: 1.5rem;
-          text-align: center;
-          color: #666;
-        }
-
-        .auth-switch button {
-          background: none;
-          border: none;
-          color: #4a90e2;
-          cursor: pointer;
-          font-size: inherit;
-          text-decoration: underline;
-          padding: 0;
-        }
-
-        .auth-switch button:hover:not(:disabled) {
-          color: #357abd;
-        }
-
-        .auth-switch button:disabled {
-          color: #ccc;
-          cursor: not-allowed;
-        }
-      `}</style>
     </div>
   );
 }

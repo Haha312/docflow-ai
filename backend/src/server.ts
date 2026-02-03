@@ -6,10 +6,15 @@ import generateRoutes from './routes/generate';
 import paymentRoutes from './routes/payment';
 import userRoutes from './routes/user';
 import documentRoutes from './routes/document';
+import adminRoutes from './routes/admin';
 import { errorResponse } from './utils/response';
 
 // 加载环境变量
 dotenv.config();
+
+console.log('🔄 DocuFlow Backend Restarting...');
+console.log('DEBUG: GEMINI_OPENAI_BASE_URL =', process.env.GEMINI_OPENAI_BASE_URL);
+console.log('DEBUG: GOOGLE_API_KEY (First 5) =', process.env.GOOGLE_API_KEY?.substring(0, 5));
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,7 +23,11 @@ const PORT = process.env.PORT || 3001;
 
 // CORS 配置
 const corsOptions = {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: [
+        process.env.FRONTEND_URL || 'http://localhost:5173',
+        'http://localhost:3000',
+        'http://localhost:5173'
+    ],
     credentials: true,
     optionsSuccessStatus: 200
 };
@@ -62,6 +71,9 @@ app.get('/health', (req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/generate', generateRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/documents', documentRoutes);
 
 // 404 处理
 app.use((req: Request, res: Response) => {

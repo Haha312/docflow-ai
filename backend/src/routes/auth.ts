@@ -9,12 +9,11 @@ import { AuthRequest } from '../types';
 
 const router = Router();
 
-// Tier Configuration (MUST MATCH generate.ts)
+// Tier Configuration (MUST MATCH generate.ts and rateLimit.ts)
 const TIER_LIMITS = {
-    'FREE': 3,
-    'PRO': 30,
-    'PRO_PLUS': 100,
-    'ULTRA': 300
+    'FREE': 3,      // 3次/日
+    'PRO': 50,      // 50次/月
+    'TEAM': 500     // 500次/月
 };
 
 /**

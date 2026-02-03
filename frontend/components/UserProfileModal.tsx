@@ -14,291 +14,110 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
 
   if (!isOpen || !user) return null;
 
+  const isPro = user.subscriptionStatus === 'PRO' || user.subscriptionStatus === 'TEAM';
+  const tierLabel = user.subscriptionStatus === 'TEAM' ? '团队版' :
+    user.subscriptionStatus === 'PRO' ? 'Pro 专业版' : '免费版';
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={onClose}>
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-        <div className="modal-header">
-          <div className="avatar-placeholder">
-            {user.email.charAt(0).toUpperCase()}
+      <div className="relative z-10 w-full max-w-2xl bg-white rounded-xl shadow-xl overflow-hidden flex flex-col text-sm border border-gray-100" style={{ maxHeight: '70vh' }}>
+        {/* Header */}
+        <div className="px-6 pt-5 pb-0">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-14 h-14 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 font-medium text-xl">
+              {user.email.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <h2 className="text-xl font-medium text-gray-900">用户中心</h2>
+              <p className="text-sm text-gray-500 mt-0.5">{user.email}</p>
+            </div>
           </div>
-          <h2>用户中心</h2>
-          <div className="user-email">{user.email}</div>
+
+          {/* Tabs - Simple Underline Style */}
+          <div className="flex gap-6 border-b border-gray-200">
+            {[
+              { key: 'profile', label: '个人资料' },
+              { key: 'documents', label: '文档历史' },
+              { key: 'orders', label: '订单记录' }
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as any)}
+                className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === tab.key
+                  ? 'text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                {tab.label}
+                {activeTab === tab.key && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 rounded-t-full" />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="tabs-container">
-          <button
-            className={`tab-btn ${activeTab === 'profile' ? 'active' : ''}`}
-            onClick={() => setActiveTab('profile')}
-          >
-            个人资料
-          </button>
-          <button
-            className={`tab-btn ${activeTab === 'documents' ? 'active' : ''}`}
-            onClick={() => setActiveTab('documents')}
-          >
-            文档历史
-          </button>
-          <button
-            className={`tab-btn ${activeTab === 'orders' ? 'active' : ''}`}
-            onClick={() => setActiveTab('orders')}
-          >
-            订单记录
-          </button>
-        </div>
-
-        <div className="modal-body custom-scrollbar">
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
           {activeTab === 'profile' && (
-            <div className="profile-section">
-              <div className="info-card">
-                <div className="card-row">
-                  <span className="label">当前会员</span>
-                  <span className={`status-badge ${user.subscriptionStatus === 'PRO' ? 'pro' : 'free'}`}>
-                    {user.subscriptionStatus === 'PRO' ? 'Pro 专业版' : '免费版'}
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-500">当前会员</span>
+                  <span className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${user.subscriptionStatus === 'TEAM' ? 'bg-gray-900 text-white' :
+                    isPro ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                    {tierLabel}
                   </span>
                 </div>
 
                 {user.subscriptionStatus === 'FREE' && (
-                  <div className="card-row">
-                    <span className="label">今日额度</span>
-                    <span className="quota-text">{remainingQuota} / 3 次</span>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span className="text-sm text-gray-500">今日额度</span>
+                    <span className="text-sm font-medium text-gray-900">{remainingQuota} / 3 次</span>
                   </div>
                 )}
 
                 {user.subscriptionEndDate && (
-                  <div className="card-row">
-                    <span className="label">有效期至</span>
-                    <span className="value">{new Date(user.subscriptionEndDate).toLocaleDateString()}</span>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm text-gray-500">有效期至</span>
+                    <span className="text-sm font-medium text-gray-900">
+                      {new Date(user.subscriptionEndDate).toLocaleDateString()}
+                    </span>
                   </div>
                 )}
               </div>
 
-              <button className="logout-btn" onClick={() => { logout(); onClose(); }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+              <button
+                onClick={() => { logout(); onClose(); }}
+                className="w-full py-3 bg-white border border-gray-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 hover:border-red-100 transition-colors flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <polyline points="16 17 21 12 16 7"></polyline>
+                  <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
                 退出登录
               </button>
             </div>
           )}
 
-          {activeTab === 'documents' && (
-            <div className="list-wrapper">
-              <DocumentList />
-            </div>
-          )}
-          {activeTab === 'orders' && (
-            <div className="list-wrapper">
-              <OrderHistory />
-            </div>
-          )}
+          {activeTab === 'documents' && <DocumentList />}
+          {activeTab === 'orders' && <OrderHistory />}
         </div>
       </div>
-
-      <style>{`
-                .modal-overlay {
-                    position: fixed;
-                    top: 0; left: 0; right: 0; bottom: 0;
-                    background: rgba(0, 0, 0, 0.4);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    z-index: 1000;
-                    backdrop-filter: blur(4px);
-                    animation: fadeIn 0.2s ease-out;
-                }
-
-                .modal-content {
-                    background: white;
-                    border-radius: 28px;
-                    width: 90%;
-                    max-width: 560px;
-                    height: 80vh; 
-                    max-height: 700px;
-                    display: flex;
-                    flex-direction: column;
-                    position: relative;
-                    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12);
-                    overflow: hidden;
-                    animation: scaleIn 0.2s ease-out;
-                }
-
-                .modal-close {
-                    position: absolute;
-                    top: 1.5rem;
-                    right: 1.5rem;
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 50%;
-                    border: none;
-                    background: transparent;
-                    color: #444746;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    transition: background 0.2s;
-                    z-index: 10;
-                }
-                .modal-close:hover {
-                    background: #f0f4f9;
-                }
-
-                .modal-header {
-                    padding: 2.5rem 2rem 1.5rem;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    background: white;
-                    flex-shrink: 0;
-                }
-
-                .avatar-placeholder {
-                    width: 64px;
-                    height: 64px;
-                    border-radius: 50%;
-                    background: #0b57d0;
-                    color: white;
-                    font-size: 1.75rem;
-                    font-weight: 500;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    margin-bottom: 1rem;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-
-                .modal-header h2 {
-                    margin: 0;
-                    font-size: 1.5rem;
-                    color: #1f1f1f;
-                    font-weight: 400;
-                }
-
-                .user-email {
-                    color: #444746;
-                    font-size: 0.9rem;
-                    margin-top: 0.25rem;
-                }
-
-                .tabs-container {
-                    display: flex;
-                    padding: 0 1.5rem;
-                    justify-content: center;
-                    gap: 0.5rem;
-                    border-bottom: 1px solid #e0e3e1;
-                    flex-shrink: 0;
-                }
-
-                .tab-btn {
-                    padding: 0.75rem 1.25rem;
-                    border: none;
-                    background: transparent;
-                    font-size: 0.9rem;
-                    font-weight: 500;
-                    color: #444746;
-                    cursor: pointer;
-                    border-bottom: 3px solid transparent;
-                    transition: all 0.2s;
-                    border-radius: 8px 8px 0 0;
-                }
-
-                .tab-btn:hover {
-                    background: #f0f4f9;
-                }
-
-                .tab-btn.active {
-                    color: #0b57d0;
-                    border-bottom-color: #0b57d0;
-                }
-
-                .modal-body {
-                    flex: 1;
-                    padding: 2rem;
-                    overflow-y: auto;
-                    background: #f8f9fa;
-                }
-
-                .profile-section {
-                    max-width: 400px;
-                    margin: 0 auto;
-                }
-
-                .info-card {
-                    background: white;
-                    border-radius: 16px;
-                    padding: 1.5rem;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-                    margin-bottom: 2rem;
-                }
-
-                .card-row {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 0.75rem 0;
-                    border-bottom: 1px solid #f0f0f0;
-                }
-                .card-row:last-child {
-                    border-bottom: none;
-                }
-
-                .label {
-                    color: #444746;
-                    font-size: 0.9rem;
-                }
-
-                .status-badge {
-                    padding: 4px 12px;
-                    border-radius: 100px;
-                    font-size: 0.85rem;
-                    font-weight: 500;
-                }
-                .status-badge.pro {
-                    background: #d3e3fd;
-                    color: #041e49;
-                }
-                .status-badge.free {
-                    background: #e3e3e3;
-                    color: #1f1f1f;
-                }
-
-                .value, .quota-text {
-                    color: #1f1f1f;
-                    font-weight: 500;
-                }
-
-                .logout-btn {
-                    width: 100%;
-                    padding: 0.875rem;
-                    background: white;
-                    color: #b3261e;
-                    border: 1px solid #f2f2f2;
-                    border-radius: 100px;
-                    font-size: 0.95rem;
-                    font-weight: 500;
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 8px;
-                    transition: all 0.2s;
-                }
-                .logout-btn:hover {
-                    background: #fff8f8;
-                    border-color: #fce8e6;
-                }
-
-                @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
-                }
-                @keyframes scaleIn {
-                    from { transform: scale(0.95); opacity: 0; }
-                    to { transform: scale(1); opacity: 1; }
-                }
-            `}</style>
     </div>
   );
 }

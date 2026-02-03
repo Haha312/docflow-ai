@@ -213,7 +213,7 @@ export const PRESETS: PresetConfig[] = [
   },
   {
     id: DocPreset.CREATIVE,
-    title: "出版物/小说",
+    title: "出版物",
     description: "沉浸式阅读体验。章节式标题 (第一章)，宽松行距与段落缩进，使用衬线字体，适合小说、散文、电子书。",
     color: "violet",
     systemInstruction: "Format as Creative Writing.",

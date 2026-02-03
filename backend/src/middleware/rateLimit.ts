@@ -3,9 +3,22 @@ import { AuthRequest } from '../types';
 import { errorResponse } from '../utils/response';
 import prisma from '../config/database';
 
+// 管理员邮箱（唯一可访问后台的账号）
+const ADMIN_EMAIL = 'admin@docuflow.ai';
+
+// 各等级月度配额
+const TIER_LIMITS = {
+    'FREE': 3,      // 3次/日
+    'PRO': 50,      // 50次/月
+    'TEAM': 500     // 500次/月
+};
+
 /**
  * 限流中间件
- * 检查用户的使用额度,FREE 用户每日限制 3 次
+ * FREE: 每日 3 次
+ * PRO: 每月 50 次
+ * TEAM: 每月 500 次
+ * ADMIN: 无限制
  */
 export const checkRateLimit = async (
     req: AuthRequest,
@@ -20,43 +33,75 @@ export const checkRateLimit = async (
             return;
         }
 
-        // PRO 用户无限制
-        if (user.subscriptionStatus === 'PRO') {
+        // 管理员账号不限次数
+        if (user.email === ADMIN_EMAIL) {
             next();
             return;
         }
 
-        // FREE 用户检查今日使用次数
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const tier = user.subscriptionStatus || 'FREE';
 
-        const usageCount = await prisma.usageLog.count({
-            where: {
-                userId: user.id,
-                createdAt: {
-                    gte: today
+        // 根据等级设置不同的时间范围和限制
+        if (tier === 'FREE') {
+            // FREE 用户：每日限制
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const usageCount = await prisma.usageLog.count({
+                where: {
+                    userId: user.id,
+                    createdAt: { gte: today }
                 }
+            });
+
+            const limit = TIER_LIMITS['FREE'];
+            if (usageCount >= limit) {
+                res.status(403).json(
+                    errorResponse(
+                        `免费用户每日限制 ${limit} 次，您今日已达上限。升级 Pro 获取更多额度。`,
+                        403
+                    )
+                );
+                return;
             }
-        });
+            res.locals.remainingQuota = limit - usageCount;
+        } else {
+            // PRO/TEAM 用户：每月限制
+            const monthStart = new Date();
+            monthStart.setDate(1);
+            monthStart.setHours(0, 0, 0, 0);
 
-        const DAILY_LIMIT = 3;
+            const usageCount = await prisma.usageLog.count({
+                where: {
+                    userId: user.id,
+                    createdAt: { gte: monthStart }
+                }
+            });
 
-        if (usageCount >= DAILY_LIMIT) {
-            res.status(403).json(
-                errorResponse(
-                    `免费用户每日限制 ${DAILY_LIMIT} 次使用,您今日已达上限。请升级到 Pro 会员以解锁无限使用。`,
-                    403
-                )
-            );
-            return;
+            const limit = TIER_LIMITS[tier as keyof typeof TIER_LIMITS] || 50;
+            if (usageCount >= limit) {
+                res.status(403).json(
+                    errorResponse(
+                        `本月使用次数已达上限 (${limit} 次)。下月 1 日重置，或升级获取更多额度。`,
+                        403
+                    )
+                );
+                return;
+            }
+            res.locals.remainingQuota = limit - usageCount;
         }
 
-        // 在响应对象中附加剩余次数信息
-        res.locals.remainingQuota = DAILY_LIMIT - usageCount;
         next();
 
     } catch (error) {
         console.error('Rate limit check error:', error);
         res.status(500).json(errorResponse('限流检查失败', 500));
     }
+};
+
+/**
+ * 检查是否为管理员
+ */
+export const isAdmin = (email: string): boolean => {
+    return email === ADMIN_EMAIL;
 };

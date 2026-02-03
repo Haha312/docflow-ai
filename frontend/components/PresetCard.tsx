@@ -1,45 +1,45 @@
 import React from 'react';
-import { DocPreset, PresetConfig } from '../types';
+import { PresetConfig } from '../types';
 
-interface Props {
+interface PresetCardProps {
   config: PresetConfig;
   isSelected: boolean;
-  onSelect: (id: DocPreset) => void;
+  onSelect: (id: string) => void;
 }
 
-export const PresetCard: React.FC<Props> = ({ config, isSelected, onSelect }) => {
+export const PresetCard: React.FC<PresetCardProps> = ({ config, isSelected, onSelect }) => {
   return (
-    <button
+    <div
       onClick={() => onSelect(config.id)}
-      className={`relative group flex flex-col items-start p-4 rounded-2xl border transition-all duration-300 w-full text-left outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500/30
+      className={`relative p-3.5 rounded-xl cursor-pointer transition-all duration-200 border group select-none flex items-center gap-3
         ${isSelected
-          ? `border-${config.color}-500 bg-white shadow-lg shadow-${config.color}-500/10`
-          : 'border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-md hover:translate-x-1'
+          ? 'bg-emerald-50 border-emerald-500 shadow-sm'
+          : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50/50'
         }
       `}
     >
-      <div className="flex items-start justify-between w-full mb-3">
-        <div className={`
-          p-2.5 rounded-xl text-white shadow-sm transition-transform duration-300 group-hover:scale-110
-          ${isSelected ? `bg-${config.color}-500` : `bg-${config.color}-400/90 group-hover:bg-${config.color}-500`}
-        `}>
-          <span dangerouslySetInnerHTML={{ __html: config.icon }} />
+      {/* Selection Checkmark */}
+      {isSelected && (
+        <div className="absolute top-0 right-0 p-[1px] bg-emerald-500 rounded-bl-lg rounded-tr-lg">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
         </div>
+      )}
 
-        {isSelected && (
-          <div className={`text-${config.color}-500 animate-in fade-in zoom-in duration-200`}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
-          </div>
-        )}
+      <div
+        className={`p-2.5 rounded-lg transition-all duration-200 flex-shrink-0 flex items-center justify-center [&>svg]:w-[18px] [&>svg]:h-[18px] [&>svg]:stroke-[1.5] ${isSelected
+          ? 'bg-emerald-500 text-white'
+          : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200 group-hover:text-gray-700'
+          }`}
+        dangerouslySetInnerHTML={{ __html: config.icon }}
+      />
+
+      <div className="min-w-0">
+        <h3 className={`font-medium text-sm truncate ${isSelected ? 'text-emerald-900 font-semibold' : 'text-gray-700'}`}>
+          {config.title}
+        </h3>
       </div>
-
-      <h3 className={`font-bold text-base mb-1.5 ${isSelected ? 'text-zinc-900' : 'text-zinc-700'}`}>
-        {config.title}
-      </h3>
-
-      <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2">
-        {config.description}
-      </p>
-    </button>
+    </div>
   );
-};
+}

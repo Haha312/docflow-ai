@@ -6,7 +6,7 @@ export interface AuthRequest extends Request {
     user?: {
         id: string;
         email: string;
-        subscriptionStatus: 'FREE' | 'PRO';
+        subscriptionStatus: 'FREE' | 'PRO' | 'TEAM';
         subscriptionEndDate?: Date;
     };
 }

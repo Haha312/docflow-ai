@@ -19,7 +19,7 @@ export interface GenerateDocumentRequest {
  */
 export async function generateDocumentViaBackend(
     request: GenerateDocumentRequest,
-    onProgress: (html: string) => void,
+    onProgress: (html: string, progress?: any) => void,
     abortSignal?: AbortSignal
 ): Promise<string> {
     const token = authService.getToken();
@@ -63,6 +63,7 @@ export async function generateDocumentViaBackend(
 
     const decoder = new TextDecoder();
     let fullText = '';
+    let buffer = ''; // Buffer for incomplete SSE lines
 
     try {
         while (true) {
@@ -70,36 +71,50 @@ export async function generateDocumentViaBackend(
 
             if (done) break;
 
-            // 解码数据块
-            const chunk = decoder.decode(value, { stream: true });
+            // 解码数据块并追加到 buffer
+            buffer += decoder.decode(value, { stream: true });
 
-            // 处理 SSE 事件
-            const lines = chunk.split('\n');
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const dataStr = line.substring(6);
-                    try {
-                        const data = JSON.parse(dataStr);
+            // 处理 buffer 中完整的 SSE 事件 (以 \n\n 结尾)
+            const events = buffer.split('\n\n');
+            // 最后一个元素可能是不完整的,保留在 buffer 中
+            buffer = events.pop() || '';
 
-                        // 检查是否有错误
-                        if (data.error) {
-                            throw new Error(data.error);
+            for (const event of events) {
+                const lines = event.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const dataStr = line.substring(6);
+                        try {
+                            const data = JSON.parse(dataStr);
+
+                            // 检查是否有错误
+                            if (data.error) {
+                                throw new Error(data.error);
+                            }
+
+                            // 检查是否完成
+                            if (data.done) {
+                                return fullText;
+                            }
+
+                            // Delta Mode (More efficient)
+                            if (data.delta) {
+                                fullText += data.delta;
+                                onProgress(fullText, data.progress);
+                            }
+                            // Legacy Mode (Full Replacement)
+                            else if (data.text) {
+                                fullText = data.text;
+                                onProgress(fullText, data.progress);
+                            }
+                        } catch (e) {
+                            // 忽略 JSON 解析错误 (可能是不完整的数据块)
+                            if (e instanceof SyntaxError) {
+                                console.warn('SSE JSON parse error, skipping:', dataStr.substring(0, 100));
+                                continue;
+                            }
+                            throw e;
                         }
-
-                        // 检查是否完成
-                        if (data.done) {
-                            return fullText;
-                        }
-
-                        // 更新文本
-                        if (data.text) {
-                            fullText = data.text;
-                            onProgress(fullText);
-                        }
-                    } catch (e) {
-                        // 忽略 JSON 解析错误 (可能是不完整的数据块)
-                        if (e instanceof SyntaxError) continue;
-                        throw e;
                     }
                 }
             }

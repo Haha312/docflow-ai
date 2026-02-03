@@ -98,12 +98,13 @@ const isInlineNode = (node: Node): boolean => {
     if (node.nodeType === Node.TEXT_NODE) return true;
     if (node.nodeType === Node.ELEMENT_NODE) {
         const tag = (node as HTMLElement).tagName.toUpperCase();
-        return ['SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'SUP', 'SUB', 'CODE', 'A', 'BR', 'SMALL', 'BIG', 'STRIKE', 'S', 'DEL', 'INS', 'MARK', 'VAR', 'CITE', 'DFN', 'ABBR', 'TIME', 'DATA', 'LABEL', 'Q', 'IMG'].includes(tag);
+        return ['SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SUP', 'SUB', 'A', 'CODE'].includes(tag);
     }
     return false;
 };
 
 // --- Image Processing ---
+
 // Convert base64 data URL to Uint8Array for docx ImageRun
 const base64ToUint8Array = (base64: string): Uint8Array => {
     const binaryString = atob(base64);
@@ -130,6 +131,63 @@ const parseImageSrc = (src: string): { data: Uint8Array; type: 'png' | 'jpeg' | 
         return null;
     }
 };
+
+// Get image dimensions from binary data
+const getImageDimensions = (data: Uint8Array, type: 'png' | 'jpeg' | 'gif' | 'bmp'): { width: number; height: number } | null => {
+    try {
+        const view = new DataView(data.buffer);
+
+        if (type === 'png') {
+            // PNG: Width at 16, Height at 20 (Big Endian)
+            if (data.length < 24) return null;
+            const width = view.getUint32(16, false);
+            const height = view.getUint32(20, false);
+            return { width, height };
+        }
+
+        if (type === 'gif') {
+            // GIF: Width at 6, Height at 8 (Little Endian)
+            if (data.length < 10) return null;
+            const width = view.getUint16(6, true);
+            const height = view.getUint16(8, true);
+            return { width, height };
+        }
+
+        if (type === 'bmp') {
+            // BMP: Width at 18, Height at 22 (Little Endian)
+            if (data.length < 26) return null;
+            const width = view.getInt32(18, true);
+            const height = view.getInt32(22, true);
+            return { width: Math.abs(width), height: Math.abs(height) };
+        }
+
+        if (type === 'jpeg') {
+            // JPEG: Scan for SOF markers
+            let i = 2;
+            while (i < data.length) {
+                if (data[i] !== 0xFF) break; // Not a marker
+                const marker = data[i + 1];
+                const length = view.getUint16(i + 2, false);
+
+                // SOF0 (Baseline) to SOF15 (Differential) excluding DHT/JPG/DAC
+                // Common SOF markers: C0, C1, C2, C3, C5, C6, C7, C9, CA, CB, CD, CE, CF
+                if ((marker >= 0xC0 && marker <= 0xCF) && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
+                    const height = view.getUint16(i + 5, false);
+                    const width = view.getUint16(i + 7, false);
+                    return { width, height };
+                }
+
+                i += 2 + length;
+            }
+            return null;
+        }
+
+        return null;
+    } catch (e) {
+        console.warn("Failed to parse image dimensions", e);
+        return null;
+    }
+}
 
 // --- Advanced Math Parser ---
 
@@ -351,6 +409,16 @@ const parseLatexToMathNodes = (latex: string): any[] => {
                 const text = getGroupContent();
                 children.push(new MathRun(text));
             }
+            else if (cmd === 'hat') {
+                const content = getGroupContent();
+                // MathAccent is complex, fallback to content for now or simple run
+                // To properly support accents we need new MathAccent({ ... })
+                // But for stability let's just output content
+                children.push(...parseLatexToMathNodes(content));
+            }
+            else if (['min', 'max', 'log', 'ln', 'lim', 'det', 'sin', 'cos', 'tan'].includes(cmd)) {
+                children.push(new MathRun(cmd));
+            }
             else {
                 // Unknown command
             }
@@ -431,12 +499,22 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 let t = n.textContent;
                 if (t) {
                     t = t.replace(/[\n\r]+/g, ' ');
-                    const parts = t.split(/(\$\$[^$]+\$\$)/g);
+                    // Match both $$...$$ (Display Math) and $...$ (Inline Math)
+                    // Be careful with $ currency: strict constraint that $ cannot be followed by space or number if simple check
+                    // But for now, we assume AI generated content follows LaTeX rules.
+                    const parts = t.split(/(\$\$[^$]+\$\$|\$[^$]+\$)/g);
                     parts.forEach(part => {
-                        if (part.startsWith('$$') && part.endsWith('$$')) {
-                            const latex = part.substring(2, part.length - 2);
+                        const isDisplayMath = part.startsWith('$$') && part.endsWith('$$');
+                        const isInlineMath = part.startsWith('$') && part.endsWith('$');
+
+                        if (isDisplayMath || isInlineMath) {
+                            const latex = part.startsWith('$$')
+                                ? part.substring(2, part.length - 2)
+                                : part.substring(1, part.length - 1);
+
                             const mathNodes = parseLatexToMathNodes(latex);
                             if (mathNodes.length > 0) runs.push(new DocxMath({ children: mathNodes }));
+                            else runs.push(new TextRun({ text: part })); // Fallback if parse fails
                         } else if (part.trim() !== "" || parts.length === 1) {
                             const hasMathChars = /[=+\-×÷<>\u2200-\u22FF\u0370-\u03FF]/.test(part);
                             const runFont = hasMathChars ? { ...baseFont, ascii: "Times New Roman", hAnsi: "Times New Roman" } : baseFont;
@@ -461,25 +539,58 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 // Handle IMG tags - convert base64 images to docx ImageRun
                 if (tag === 'IMG') {
                     const src = el.getAttribute('src') || '';
+                    console.log('Processing IMG tag, src length:', src.length, 'starts with:', src.substring(0, 50));
+
                     const imageData = parseImageSrc(src);
                     if (imageData) {
+                        console.log('✅ Image parsed successfully, type:', imageData.type, 'data size:', imageData.data.length);
+
                         // Get image dimensions from attributes or use defaults
-                        const width = parseInt(el.getAttribute('width') || '400', 10);
-                        const height = parseInt(el.getAttribute('height') || '300', 10);
+                        // 默认为 600px (接近 A4 打印宽度), 高度按 4:3 估算
+                        const attrW = el.getAttribute('width');
+                        const attrH = el.getAttribute('height');
+                        let width = parseInt(attrW || '600', 10);
+                        let height = parseInt(attrH || '450', 10);
+
+                        // 如果没有提供宽高，尝试从 style 中解析
+                        if (!attrW && el.style.width) width = parseInt(el.style.width, 10) || width;
+                        if (!attrH && el.style.height) height = parseInt(el.style.height, 10) || height;
+
+                        // 智能缩放逻辑:
+                        // 1. "不要压缩": 尽量保持原图大小
+                        // 2. "两端对齐": 意味着图片应该尽可能占满宽度 (最大不超过页边距)
+                        // A4 纸通常可用宽度约 600-650px (EMU换算)
+                        const MAX_PAGE_WIDTH = 650;
+
+                        let finalWidth = width;
+                        let finalHeight = height;
+
+                        // 只有当图片宽度超过页面宽度时才缩小，否则保持原样 (即使它很小，也不要强行拉大，以免模糊)
+                        if (width > MAX_PAGE_WIDTH) {
+                            const ratio = height / width;
+                            finalWidth = MAX_PAGE_WIDTH;
+                            finalHeight = Math.round(finalWidth * ratio);
+                        }
+
+                        // 如果图片太小(比如 icon)，可能也不需要处理，但用户要求不压缩，所以原样输出即可
+                        // 但为了美观，如果图片本身就没有尺寸属性，我们默认给它一个较大尺寸(上面的默认值)
+
                         try {
                             runs.push(new ImageRun({
                                 data: imageData.data,
                                 transformation: {
-                                    width: Math.min(width, 500),  // Max width 500px
-                                    height: Math.min(height, 400) // Max height 400px
+                                    width: finalWidth,
+                                    height: finalHeight
                                 }
                             }));
+                            console.log('✅ ImageRun created successfully, dimensions:', finalWidth, 'x', finalHeight);
                         } catch (imgError) {
-                            console.warn('Failed to create ImageRun:', imgError);
+                            console.error('❌ Failed to create ImageRun:', imgError);
                             runs.push(new TextRun({ text: '[图片]', font: baseFont, size: baseSize }));
                         }
                     } else {
                         // Fallback for non-base64 images
+                        console.warn('⚠️ Image not in base64 format, src:', src.substring(0, 100));
                         runs.push(new TextRun({ text: '[图片]', font: baseFont, size: baseSize }));
                     }
                     return;
@@ -529,7 +640,12 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         const tempContainer = document.createElement('div');
         contentNodes.forEach(n => tempContainer.appendChild(n.cloneNode(true)));
         const runs = getRichTextRuns(tempContainer, font, size, "000000");
-        return new Paragraph({ alignment: mapAlignment(styleConfig.bodyAlign), spacing: context.inTable ? { before: 50, after: 50 } : { before: spacingBeforeBody, after: spacingAfterBody, line: lineValue, lineRule: lineRule }, indent: context.inTable ? { firstLine: 0 } : bodyIndent, children: runs });
+        return new Paragraph({
+            alignment: mapAlignment(styleConfig.bodyAlign),
+            spacing: context.inTable ? { before: 50, after: 50 } : { before: spacingBeforeBody, after: spacingAfterBody, line: lineValue, lineRule: lineRule },
+            indent: context.inTable ? { firstLine: 0, left: 0, hanging: 0 } : bodyIndent,
+            children: runs
+        });
     };
 
     const processNodes = (nodeList: NodeList, listContext?: { type: 'ul' | 'ol' }, tableContext: TableContext = { inTable: false, inHeader: false }): (Paragraph | Table)[] => {
@@ -547,10 +663,11 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     let paragraph = createBodyParagraph(inlineBuffer, tableContext);
                     if (listContext) {
                         if (listContext.type === 'ol') {
-                            const first = inlineBuffer[0];
-                            if (first.nodeType === Node.TEXT_NODE && first.textContent && !/^(\d)/.test(first.textContent.trim())) {
-                                first.textContent = `${olCounter}. ${first.textContent}`; olCounter++;
-                            }
+                            // 禁用自动添加序号功能，因为 AI 已经生成了序号
+                            // const first = inlineBuffer[0];
+                            // if (first.nodeType === Node.TEXT_NODE && first.textContent && !/^(\d)/.test(first.textContent.trim())) {
+                            //    first.textContent = `${olCounter}. ${first.textContent}`; olCounter++;
+                            // }
                         } else {
                             const first = inlineBuffer[0];
                             if (first.nodeType === Node.TEXT_NODE && first.textContent) { first.textContent = `• ${first.textContent}`; }
@@ -593,6 +710,90 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 elements.push(new Table({ rows: rowsArr, width: { size: 100, type: WidthType.PERCENTAGE }, borders: isNoBorder ? { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig, insideHorizontal: borderConfig, insideVertical: borderConfig } : undefined }));
                 return;
             }
+
+            // ===== 图片处理 =====
+            if (tagName === 'IMG') {
+                const src = el.getAttribute('src') || '';
+                console.log('📸 Processing standalone IMG tag in processNodes, src length:', src.length);
+
+                const imageData = parseImageSrc(src);
+                if (imageData) {
+                    console.log('✅ Image parsed, creating image paragraph');
+
+                    // Try to detect dimensions from binary data
+                    const detected = getImageDimensions(imageData.data, imageData.type);
+
+                    const attrW = el.getAttribute('width');
+                    const attrH = el.getAttribute('height');
+
+                    let width = 600; // Default fallback
+                    let height = 450; // Default fallback
+
+                    if (detected) {
+                        width = detected.width;
+                        height = detected.height;
+                        console.log(`📏 Detected image detected dimensions: ${width}x${height}`);
+                    } else {
+                        // Fallback to attributes if detection fails
+                        if (attrW) width = parseInt(attrW, 10);
+                        if (attrH) height = parseInt(attrH, 10);
+                        if (!attrW && !attrH && el.style.width) width = parseInt(el.style.width, 10) || 600;
+                        // If we have width but no height (and detection failed), we assume 4:3 or keep default
+                    }
+
+                    const MAX_PAGE_WIDTH = 650; // Printable area width
+                    let finalWidth = width;
+                    let finalHeight = height;
+
+                    // Scale down if too wide
+                    if (width > MAX_PAGE_WIDTH) {
+                        const ratio = height / width;
+                        finalWidth = MAX_PAGE_WIDTH;
+                        finalHeight = Math.round(finalWidth * ratio);
+                    } else if (detected) {
+                        // If detected and small enough, keep original size
+                        // Or if undefined attributes, we might want to scale up slightly if very small?
+                        // For now, respect original or max width.
+                    }
+
+                    // If we didn't detect dimensions and didn't have attributes, 
+                    // we risk stretching if we force 600x450 on a non-4:3 image.
+                    // But without headers, we can't know. 
+                    // The detected block above covers most cases (png/jpeg/gif).
+
+                    try {
+                        const imgRun = new ImageRun({
+                            data: imageData.data,
+                            transformation: {
+                                width: finalWidth,
+                                height: finalHeight
+                            }
+                        });
+
+                        elements.push(new Paragraph({
+                            alignment: mapAlignment(styleConfig.figureAlign || 'center'),
+                            spacing: { before: 240, after: 240 },
+                            indent: { firstLine: 0, left: 0 },
+                            children: [imgRun]
+                        }));
+                        console.log('✅ Image paragraph created successfully');
+                    } catch (imgError) {
+                        console.error('❌ Failed to create image:', imgError);
+                        elements.push(new Paragraph({
+                            alignment: AlignmentType.CENTER,
+                            children: [new TextRun({ text: '[图片]', font: makeFont(bodyFont), size: getHalfPtSize(styleConfig.baseSize) })]
+                        }));
+                    }
+                } else {
+                    console.warn('⚠️ Image not in base64 format');
+                    elements.push(new Paragraph({
+                        alignment: AlignmentType.CENTER,
+                        children: [new TextRun({ text: '[图片]', font: makeFont(bodyFont), size: getHalfPtSize(styleConfig.baseSize) })]
+                    }));
+                }
+                return;
+            }
+
             if (tagName === 'HR') return;
 
             if (text.includes("image-placeholder") || (text.startsWith("图") && text.length < 50 && !tagName.startsWith('H'))) {
@@ -866,7 +1067,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     paragraph: {
                         spacing: {
                             line: 300, // 1.25 lines (240 * 1.25)
-                            rule: LineRuleType.AUTO
+                            lineRule: LineRuleType.AUTO
                         },
                         indent: {
                             left: 0
@@ -890,7 +1091,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     paragraph: {
                         spacing: {
                             line: 300,
-                            rule: LineRuleType.AUTO
+                            lineRule: LineRuleType.AUTO
                         },
                         indent: {
                             left: 240 // 缩进
@@ -914,7 +1115,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     paragraph: {
                         spacing: {
                             line: 300,
-                            rule: LineRuleType.AUTO
+                            lineRule: LineRuleType.AUTO
                         },
                         indent: {
                             left: 480 // 缩进

@@ -8,20 +8,15 @@ import prisma from '../config/database';
 
 const router = Router();
 
-// 定价配置
-// 多层级定价配置
+// 定价配置 - 简化版
 const PRICING: Record<string, { amountUSD: number, amountCNY: number, duration: number, title: string }> = {
-    // Pro Basic
-    'pro_monthly': { amountUSD: 4.99, amountCNY: 38, duration: 30, title: 'Pro 基础版 (月付)' },
-    'pro_yearly': { amountUSD: 49.99, amountCNY: 388, duration: 365, title: 'Pro 基础版 (年付)' },
+    // Pro
+    'pro_monthly': { amountUSD: 3.99, amountCNY: 29, duration: 30, title: 'Pro 专业版 (月付)' },
+    'pro_yearly': { amountUSD: 39.99, amountCNY: 298, duration: 365, title: 'Pro 专业版 (年付)' },
 
-    // Pro Plus (Most Popular)
-    'pro_plus_monthly': { amountUSD: 12.99, amountCNY: 98, duration: 30, title: 'Pro+ 进阶版 (月付)' },
-    'pro_plus_yearly': { amountUSD: 129.99, amountCNY: 988, duration: 365, title: 'Pro+ 进阶版 (年付)' },
-
-    // Ultra
-    'ultra_monthly': { amountUSD: 29.99, amountCNY: 228, duration: 30, title: 'Ultra 旗舰版 (月付)' },
-    'ultra_yearly': { amountUSD: 299.99, amountCNY: 2288, duration: 365, title: 'Ultra 旗舰版 (年付)' }
+    // Team
+    'team_monthly': { amountUSD: 26.99, amountCNY: 199, duration: 30, title: '团队版 (月付)' },
+    'team_yearly': { amountUSD: 269.99, amountCNY: 1999, duration: 365, title: '团队版 (年付)' }
 };
 
 /**
@@ -245,9 +240,8 @@ router.post('/stripe', async (req: Request, res: Response): Promise<void> => {
             endDate.setDate(endDate.getDate() + plan.duration);
 
             // Determine Tier
-            let tier: 'PRO' | 'PRO_PLUS' | 'ULTRA' = 'PRO';
-            if (planType.includes('ultra')) tier = 'ULTRA';
-            else if (planType.includes('pro_plus')) tier = 'PRO_PLUS';
+            let tier: 'PRO' | 'TEAM' = 'PRO';
+            if (planType.includes('team')) tier = 'TEAM';
 
             await prisma.user.update({
                 where: { id: userId },
@@ -342,9 +336,8 @@ router.all('/alipay', async (req: Request, res: Response): Promise<void> => {
             endDate.setDate(endDate.getDate() + plan.duration);
 
             // Determine Tier
-            let tier: 'PRO' | 'PRO_PLUS' | 'ULTRA' = 'PRO';
-            if (planType.includes('ultra')) tier = 'ULTRA';
-            else if (planType.includes('pro_plus')) tier = 'PRO_PLUS';
+            let tier: 'PRO' | 'TEAM' = 'PRO';
+            if (planType.includes('team')) tier = 'TEAM';
 
             await prisma.user.update({
                 where: { id: userId },

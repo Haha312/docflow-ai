@@ -10,210 +10,90 @@ import prisma from '../config/database';
 
 const router = Router();
 
-// Helper to generate instructions based on the numbering style
-const getNumberingInstruction = (style: string): string => {
-    switch (style) {
-        case 'chinese-hierarchical':
-            return `
-        - **H1 (Section Level 1)**: MUST use Chinese numbers "一、", "二、", "三、"...
-        - **H2 (Section Level 2)**: MUST use parenthesized Chinese numbers "(一)", "(二)"...
-        - **H3 (Section Level 3)**: MUST use Arabic numbers "1.", "2."...
-        - **H4 (Section Level 4)**: MUST use parenthesized Arabic numbers "(1)", "(2)"...
-      `;
-        case 'decimal-nested':
-            return `
-        - **H1**: "1.", "2."...
-        - **H2**: "1.1", "1.2"...
-        - **H3**: "1.1.1", "1.1.2"...
-      `;
-        case 'decimal':
-            return `
-        - **H1**: "1.", "2."...
-        - **H2**: "2.1", "2.2"...
-      `;
-        case 'chapter':
-            return `
-        - **H1**: "第一章", "第二章"...
-        - **H2**: "第一节", "第二节"...
-        - **H3**: "一、", "二、"...
-      `;
-        default:
-            return `- Use semantic HTML headings (h1-h6) based on the text's logical structure.`;
-    }
-};
+import OpenAI from 'openai';
+import { extractImagesAsPlaceholders, restoreImages } from '../utils/imageUtils';
+import { BASE_SYSTEM_PROMPTS, getNumberingInstruction } from '../config/prompts';
 
-const BASE_SYSTEM_PROMPTS: Record<DocPreset, string> = {
-    [DocPreset.CORPORATE]: `
-    Role: Document Formatter (Strict).
-    Task: Apply formal Chinese Corporate Document structure (headings, numbering) to the text.
-    CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table row from the input. NO OMMISSIONS allowed.
-  `,
-    [DocPreset.ACADEMIC]: `
-    Role: Academic Formatter (Strict).
-    Task: Apply Academic Paper structure to the text.
-    CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table row from the input. NO OMMISSIONS allowed.
-  `,
-    [DocPreset.ACADEMIC_JOURNAL]: `
-    Role: Journal Typesetter (Strict).
-    Task: Apply rigorous "Chinese Journal of Computers" style.
-    CRITICAL: ZERO DATA LOSS. Output EVERY sentence.
-  `,
-    [DocPreset.CREATIVE]: `
-    Role: Book Typesetter.
-    Task: Apply Narrative structure to the text.
-    CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table row from the input. NO OMMISSIONS allowed.
-  `,
-    [DocPreset.MINIMALIST]: `
-    Role: Technical Formatter.
-    Task: Apply clean structure to the text.
-    CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table row from the input. NO OMMISSIONS allowed.
-  `
-};
 
 // Helper to clean Markdown code blocks from the output
 const cleanOutput = (text: string): string => {
     return text.replace(/```html/g, '').replace(/```/g, '').trim();
 };
 
-// ===== 图片占位符处理 =====
-// 提取图片并替换为占位符,返回纯文本和图片映射表
-interface ImageMap {
-    [placeholder: string]: string; // placeholder -> original img tag
-}
 
-const extractImagesAsPlaceholders = (html: string): { textOnly: string; imageMap: ImageMap } => {
-    const imageMap: ImageMap = {};
-    // 支持单引号和双引号的 src
-    const imgRegex = /<img\s+[^>]*src=["'][^"']*["'][^>]*>/gi;
-    let index = 0;
 
-    const textOnly = html.replace(imgRegex, (match) => {
-        // 使用更明显的占位符,防止 AI 误修改
-        const placeholder = `__IMG_${index}__`;
-        imageMap[placeholder] = match;
-        index++;
-        return placeholder;
-    });
-
-    return { textOnly, imageMap };
-};
-
-// 将占位符还原为原始图片标签
-const restoreImages = (text: string, imageMap: ImageMap): string => {
-    let result = text;
-    for (const [placeholder, imgTag] of Object.entries(imageMap)) {
-        // 全局替换
-        result = result.split(placeholder).join(imgTag);
-    }
-    return result;
-};
-
-// Helper to convert text to parts for Gemini (仅用于 Gemini API)
-const htmlToParts = (html: string): any[] => {
-    // 不再发送图片给 AI,只发送文本
-    return [{ text: html }];
-};
-
-// Tier Configuration
+// Tier Configuration - 简化版会员体系
 const TIER_LIMITS = {
-    'FREE': 3,
-    'PRO': 30,
-    'PRO_PLUS': 100,
-    'ULTRA': 300
+    'FREE': 3,      // 3次/日
+    'PRO': 50,      // 50次/月
+    'TEAM': 500     // 500次/月
 };
 
-// Using Standard Model Names for @google/generative-ai
+// 统一使用 Gemini 3 Pro Preview 模型
 const TIER_MODELS = {
-    'FREE': 'gemini-1.5-flash',         // Safest default
-    'PRO': 'gemini-2.0-flash-exp',
-    'PRO_PLUS': 'gemini-2.0-flash-exp',
-    'ULTRA': 'gemini-2.0-flash-exp'
+    'FREE': 'gemini-3-pro-preview',
+    'PRO': 'gemini-3-pro-preview',
+    'TEAM': 'gemini-3-pro-preview'
 };
 
-// 豆包模型配置 (用于 FREE 和 PRO 用户) - 使用256k版本支持超长文档
-const DOUBAO_MODELS = {
-    'FREE': 'doubao-seed-1-6-251015',           // Seed 1.6 256k 版本
-    'PRO': 'doubao-seed-1-6-251015',            // Seed 1.6 256k 版本
+// OpenAI Compatible 使用的模型（通过代理访问 Gemini）
+const OPENAI_COMPATIBLE_MODELS = {
+    'FREE': 'gemini-3-pro-preview',
+    'PRO': 'gemini-3-pro-preview',
+    'TEAM': 'gemini-3-pro-preview'
 };
 
-// 豆包 API 配置
-const DOUBAO_API_ENDPOINT = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
-
-// 使用豆包API的用户等级
-const USE_DOUBAO_TIERS = ['FREE', 'PRO'];
-
-// 豆包 API 流式调用函数
-async function* callDoubaoAPI(
+// OpenAI Compatible API Call (for Gemini via proxy)
+async function* callOpenAICompatible(
     apiKey: string,
-    endpointId: string,
+    baseUrl: string,
     systemPrompt: string,
     userContent: string,
-    modelName: string
+    modelName: string,
+    maxTokens?: number
 ): AsyncGenerator<string> {
-    const response = await fetch(DOUBAO_API_ENDPOINT, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-            model: endpointId || modelName,  // 优先使用 endpoint ID
+    console.log('DEBUG: callOpenAICompatible start', { baseUrl, modelName, apiKeyLength: apiKey?.length, maxTokens });
+
+    try {
+        const client = new OpenAI({
+            apiKey: apiKey,
+            baseURL: baseUrl
+        });
+
+        const stream = await client.chat.completions.create({
+            model: modelName,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userContent }
             ],
             stream: true,
             temperature: 0.7,
-            max_tokens: 16000
-        })
-    });
+            max_tokens: maxTokens
+        });
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`豆包 API 错误 (${response.status}): ${errorText}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) {
-        throw new Error('无法读取豆包 API 响应流');
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || !trimmed.startsWith('data:')) continue;
-
-            const data = trimmed.slice(5).trim();
-            if (data === '[DONE]') continue;
-
-            try {
-                const json = JSON.parse(data);
-                const content = json.choices?.[0]?.delta?.content;
-                if (content) {
-                    yield content;
-                }
-            } catch (e) {
-                // 忽略解析错误
-            }
+        for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content || '';
+            if (content) yield content;
         }
+    } catch (err: any) {
+        console.error('❌ callOpenAICompatible Error:', err);
+        if (err.response) {
+            console.error('❌ status:', err.status);
+            console.error('❌ data:', err.response.data);
+        }
+        throw new Error(`OpenAI Compatible Error: ${err.message}`);
     }
 }
 
 /**
  * POST /api/generate
  * 文档生成接口 (需要认证和限流)
+ * 统一使用 Gemini API
  */
 router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Response): Promise<void> => {
+    let geminiApiKey: string | undefined;
+    let fullRestoredText = '';
+
     try {
         const user = req.user;
         if (!user) {
@@ -221,36 +101,33 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             return;
         }
 
+        // 0. Fetch Dynamic System Config
+        let dbConfig: Record<string, string> = {};
+        try {
+            const configs = await (prisma as any).systemConfig.findMany();
+            dbConfig = configs.reduce((acc: any, curr: any) => ({ ...acc, [curr.key]: curr.value }), {});
+        } catch (err) {
+            // SystemConfig table might not exist
+        }
+
         const { content, preset, fileName, styleConfig }: GenerateRequest = req.body;
 
-        // 验证输入
         if (!content || !preset || !fileName || !styleConfig) {
             res.status(400).json(errorResponse('缺少必要参数', 400));
             return;
         }
 
-        // 获取用户等级
+        // 获取用户等级与配置
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
 
-        // 检查 API Key (根据用户等级检查对应的 API Key)
-        const useDoubao = USE_DOUBAO_TIERS.includes(userTier);
-        const doubaoApiKey = process.env.DOUBAO_API_KEY;
-        const doubaoEndpointId = process.env.DOUBAO_ENDPOINT_ID;
-        const geminiApiKey = process.env.GOOGLE_API_KEY;
+        geminiApiKey = dbConfig['GOOGLE_API_KEY'] || process.env.GOOGLE_API_KEY;
 
-        if (useDoubao) {
-            if (!doubaoApiKey) {
-                res.status(500).json(errorResponse('服务器配置错误: 缺少 DOUBAO_API_KEY', 500));
-                return;
-            }
-        } else {
-            if (!geminiApiKey) {
-                res.status(500).json(errorResponse('服务器配置错误: 缺少 GOOGLE_API_KEY', 500));
-                return;
-            }
+        if (!geminiApiKey) {
+            res.status(500).json(errorResponse('Server Config Error: Missing GOOGLE_API_KEY', 500));
+            return;
         }
 
-        // ===== NEW: Tier Usage Check =====
+        // Usage Check
         const currentMonthStart = new Date();
         currentMonthStart.setDate(1);
         currentMonthStart.setHours(0, 0, 0, 0);
@@ -265,7 +142,6 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             }
         });
 
-        // userTier 已在上面声明
         const limit = TIER_LIMITS[userTier] || 10;
 
         if (usageCount >= limit) {
@@ -273,9 +149,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             return;
         }
 
-        // Determine Model based on tier and provider
-        const doubaoModelName = DOUBAO_MODELS[userTier as keyof typeof DOUBAO_MODELS] || 'doubao-1-5-lite-32k-250115';
+        // Determine Model based on tier
         const geminiModelName = TIER_MODELS[userTier] || 'gemini-1.5-flash';
+        const openAIModelName = OPENAI_COMPATIBLE_MODELS[userTier] || 'gemini-1.5-flash';
 
         // 构建系统指令
         const numberingRules = getNumberingInstruction(styleConfig.headingNumbering);
@@ -291,29 +167,51 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
       
       3. **APPLY NUMBERING SCHEME**: 
          - ${numberingRules}
+         - **LISTS (CRITICAL)**: If the source text contains items starting with "1.", "1)", "(1)", you MUST respect the list structure.
+         - **SEQUENTIAL NUMBERING (CRITICAL)**: 
+             - You MUST check your output for lists. 
+             - If you see "1. Item... 1. Item...", you MUST FIX it to "1. Item... 2. Item...".
+             - ENSURE loose lists are consolidated into a single ordered list.
+             - FORBIDDEN: Outputting multiple items with the same number "1." in a row.
+         - Use standard Markdown list syntax.
 
       4. **Content Integrity (STRICT)**: 
          - **ZERO DATA LOSS**. Output every sentence, row, and list item.
          - **VERBATIM BODY TEXT**. Do not summarize.
-         - **PRESERVE IMAGES**. You will see placeholders like "__IMG_0__". You MUST keep them exactly as is, in their original relative position. DO NOT remove or modify them.
+         - **PRESERVE IMAGES (HIGHEST PRIORITY)**: 
+            - You will see placeholders like \`__IMG_0__\`.
+            - You MUST output them **EXACTLY** as is.
+            - DO NOT put them inside headers (h1-h6).
+            - DO NOT rename them (e.g. to \`__IMG_1__\` if it was \`__IMG_0__\`).
+            - DO NOT delete them. If input has 5 images, output MUST have 5 images.
 
-      5. **MATH & FORMULAS (HIGHEST PRIORITY)**:
-         - All mathematical formulas MUST be output as **LaTeX wrapped in $$**.
-         - DO NOT use HTML <sub>, <sup>, or entities for math. Use LaTeX.
+       5. **MATH & FORMULAS (HIGHEST PRIORITY)**:
+          - Use **LaTeX** for ALL mathematical expressions (e.g. variables \`$x$\`, equations).
+          - DELIMITERS:
+             - Use \`$$\` for Display/Block Math (e.g. \`$$ E=mc^2 $$\`).
+             - Use \`$\` for Inline Math (e.g. \`$(x, y)$\`).
+          - **STRICT ACCURACY**:
+             - Do NOT change variable names (e.g. \`a_0\` must remain \`a_0\`).
+             - Do NOT simplify or solve equations.
+             - Reproduce the exact notation from the source text.
 
       6. **IMAGES & FIGURES (CRITICAL)**:
-         - Keep all __IMG_N__ markers exactly as they appear.
-         - Figure captions (图注) MUST be placed AFTER the image placeholder.
-         - Format: __IMG_0__ followed by <p>图 1 xxxx</p>
+         - **MANDATORY**: Generate a FIGURE CAPTION for EVERY image based on context.
+         - Position: **IMMEDIATELY BELOW** the image.
+         - Format: \`<div class="figure-caption">图 {N} {Description}</div>\`
+         - Example: 
+           \`__IMG_0__\`
+           \`<div class="figure-caption">图 1 系统架构示意图</div>\`
 
       7. **TABLES (CRITICAL)**:
-         - Table titles (表题) MUST be placed BEFORE the table.
-         - Format: <div class="table-caption">表 1 xxxx</div>
-         - Use standard HTML <table> structure.
+         - **MANDATORY**: Generate a TABLE TITLE for EVERY table.
+         - Position: **IMMEDIATELY ABOVE** the table.
+         - Format: \`<div class="table-caption">表 {N} {Description}</div>\`
+         - Example: \`<div class="table-caption">表 1 价格方案对比</div>\n<table>...</table>\`
 
-      8. **FIGURE CAPTIONS**:
-         - Place captions BELOW images.
-         - Format: <div class="figure-caption">图 1 xxxx</div>
+      8. **CAPTION STYLE**:
+         - Use generic counters (图 1, 图 2... 表 1, 表 2...) unless specific numbering is required.
+         - Center align captions.
 
       9. **TOC HANDLING**:
          - Do NOT output the actual TOC items - the system will generate Word native TOC.
@@ -321,181 +219,224 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
       10. **Output**: Return ONLY raw semantic HTML body content.
     `;
 
-        const systemInstruction = BASE_SYSTEM_PROMPTS[preset] + BASE_SHARED_PROMPT;
+
+        // ===== Dynamic System Prompt Construction =====
+
+        // 1. Determine Figure Numbering Instruction
+        let figureInstruction = "";
+        if (styleConfig && styleConfig.figureNumbering === 'chapter-relative') {
+            figureInstruction = `
+          - **FIGURE CAPTIONS (CHAPTER-RELATIVE)**:
+            - You MUST rename figure captions to follow "图[Chapter]-[Sequence]" format.
+            - Detect the current Chapter (H1) number (e.g. "1", "2", "3").
+            - Reset figure sequence at each new Chapter.
+            - Example: In Chapter 1, use "图 1-1", "图 1-2". In Chapter 2, use "图 2-1".
+            - Format: \`<div class="figure-caption">图 {Chapter}-{Sequence} {Description}</div>\`
+            `;
+        } else {
+            figureInstruction = `
+          - **FIGURE CAPTIONS (SEQUENTIAL)**:
+            - Use continuous numbering across the document "图[Sequence]".
+            - Format: \`<div class="figure-caption">图 {Sequence} {Description}</div>\`
+            `;
+        }
+
+        // 2. Determine Table Numbering Instruction
+        let tableInstruction = "";
+        if (styleConfig && styleConfig.tableNumbering === 'chapter-relative') {
+            tableInstruction = `
+          - **TABLE CAPTIONS (CHAPTER-RELATIVE)**:
+            - You MUST rename table captions to follow "表[Chapter]-[Sequence]" format.
+            - Detect the current Chapter (H1) number.
+            - Reset table sequence at each new Chapter.
+            - Example: "表 1-1", "表 2-1".
+            - Format: \`<div class="table-caption">表 {Chapter}-{Sequence} {Description}</div>\`
+            `;
+        } else {
+            tableInstruction = `
+          - **TABLE CAPTIONS (SEQUENTIAL)**:
+            - Use continuous numbering across the document.
+            - Format: \`<div class="table-caption">表 {Sequence} {Description}</div>\`
+            `;
+        }
+
+        const systemInstruction = BASE_SYSTEM_PROMPTS[preset] + `
+      
+      ${BASE_SHARED_PROMPT}
+
+      *** DYNAMIC NUMBERING RULES (OVERRIDE DEFAULTS) ***
+      ${figureInstruction}
+      ${tableInstruction}
+        `;
+
+        const { splitContentBySemantics } = require('../utils/chunking');
+
+        // 1. 提取图片 (全局处理)
+        const { textOnly: contentWithoutImages, imageMap } = extractImagesAsPlaceholders(content);
+        const imageCount = Object.keys(imageMap).length;
+        if (imageCount > 0) console.log(`📷 Extracted ${imageCount} images`);
+
+        // 2. 语义切分 (TEAM 用户跳过，直接单次处理)
+        let chunks: string[] = [];
+        if (userTier === 'TEAM') {
+            console.log('🚀 TEAM Mode: Skipping chunking for Gemini 3 Pro (Single Pass)');
+            chunks = [contentWithoutImages];
+        } else {
+            chunks = splitContentBySemantics(contentWithoutImages);
+        }
+        console.log(`🧩 Document split into ${chunks.length} smart chunks`);
+
+        let lastContext = '';
 
         // 设置 SSE 响应头
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        let fullText = '';
+        // 3. 循环处理 Chunks
+        for (let i = 0; i < chunks.length; i++) {
+            const chunkContent = chunks[i];
+            console.log(`Processing Chunk ${i + 1}/${chunks.length} (${chunkContent.length} chars)...`);
 
-        try {
-            // ===== 图片占位符处理 =====
-            const { textOnly: contentWithoutImages, imageMap } = extractImagesAsPlaceholders(content);
-            const imageCount = Object.keys(imageMap).length;
-            if (imageCount > 0) {
-                console.log(`📷 Extracted ${imageCount} images as placeholders`);
+            // 动态构建 System Prompt
+            // 动态构建 System Prompt
+            let currentSystemPrompt = systemInstruction;
+
+            if (i > 0) {
+                currentSystemPrompt += `
+                
+                --- CONTINUATION MODE ACTIVATED ---
+                You are processing **PART ${i + 1} of ${chunks.length}** of a long document.
+                
+                **PREVIOUS CONTEXT (ReadOnly)**:
+                "...${lastContext.slice(-800)}"
+                
+                **CRITICAL INSTRUCTIONS**:
+                1. **CONTINUITY**: Do NOT assume this is the start of a document (unless it looks like a new H1).
+                2. **NUMBERING**: Look at the "PREVIOUS CONTEXT". If it ended with Section 2.1, you MUST start with 2.2 (or 2.1.1).
+                3. **NO REPETITION**: Do NOT repeat the "PREVIOUS CONTEXT". Start formatting EXACTLY from the provided user input.
+                `;
+            } else {
+                currentSystemPrompt += `\n\n**MODE**: PART 1 (Start of Document). Start numbering from the beginning.`;
             }
 
-            // ===== 根据用户等级选择 API =====
-            if (useDoubao) {
-                // 使用豆包 API (FREE 和 PRO 用户)
-                console.log(`🤖 Using Doubao API for ${userTier} user, model: ${doubaoModelName}`);
+            const userContent = `Filename: ${fileName}\n\nContent Part ${i + 1}:\n${chunkContent}`;
+            let chunkOutput = '';
 
-                const userContent = `Filename: ${fileName}\n\nContent to reformat:\n${contentWithoutImages}`;
+            try {
+                // 检查是否使用 OpenAI Compatible 代理
+                const geminiOpenAIBaseUrl = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL;
 
-                try {
-                    for await (const chunk of callDoubaoAPI(
-                        doubaoApiKey!,
-                        doubaoEndpointId || doubaoModelName,
-                        systemInstruction,
-                        userContent,
-                        doubaoModelName
-                    )) {
-                        fullText += chunk;
-                        res.write(`data: ${JSON.stringify({ text: cleanOutput(fullText) })}\n\n`);
+                if (geminiOpenAIBaseUrl) {
+                    // 使用 OpenAI Compatible Endpoint (如 hiapi.online)
+                    const maxTokens = userTier === 'TEAM' ? 32000 : 16000;
+                    for await (const delta of callOpenAICompatible(geminiApiKey!, geminiOpenAIBaseUrl, currentSystemPrompt, userContent, openAIModelName, maxTokens)) {
+                        chunkOutput += delta;
                     }
-                    console.log(`✅ Doubao API generation successful`);
-                } catch (doubaoError: any) {
-                    console.error('❌ Doubao API Error:', doubaoError.message);
-                    throw doubaoError;
-                }
-            } else {
-                // 使用 Gemini API (PRO_PLUS 和 ULTRA 用户)
-                console.log(`🤖 Using Gemini API for ${userTier} user, model: ${geminiModelName}`);
-
-                // 初始化 Gemini AI (Standard SDK with Proxy Support)
-                const httpProxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
-                let genAI: GoogleGenerativeAI;
-
-                if (httpProxy) {
-                    console.log(`Using Proxy: ${httpProxy}`);
-                    const dispatcher = new ProxyAgent(httpProxy);
-                    const customFetch = (url: any, init?: any) => {
-                        return undiciFetch(url, {
-                            ...init,
-                            dispatcher
-                        });
-                    };
-                    // @ts-ignore
-                    global.fetch = customFetch as any;
-                    genAI = new GoogleGenerativeAI(geminiApiKey!);
                 } else {
-                    genAI = new GoogleGenerativeAI(geminiApiKey!);
-                }
+                    // 使用原生 Google SDK
+                    const proxyUrl = process.env.HTTPS_PROXY || 'http://127.0.0.1:7890';
+                    const dispatcher = new ProxyAgent(proxyUrl);
+                    const customFetch = (url: string | URL, init?: any) => {
+                        return undiciFetch(url, { ...init, dispatcher });
+                    };
 
-                const contentParts = htmlToParts(contentWithoutImages);
-
-                // Fallback Strategy: Try models in order until one works
-                const candidateModels = [
-                    geminiModelName,
-                    'gemini-2.0-flash-exp',
-                    'gemini-1.5-flash'
-                ];
-
-                const uniqueModels = Array.from(new Set(candidateModels));
-                let lastError: any = null;
-                let success = false;
-
-                for (const currentModel of uniqueModels) {
-                    try {
-                        console.log(`Attempting to generate with model: ${currentModel}`);
-
-                        const model = genAI.getGenerativeModel({
-                            model: currentModel,
-                            systemInstruction: systemInstruction
-                        });
-
-                        const result = await model.generateContentStream([
-                            `Filename: ${fileName}\n\nContent to reformat:\n`,
-                            ...contentParts
-                        ]);
-
-                        for await (const chunk of result.stream) {
-                            const chunkText = chunk.text();
-                            if (chunkText) {
-                                fullText += chunkText;
-                                res.write(`data: ${JSON.stringify({ text: cleanOutput(fullText) })}\n\n`);
-                            }
-                        }
-
-                        success = true;
-                        console.log(`✅ Success with Gemini model: ${currentModel}`);
-                        break;
-
-                    } catch (err: any) {
-                        console.warn(`⚠️ Failed with model ${currentModel}: ${err.message?.split('\n')[0]}`);
-                        lastError = err;
-
-                        if (err.message?.includes('API key') || err.message?.includes('403')) {
-                            throw err;
-                        }
+                    const genAI = new GoogleGenerativeAI(geminiApiKey!);
+                    const model = genAI.getGenerativeModel(
+                        {
+                            model: geminiModelName,
+                            systemInstruction: currentSystemPrompt
+                        },
+                        { customFetch } as any
+                    );
+                    const result = await model.generateContentStream([userContent]);
+                    for await (const chunk of result.stream) {
+                        const txt = chunk.text();
+                        if (txt) chunkOutput += txt;
                     }
                 }
 
-                if (!success) {
-                    throw lastError;
+                // Chunk 完成处理
+                let cleanChunk = cleanOutput(chunkOutput);
+                lastContext = cleanChunk.replace(/<[^>]+>/g, ' ');
+
+                // 还原图片
+                if (imageCount > 0) {
+                    cleanChunk = restoreImages(cleanChunk, imageMap);
                 }
+
+                fullRestoredText += cleanChunk;
+
+                // 发送进度
+                res.write(`data: ${JSON.stringify({
+                    delta: cleanChunk,
+                    progress: {
+                        current: i + 1,
+                        total: chunks.length,
+                        status: `正在生成第 ${i + 1}/${chunks.length} 部分...`,
+                        estimatedRemainingSeconds: (chunks.length - (i + 1)) * 15
+                    }
+                })}\n\n`);
+
+            } catch (err: any) {
+                console.error(`Error processing chunk ${i + 1}:`, err);
+                throw err;
             }
+        }
 
-            // 记录使用日志
-            await prisma.usageLog.create({
-                data: {
-                    userId: user.id,
-                    actionType: 'generate_document',
-                    presetUsed: preset
-                }
-            });
-
-            // ===== 还原图片 =====
-            let cleanContent = cleanOutput(fullText);
-            if (imageCount > 0) {
-                cleanContent = restoreImages(cleanContent, imageMap);
-                console.log(`📷 Restored ${imageCount} images in output`);
+        // 保存文档
+        const pureText = fullRestoredText.replace(/<[^>]+>/g, '').replace(/\s+/g, '').trim();
+        await prisma.document.create({
+            data: {
+                userId: user.id,
+                title: fileName.replace(/\.[^/.]+$/, "") || 'Untitled',
+                content: fullRestoredText,
+                preset: preset,
+                wordCount: pureText.length
             }
+        });
 
-            // 发送最终结果(含图片)
-            res.write(`data: ${JSON.stringify({ text: cleanContent })}\n\n`);
+        // 估算 token 使用量 (输入 + 输出)
+        // Gemini 计费: 约 1 token ≈ 0.75 个中文字符
+        const inputTokens = Math.ceil(contentWithoutImages.length / 0.75);
+        const outputTokens = Math.ceil(fullRestoredText.length / 0.75);
+        const totalTokens = inputTokens + outputTokens;
 
-            // 保存生成的文档到数据库
-            await prisma.document.create({
-                data: {
-                    userId: user.id,
-                    title: fileName.replace(/\.[^/.]+$/, "") || 'Untitled', // 去掉扩展名
-                    content: cleanContent,
-                    preset: preset,
-                    wordCount: cleanContent.length // 简单估算
-                }
-            });
-
-            // 发送完成事件
-            res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-            res.end();
-
-        } catch (aiError: any) {
-            console.error('AI API Error:', aiError);
-            console.error('DEBUG: useDoubao:', useDoubao, 'doubaoApiKey:', !!doubaoApiKey, 'geminiApiKey:', !!geminiApiKey);
-
-            let errorMessage = 'AI 服务暂时不可用,请稍后重试';
-
-            if (aiError.message?.includes('API key') || aiError.message?.includes('403')) {
-                errorMessage = 'API Key 无效或未启用，请检查后端 .env 配置';
-            } else if (aiError.message?.includes('token count') || aiError.message?.includes('limit')) {
-                errorMessage = '文档内容过长或图片过多，请尝试删除大型装饰性图片';
-            } else if (aiError.message?.includes('400') || aiError.message?.includes('404')) {
-                errorMessage = '当前区域暂不支持高级 AI 模型，请尝试开启全局代理或更换 API Key';
-            } else {
-                errorMessage += ` (Detailed Error: ${aiError.message?.substring(0, 100)}...)`;
+        // 记录使用日志
+        await prisma.usageLog.create({
+            data: {
+                userId: user.id,
+                actionType: 'generate_document',
+                presetUsed: preset,
+                tokenUsage: totalTokens
             }
+        });
 
+        console.log(`✅ Document generated. Tokens: ${totalTokens} (input: ${inputTokens}, output: ${outputTokens})`);
+
+        // 发送完成事件
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        res.end();
+
+    } catch (aiError: any) {
+        console.error('AI API Error:', aiError);
+
+        let errorMessage = 'AI 服务暂时不可用,请稍后重试';
+
+        if (aiError.message?.includes('API key') || aiError.message?.includes('403')) {
+            errorMessage = '[GEMINI] API Key 无效或未启用，请检查后端 .env 配置';
+        } else if (aiError.message?.includes('token count') || aiError.message?.includes('limit')) {
+            errorMessage = '文档内容过长或图片过多，请尝试删除大型装饰性图片';
+        } else if (aiError.message?.includes('400') || aiError.message?.includes('404')) {
+            errorMessage = '当前区域暂不支持高级 AI 模型，请尝试开启全局代理或更换 API Key';
+        } else {
+            errorMessage += ` (Detailed Error: ${aiError.message?.substring(0, 100)}...)`;
+        }
+
+        if (!res.writableEnded) {
             res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
             res.end();
         }
-
-    } catch (error) {
-        console.error('Generate error:', error);
-        res.status(500).json(errorResponse('文档生成失败', 500));
     }
 });
 
