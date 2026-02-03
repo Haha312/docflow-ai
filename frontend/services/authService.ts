@@ -41,14 +41,41 @@ class AuthService {
         return !!this.getToken();
     }
 
+    // 获取图形验证码
+    async getCaptcha(): Promise<{ image: string; sessionId: string }> {
+        const response = await fetch(`${API_BASE_URL}/api/auth/captcha`);
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || '获取验证码失败');
+        }
+        return data.data;
+    }
+
+    // 发送邮箱验证码
+    async sendEmailCode(email: string, captcha: string, sessionId: string): Promise<void> {
+        const response = await fetch(`${API_BASE_URL}/api/auth/send-verify-code`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email, captcha, sessionId }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || '验证码发送失败');
+        }
+    }
+
     // 用户注册
-    async register(email: string, password: string): Promise<User> {
+    async register(email: string, password: string, code: string): Promise<User> {
         const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ email, password }),
+            body: JSON.stringify({ email, password, code }),
         });
 
         const data = await response.json();

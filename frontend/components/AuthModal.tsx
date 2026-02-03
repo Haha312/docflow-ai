@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { authService } from '../services/authService';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -14,7 +15,58 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Registration States
+  const [captchaImage, setCaptchaImage] = useState('');
+  const [captchaSessionId, setCaptchaSessionId] = useState('');
+  const [captchaInput, setCaptchaInput] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [countdown, setCountdown] = useState(0);
+
   const { login, register } = useAuth();
+
+  // Load Captcha when switching to register
+  React.useEffect(() => {
+    if (isOpen && mode === 'register') {
+      refreshCaptcha();
+    }
+  }, [isOpen, mode]);
+
+  const refreshCaptcha = async () => {
+    try {
+      const data = await authService.getCaptcha();
+      setCaptchaImage(data.image);
+      setCaptchaSessionId(data.sessionId);
+    } catch (e) {
+      console.error('Failed to load captcha', e);
+    }
+  };
+
+  const handleSendCode = async () => {
+    if (!email || !captchaInput) {
+      setError('请填写邮箱和图形验证码');
+      return;
+    }
+    setError('');
+    setIsLoading(true);
+    try {
+      await authService.sendEmailCode(email, captchaInput, captchaSessionId);
+      setCountdown(60);
+      const timer = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (e: any) {
+      setError(e.message || '发送失败');
+      refreshCaptcha();
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -27,11 +79,14 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       if (mode === 'login') {
         await login(email, password);
       } else {
-        await register(email, password);
+        await register(email, password, emailCode);
       }
       onClose();
       setEmail('');
       setPassword('');
+      setCaptchaInput('');
+      setEmailCode('');
+      setCountdown(0);
     } catch (err: any) {
       setError(err.message || '操作失败,请重试');
     } finally {
@@ -124,6 +179,50 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 </button>
               </div>
             </div>
+
+            {mode === 'register' && (
+              <>
+                {/* Captcha */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">图形验证码</label>
+                  <div className="flex gap-3">
+                    <input
+                      value={captchaInput}
+                      onChange={(e) => setCaptchaInput(e.target.value)}
+                      placeholder="输入右侧字符"
+                      className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    />
+                    <div
+                      className="h-[46px] w-[100px] bg-gray-100 rounded-xl overflow-hidden cursor-pointer border border-gray-200"
+                      onClick={refreshCaptcha}
+                      dangerouslySetInnerHTML={{ __html: captchaImage }}
+                      title="点击刷新"
+                    />
+                  </div>
+                </div>
+
+                {/* Email Code */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">邮箱验证码</label>
+                  <div className="flex gap-3">
+                    <input
+                      value={emailCode}
+                      onChange={(e) => setEmailCode(e.target.value)}
+                      placeholder="输入6位验证码"
+                      className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSendCode}
+                      disabled={countdown > 0 || isLoading || !email || !captchaInput}
+                      className="px-4 py-3 bg-gray-900 text-white text-sm font-medium rounded-xl hover:bg-gray-800 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors min-w-[100px]"
+                    >
+                      {countdown > 0 ? `${countdown}s` : '获取验证码'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             {error && (
               <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">

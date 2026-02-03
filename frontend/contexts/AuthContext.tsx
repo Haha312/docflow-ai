@@ -7,7 +7,7 @@ interface AuthContextType {
     isLoading: boolean;
     isAuthenticated: boolean;
     login: (email: string, password: string) => Promise<void>;
-    register: (email: string, password: string) => Promise<void>;
+    register: (email: string, password: string, code: string) => Promise<void>;
     logout: () => void;
     refreshUser: () => Promise<void>;
 }
@@ -55,8 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     // 注册
-    const register = async (email: string, password: string) => {
-        await authService.register(email, password);
+    const register = async (email: string, password: string, code: string) => {
+        await authService.register(email, password, code);
         // 注册后自动登录
         await login(email, password);
     };
