@@ -42,7 +42,7 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
         }
 
         // 验证支付方式
-        if (!['stripe', 'alipay'].includes(paymentMethod)) {
+        if (!['stripe', 'alipay', 'qrcode'].includes(paymentMethod)) {
             res.status(400).json(errorResponse('无效的支付方式', 400));
             return;
         }
@@ -302,6 +302,32 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
             return;
         }
 
+        // ===== 个人收款码支付 =====
+        if (paymentMethod === 'qrcode') {
+            const outTradeNo = `QR_${Date.now()}_${user.id.substring(0, 8)}`;
+
+            // Create PENDING order
+            await prisma.order.create({
+                data: {
+                    id: outTradeNo,
+                    userId: user.id,
+                    amount: plan.amountCNY,
+                    currency: 'CNY',
+                    planType: planType,
+                    status: 'PENDING'
+                }
+            });
+
+            res.json(successResponse({
+                paymentMethod: 'qrcode',
+                orderId: outTradeNo,
+                amount: plan.amountCNY,
+                alipayQrUrl: '/api/payment/qrcode-image?type=alipay',
+                wechatQrUrl: '/api/payment/qrcode-image?type=wechat'
+            }, '订单创建成功，请扫码支付'));
+            return;
+        }
+
     } catch (error) {
         console.error('Create checkout session error:', error);
         res.status(500).json(errorResponse('创建支付会话失败', 500));
@@ -381,6 +407,98 @@ router.get('/mock-alipay-gateway', async (req: Request, res: Response) => {
     `;
 
     res.send(html);
+});
+
+/**
+ * POST /api/payment/confirm-by-amount
+ * Confirm payment by matching amount to pending orders
+ * Body: { monum: number }
+ */
+router.post('/confirm-by-amount', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { monum } = req.body;
+
+        if (monum === undefined || monum === null) {
+            res.status(400).json(errorResponse('Missing monum parameter', 400));
+            return;
+        }
+
+        const amount = parseFloat(monum);
+        if (isNaN(amount)) {
+            res.status(400).json(errorResponse('Invalid monum value', 400));
+            return;
+        }
+
+        // Find oldest PENDING order with matching amount
+        const order = await prisma.order.findFirst({
+            where: {
+                status: 'PENDING',
+                amount: amount
+            },
+            orderBy: { createdAt: 'asc' }
+        });
+
+        if (!order) {
+            res.status(404).json(errorResponse('No pending order matches this amount', 404));
+            return;
+        }
+
+        // Update order to PAID
+        await prisma.order.update({
+            where: { id: order.id },
+            data: { status: 'PAID' }
+        });
+
+        // Update user subscription
+        const planConfig = PRICING[order.planType];
+        if (planConfig) {
+            const endDate = new Date();
+            endDate.setDate(endDate.getDate() + planConfig.duration);
+
+            let tier: 'PRO' | 'TEAM' = 'PRO';
+            if (order.planType.includes('team')) tier = 'TEAM';
+
+            await prisma.user.update({
+                where: { id: order.userId },
+                data: {
+                    subscriptionStatus: tier,
+                    subscriptionEndDate: endDate
+                }
+            });
+
+            console.log(`✅ Payment confirmed for order ${order.id}, user upgraded to ${tier}`);
+        }
+
+        res.json(successResponse({ orderId: order.id, userId: order.userId }, 'Payment confirmed'));
+    } catch (error) {
+        console.error('Confirm by amount error:', error);
+        res.status(500).json(errorResponse('Failed to confirm payment', 500));
+    }
+});
+
+/**
+ * GET /api/payment/qrcode-image
+ * Returns the merchant's personal payment QR code image
+ * Query: type=alipay|wechat (default: alipay)
+ */
+router.get('/qrcode-image', (req: Request, res: Response): void => {
+    const type = (req.query.type as string) || 'alipay';
+
+    // Map type to image file
+    const imageMap: Record<string, string> = {
+        'alipay': 'Alipay.jpg',
+        'wechat': 'wechat.png'
+    };
+
+    const fileName = imageMap[type] || imageMap['alipay'];
+    // Images are stored in frontend/image directory
+    const imagePath = path.join(process.cwd(), '..', 'frontend', 'image', fileName);
+
+    if (fs.existsSync(imagePath)) {
+        res.sendFile(imagePath);
+    } else {
+        res.status(404).json(errorResponse(`QR code image not found: ${fileName}`, 404));
+    }
 });
 
 /**

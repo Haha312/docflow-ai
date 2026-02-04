@@ -116,7 +116,7 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`
-        relative border-2 border-dashed rounded-3xl p-8 text-center transition-all duration-300 ease-out group overflow-hidden
+        relative border-2 border-dashed rounded-2xl p-4 text-center transition-all duration-300 ease-out group overflow-hidden
         ${isDragOver
           ? 'border-blue-500 bg-blue-50/50 scale-[1.01] shadow-xl shadow-blue-100/50'
           : 'border-slate-200 bg-slate-50/50 hover:border-blue-400 hover:bg-white hover:shadow-lg hover:shadow-blue-50/50'
@@ -146,15 +146,15 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
           </div>
         </div>
       ) : (
-        <div className="pointer-events-none flex flex-col items-center gap-5 transition-transform duration-300 group-hover:-translate-y-1">
-          <div className={`p-4 rounded-2xl transition-all duration-300 ${isDragOver ? 'bg-blue-100 text-blue-600 scale-110' : 'bg-white text-slate-400 shadow-sm border border-slate-100 group-hover:text-blue-500 group-hover:border-blue-100 group-hover:shadow-blue-100'}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+        <div className="pointer-events-none flex flex-col items-center gap-3 transition-transform duration-300 group-hover:-translate-y-1">
+          <div className={`p-3 rounded-xl transition-all duration-300 ${isDragOver ? 'bg-blue-100 text-blue-600 scale-110' : 'bg-white text-slate-400 shadow-sm border border-slate-100 group-hover:text-blue-500 group-hover:border-blue-100 group-hover:shadow-blue-100'}`}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
           </div>
           <div className="space-y-1">
-            <h3 className={`text-lg font-bold transition-colors ${isDragOver ? 'text-blue-700' : 'text-slate-700'}`}>拖拽文件至此</h3>
+            <h3 className={`text-base font-bold transition-colors ${isDragOver ? 'text-blue-700' : 'text-slate-700'}`}>拖拽文件至此</h3>
             <p className="text-sm text-slate-500 font-medium">支持 .docx, .txt, .md (最大 {MAX_FILE_SIZE_MB >= 1024 ? `${MAX_FILE_SIZE_MB / 1024}GB` : `${MAX_FILE_SIZE_MB}MB`})</p>
           </div>
-          <span className="bg-white border border-slate-200 text-slate-600 px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm tracking-wide group-hover:border-blue-200 group-hover:text-blue-600 group-hover:shadow-blue-100 transition-all">
+          <span className="bg-white border border-slate-200 text-slate-600 px-5 py-2 rounded-lg text-sm font-bold shadow-sm tracking-wide group-hover:border-blue-200 group-hover:text-blue-600 group-hover:shadow-blue-100 transition-all">
             浏览文件
           </span>
         </div>

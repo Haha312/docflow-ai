@@ -97,17 +97,15 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile }: UserInfoP
             用户中心
           </button>
 
-          {!isPro && (
-            <button
-              onClick={() => { setShowMenu(false); onOpenPricing(); }}
-              className="w-full text-left px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-              </svg>
-              升级套餐
-            </button>
-          )}
+          <button
+            onClick={() => { setShowMenu(false); onOpenPricing(); }}
+            className="w-full text-left px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
+            升级套餐
+          </button>
 
           <div className="h-px bg-gray-100 my-1"></div>
 

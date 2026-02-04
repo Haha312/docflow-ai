@@ -298,7 +298,7 @@ function Home() {
     <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="border-b border-gray-100 bg-white sticky top-0 z-50">
-        <div className="max-w-[1600px] mx-auto px-6 h-14 flex items-center justify-between">
+        <div className="w-full px-4 md:px-6 lg:px-8 h-14 flex items-center justify-between">
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
@@ -333,11 +333,11 @@ function Home() {
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-6 py-6">
-        <div className="flex gap-6 h-[calc(100vh-100px)]">
+      <main className="w-full px-4 md:px-6 lg:px-8 py-4 md:py-6">
+        <div className="flex flex-col md:flex-row gap-4 md:gap-6 h-auto md:h-[calc(100vh-100px)]">
 
           {/* Left Panel */}
-          <div className="w-[360px] flex-shrink-0 flex flex-col gap-6">
+          <div className="w-full md:w-[320px] lg:w-[360px] xl:w-[400px] flex-shrink-0 flex flex-col gap-4 md:gap-6">
 
             {/* Upload Section */}
             <div className="bg-white border border-gray-200 rounded-xl p-5">
