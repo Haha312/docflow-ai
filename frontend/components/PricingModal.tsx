@@ -5,6 +5,7 @@ import { paymentService } from '../services/paymentService';
 import alipayQrCode from '../image/alipay_qr.png';
 import wechatQrCode from '../image/wechat_qr.png';
 import alipayLogo from '../image/Alipaylogo.png';
+import wechatLogo from '../image/WeChatlogo.jpg';
 import { QRCodeCanvas } from 'qrcode.react';
 
 interface PricingModalProps {
@@ -197,7 +198,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
 
         {/* ================= STEP 2: PAYMENT SELECTION OVERLAY ================= */}
         {step === 'payment' && selectedTier && (
-          <div className="flex flex-col p-6 animate-in fade-in slide-in-from-right-4 duration-300 h-full">
+          <div className="flex flex-col p-6 pb-10 animate-in fade-in slide-in-from-right-4 duration-300 h-full min-h-[550px]">
             <div className="flex items-center mb-6">
               <button
                 onClick={() => setStep('plans')}
@@ -259,10 +260,8 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                     : 'border-gray-100 bg-white hover:border-green-200 hover:shadow-lg hover:scale-[1.02]'
                     }`}
                 >
-                  <div className="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center shadow-sm mb-4 group-hover:scale-110 transition-transform duration-300">
-                    <svg viewBox="0 0 24 24" className="w-10 h-10" fill="white">
-                      <path d="M8.5 11.5c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5S7 9.17 7 10s.67 1.5 1.5 1.5zm5 0c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5zM12 2C6.48 2 2 6.48 2 12c0 1.54.36 2.98.97 4.29L1 23l6.71-1.97C9.02 21.64 10.46 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2z" />
-                    </svg>
+                  <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm mb-4 group-hover:scale-110 transition-transform duration-300 overflow-hidden">
+                    <img src={wechatLogo} alt="微信支付" className="w-16 h-16 object-cover rounded-2xl" />
                   </div>
                   <div className="text-lg font-bold text-gray-900 mb-1">微信支付</div>
                   <div className="text-sm text-gray-500 font-medium">推荐中国用户使用</div>

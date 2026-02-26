@@ -23,11 +23,13 @@ const PORT = process.env.PORT || 3001;
 
 // CORS 配置
 const corsOptions = {
-    origin: [
-        process.env.FRONTEND_URL || 'http://localhost:5173',
-        'http://localhost:3000',
-        'http://localhost:5173'
-    ],
+    origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+        // 允许无 Origin 的请求 (如 Postman, 移动端)
+        if (!origin) return callback(null, true);
+        // 允许所有来源 (开发环境方便局域网访问)
+        // 生产环境建议限制为具体域名
+        return callback(null, true);
+    },
     credentials: true,
     optionsSuccessStatus: 200
 };
@@ -93,7 +95,8 @@ export default app;
 
 // 仅在本地非 Vercel 环境启动监听
 if (!process.env.VERCEL) {
-    app.listen(PORT, () => {
+    // 监听 0.0.0.0 以支持局域网访问
+    app.listen(Number(PORT), '0.0.0.0', () => {
         console.log('\n🚀 DocuFlow AI Backend Server');
         console.log('================================');
         console.log(`📡 Server running on: http://localhost:${PORT}`);
