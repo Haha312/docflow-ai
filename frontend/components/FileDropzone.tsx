@@ -2,22 +2,25 @@
 import React, { useCallback, useState } from 'react';
 import mammoth from 'mammoth';
 import { extractRawTextWithFormulas } from '../utils/docxParser';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   onFileLoaded: (content: string, fileName: string) => void;
-  userTier?: 'FREE' | 'PRO' | 'TEAM';
+  userTier?: 'FREE' | 'PLUS' | 'PRO' | 'ULTRA';
 }
 
 // 根据用户等级获取文件大小限制 (MB)
 const getFileSizeLimit = (tier?: string): number => {
   switch (tier) {
-    case 'TEAM': return 500;        // 500MB
-    case 'PRO': return 200;         // 200MB
+    case 'ULTRA': return 1000;      // 1000MB
+    case 'PRO': return 500;         // 500MB
+    case 'PLUS': return 500;        // 500MB
     default: return 200;            // FREE: 200MB
   }
 };
 
 export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
+  const { t } = useTranslation();
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -42,7 +45,7 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
     // 文件大小检查
     if (file.size > MAX_FILE_SIZE_BYTES) {
       const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
-      setError(`文件过大 (${fileSizeMB}MB)，最大支持 ${MAX_FILE_SIZE_MB}MB`);
+      setError(t('home.file_too_large', { size: fileSizeMB, max: MAX_FILE_SIZE_MB, defaultValue: `文件过大 (${fileSizeMB}MB)，最大支持 ${MAX_FILE_SIZE_MB}MB` }));
       setIsLoading(false);
       return;
     }
@@ -64,7 +67,7 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
           if (rawContext && rawContext.includes("$$")) {
             finalContent += `
               <p style="margin-top: 24px; font-size: 12px; color: #71717a; text-align: center;">
-                ✓ 已自动识别并提取 Word 公式数据
+                ${t('home.formula_extracted', '✓ 已自动识别并提取 Word 公式数据')}
               </p>
             `;
           }
@@ -75,18 +78,18 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
         onFileLoaded(finalContent, file.name);
 
       } else if (file.type === "application/vnd.ms-word" || file.name.endsWith('.doc')) {
-        throw new Error("暂不支持旧版 .doc 格式，请另存为 .docx 或 .txt 后上传。");
+        throw new Error(t('home.unsupported_doc', "暂不支持旧版 .doc 格式，请另存为 .docx 或 .txt 后上传。"));
       } else {
         const textContent = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result as string);
-          reader.onerror = () => reject(new Error("文件读取失败"));
+          reader.onerror = () => reject(new Error(t('home.read_failed', "文件读取失败")));
           reader.readAsText(file);
         });
         onFileLoaded(textContent, file.name);
       }
     } catch (e: any) {
-      setError(e.message || "读取 .docx 文件失败，请确认文件未损坏。");
+      setError(e.message || t('home.read_docx_failed', "读取 .docx 文件失败，请确认文件未损坏。"));
     } finally {
       setIsLoading(false);
     }
@@ -141,8 +144,8 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
             </svg>
           </div>
           <div>
-            <h3 className="text-slate-800 font-bold text-lg">正在解析文件...</h3>
-            <p className="text-slate-500 text-sm mt-1">深度提取 Word 结构与公式</p>
+            <h3 className="text-slate-800 font-bold text-lg">{t('home.parsing_file', '正在解析文件...')}</h3>
+            <p className="text-slate-500 text-sm mt-1">{t('home.extracting_word', '深度提取 Word 结构与公式')}</p>
           </div>
         </div>
       ) : (
@@ -151,11 +154,11 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
             <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
           </div>
           <div className="space-y-1">
-            <h3 className={`text-base font-bold transition-colors ${isDragOver ? 'text-blue-700' : 'text-slate-700'}`}>拖拽文件至此</h3>
-            <p className="text-sm text-slate-500 font-medium">支持 .docx, .txt, .md (最大 {MAX_FILE_SIZE_MB >= 1024 ? `${MAX_FILE_SIZE_MB / 1024}GB` : `${MAX_FILE_SIZE_MB}MB`})</p>
+            <h3 className={`text-base font-bold transition-colors ${isDragOver ? 'text-blue-700' : 'text-slate-700'}`}>{t('home.drag_file_here', '拖拽文件至此')}</h3>
+            <p className="text-sm text-slate-500 font-medium">{t('home.supports_formats', { max_size: MAX_FILE_SIZE_MB >= 1024 ? `${MAX_FILE_SIZE_MB / 1024}GB` : `${MAX_FILE_SIZE_MB}MB`, defaultValue: `支持 .docx, .txt, .md (最大 ${MAX_FILE_SIZE_MB >= 1024 ? `${MAX_FILE_SIZE_MB / 1024}GB` : `${MAX_FILE_SIZE_MB}MB`})` })}</p>
           </div>
           <span className="bg-white border border-slate-200 text-slate-600 px-5 py-2 rounded-lg text-sm font-bold shadow-sm tracking-wide group-hover:border-blue-200 group-hover:text-blue-600 group-hover:shadow-blue-100 transition-all">
-            浏览文件
+            {t('home.browse_files', '浏览文件')}
           </span>
         </div>
       )}

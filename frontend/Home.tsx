@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { FileDropzone } from './components/FileDropzone';
 import { PresetCard } from './components/PresetCard';
 import { ProductRequirements } from './components/ProductRequirements';
@@ -23,6 +25,8 @@ const getTextCount = (html: string) => {
 };
 
 function Home() {
+  const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const { confirm, ConfirmDialogComponent } = useConfirmDialog();
   const [inputText, setInputText] = useState<string>('');
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
@@ -84,8 +88,8 @@ function Home() {
   };
 
   const handleClear = async () => {
-    const confirmed = await confirm('确定要清空当前所有内容吗？', {
-      title: '清空内容',
+    const confirmed = await confirm(t('home.confirm_clear_desc', '确定要清空当前所有内容吗？'), {
+      title: t('home.confirm_clear_title', '清空内容'),
       variant: 'warning'
     });
 
@@ -215,7 +219,7 @@ function Home() {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error("Export failed", e);
-      alert("导出失败，请重试");
+      alert(t('home.export_failed', "导出失败，请重试"));
     }
   };
 
@@ -321,13 +325,14 @@ function Home() {
                 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
                 <line x1="12" y1="17" x2="12.01" y2="17"></line>
               </svg>
-              帮助
+              {t('nav.help', '帮助')}
             </button>
             <div className="w-px h-6 bg-gray-200 mx-2"></div>
             <UserInfo
               onOpenPricing={() => setShowPricingModal(true)}
               onOpenAuth={() => setShowAuthModal(true)}
               onOpenProfile={() => setShowProfileModal(true)}
+              onOpenAdmin={() => navigate('/admin')}
             />
           </div>
         </div>
@@ -343,7 +348,7 @@ function Home() {
             <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">1</div>
-                <h2 className="text-sm font-semibold text-gray-900">上传文档</h2>
+                <h2 className="text-sm font-semibold text-gray-900">{t('home.upload_doc', '上传文档')}</h2>
               </div>
 
               {!inputText ? (
@@ -359,7 +364,7 @@ function Home() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{inputFileName}</p>
-                      <p className="text-xs text-gray-500">{getTextCount(inputText).toLocaleString()} 字</p>
+                      <p className="text-xs text-gray-500">{getTextCount(inputText).toLocaleString()} {t('home.chars', '字')}</p>
                     </div>
                   </div>
                   <button onClick={handleClear} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
@@ -376,7 +381,7 @@ function Home() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">2</div>
-                  <h2 className="text-sm font-semibold text-gray-900">选择模板</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">{t('home.select_preset', '选择模板')}</h2>
                 </div>
                 <button
                   onClick={() => setStyleEditorOpen(true)}
@@ -386,7 +391,7 @@ function Home() {
                     <circle cx="12" cy="12" r="3"></circle>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                   </svg>
-                  自定义
+                  {t('home.custom', '自定义')}
                 </button>
               </div>
 
@@ -394,7 +399,7 @@ function Home() {
                 <div className="grid grid-cols-2 gap-2">
                   {PRESETS.map(preset => (
                     <PresetCard
-                      key={preset.id}
+                      key={`${preset.id}-${i18n.language}`}
                       config={preset}
                       isSelected={selectedPreset === preset.id}
                       onSelect={setSelectedPreset}
@@ -415,7 +420,7 @@ function Home() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                   </span>
-                  停止生成
+                  {t('home.stop_generation', '停止生成')}
                 </button>
               ) : (
                 <button
@@ -426,7 +431,7 @@ function Home() {
                     : 'bg-gray-900 text-white hover:bg-gray-800'
                     }`}
                 >
-                  开始智能重排
+                  {t('home.start_process', '开始智能重排')}
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M5 12h14M12 5l7 7-7 7" />
                   </svg>
@@ -461,14 +466,14 @@ function Home() {
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'split' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'
                     }`}
                 >
-                  对比
+                  {t('home.split_view', '对比')}
                 </button>
                 <button
                   onClick={() => setViewMode('preview')}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'preview' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'
                     }`}
                 >
-                  预览
+                  {t('home.preview_view', '预览')}
                 </button>
               </div>
 
@@ -483,7 +488,7 @@ function Home() {
                       <polyline points="7 10 12 15 17 10" />
                       <line x1="12" y1="15" x2="12" y2="3" />
                     </svg>
-                    下载 .docx
+                    {t('home.download_docx', '下载 .docx')}
                   </button>
                 )}
               </div>
@@ -495,7 +500,7 @@ function Home() {
               {viewMode === 'split' && inputText && (
                 <div className="w-1/2 border-r border-gray-100 flex flex-col">
                   <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    原文
+                    {t('home.original_text', '原文')}
                   </div>
                   <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed">
                     {inputFileName.endsWith('.docx') ? (
@@ -513,7 +518,7 @@ function Home() {
               {/* Result */}
               <div className={`${viewMode === 'split' && inputText ? 'w-1/2' : 'w-full'} flex flex-col`}>
                 <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">结果</span>
+                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">{t('home.result_text', '结果')}</span>
                   {selectedPreset && (
                     <span className="text-xs text-gray-500">{activePresetConfig.title}</span>
                   )}
@@ -558,7 +563,7 @@ function Home() {
                         <line x1="8" y1="10" x2="16" y2="10"></line>
                         <line x1="8" y1="14" x2="12" y2="14"></line>
                       </svg>
-                      <p className="text-sm text-gray-400">上传文档开始排版</p>
+                      <p className="text-sm text-gray-400">{t('home.upload_to_start', '上传文档开始排版')}</p>
                     </div>
                   )}
                 </div>
@@ -586,7 +591,7 @@ function Home() {
           <svg className="w-5 h-5 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="20 6 9 17 4 12" />
           </svg>
-          <span className="font-medium">排版生成已完成</span>
+          <span className="font-medium">{t('home.toast_complete', '排版生成已完成')}</span>
         </div>
       )}
 

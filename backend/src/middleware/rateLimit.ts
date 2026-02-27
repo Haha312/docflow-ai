@@ -6,18 +6,19 @@ import prisma from '../config/database';
 // 管理员邮箱（唯一可访问后台的账号）
 const ADMIN_EMAIL = 'admin@docuflow.ai';
 
-// 各等级月度配额
 const TIER_LIMITS = {
-    'FREE': 3,      // 3次/日
-    'PRO': 50,      // 50次/月
-    'TEAM': 500     // 500次/月
+    'FREE': 3,      // 终身3次免费
+    'PLUS': 50,     // 50次/月
+    'PRO': 200,     // 200次/月
+    'ULTRA': 1000   // 1000次/月
 };
 
 /**
  * 限流中间件
- * FREE: 每日 3 次
- * PRO: 每月 50 次
- * TEAM: 每月 500 次
+ * FREE: 终身 3 次
+ * PLUS: 每月 50 次
+ * PRO: 每月 200 次
+ * ULTRA: 每月 1000 次
  * ADMIN: 无限制
  */
 export const checkRateLimit = async (
@@ -43,14 +44,10 @@ export const checkRateLimit = async (
 
         // 根据等级设置不同的时间范围和限制
         if (tier === 'FREE') {
-            // FREE 用户：每日限制
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
+            // FREE 用户：终身限制 3 次
             const usageCount = await prisma.usageLog.count({
                 where: {
-                    userId: user.id,
-                    createdAt: { gte: today }
+                    userId: user.id
                 }
             });
 
@@ -58,7 +55,7 @@ export const checkRateLimit = async (
             if (usageCount >= limit) {
                 res.status(403).json(
                     errorResponse(
-                        `免费用户每日限制 ${limit} 次，您今日已达上限。升级 Pro 获取更多额度。`,
+                        `免费使用额度(${limit}次)已耗尽。请升级会员获取更多额度。`,
                         403
                     )
                 );

@@ -4,6 +4,7 @@ import { useConfirmDialog } from './ConfirmDialog';
 import { generateDocx } from '../utils/docxGenerator';
 import { PRESETS } from '../constants';
 import { StyleConfig } from '../types';
+import { useTranslation } from 'react-i18next';
 
 interface Document {
   id: string;
@@ -15,6 +16,7 @@ interface Document {
 
 export function DocumentList() {
   const { confirm, ConfirmDialogComponent } = useConfirmDialog();
+  const { t } = useTranslation();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -32,7 +34,7 @@ export function DocumentList() {
       setDocuments(data.list);
       setTotal(data.pagination.total);
     } catch (err: any) {
-      setError('无法获取文档历史');
+      setError(t('profile.fetch_doc_failed'));
     } finally {
       setLoading(false);
     }
@@ -43,7 +45,7 @@ export function DocumentList() {
       // 1. Fetch full document content (including HTML)
       const fullDoc = await getDocument(doc.id);
       if (!fullDoc || !fullDoc.content) {
-        alert('文档内容为空');
+        alert(t('profile.doc_empty'));
         return;
       }
 
@@ -67,13 +69,13 @@ export function DocumentList() {
 
     } catch (err) {
       console.error('Download failed', err);
-      alert('下载失败，请稍后重试');
+      alert(t('profile.download_failed'));
     }
   };
 
   const handleDelete = async (id: string) => {
-    const confirmed = await confirm('确定要删除这个文档吗？', {
-      title: '删除文档',
+    const confirmed = await confirm(t('profile.delete_confirm'), {
+      title: t('profile.delete_doc'),
       variant: 'danger'
     });
 
@@ -83,30 +85,30 @@ export function DocumentList() {
       await deleteDocument(id);
       loadDocuments(); // 刷新列表
     } catch (err) {
-      alert('删除失败');
+      alert(t('profile.delete_failed'));
     }
   };
 
   const getPresetName = (preset: string) => {
     const normalizedPreset = (preset || '').toLowerCase();
     const names: Record<string, string> = {
-      'corporate': '企业公文',
-      'academic': '学术论文',
-      'academic-journal': '期刊论文',
-      'creative': '创意写作',
-      'minimalist': '极简风格'
+      'corporate': t('home.preset_corporate', '企业公文'),
+      'academic': t('home.preset_academic', '报告 / 论文'),
+      'academic_journal': t('home.preset_academic_journal', '学术期刊'),
+      'creative': t('home.preset_creative', '出版物'),
+      'minimalist': t('home.preset_minimalist', '极简风格')
     };
     return names[normalizedPreset] || preset;
   };
 
-  if (loading && documents.length === 0) return <div className="loading">加载中...</div>;
+  if (loading && documents.length === 0) return <div className="loading">{t('profile.loading')}</div>;
   if (error) return <div className="error">{error}</div>;
-  if (documents.length === 0) return <div className="empty">暂无文档历史</div>;
+  if (documents.length === 0) return <div className="empty">{t('profile.no_doc_history')}</div>;
 
   return (
     <div className="document-list">
       {ConfirmDialogComponent}
-      <h3>文档历史</h3>
+      <h3>{t('profile.tab_documents')}</h3>
       <div className="list-container">
         {documents.map(doc => (
           <div key={doc.id} className="doc-item">
@@ -124,7 +126,7 @@ export function DocumentList() {
               <div className="doc-meta">
                 <span>{getPresetName(doc.preset)}</span>
                 <span className="separator">•</span>
-                <span>{doc.wordCount > 1000000 ? '统计失效 (旧数据)' : `${doc.wordCount.toLocaleString()} 字`}</span>
+                <span>{doc.wordCount > 1000000 ? t('profile.stats_invalid') : t('profile.word_count', { count: doc.wordCount.toLocaleString() })}</span>
                 <span className="separator">•</span>
                 <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
               </div>
@@ -133,7 +135,7 @@ export function DocumentList() {
               <button
                 className="icon-btn download"
                 onClick={() => handleDownload(doc)}
-                title="下载 DOCX"
+                title={t('profile.download_docx')}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -144,7 +146,7 @@ export function DocumentList() {
               <button
                 className="icon-btn delete"
                 onClick={() => handleDelete(doc.id)}
-                title="删除"
+                title={t('profile.delete')}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"></line>

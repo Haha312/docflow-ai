@@ -67,10 +67,9 @@ model SystemConfig {
 
 enum SubscriptionStatus {
   FREE
+  PLUS
   PRO
-  PRO_PLUS
   ULTRA
-  TEAM
 }
 
 enum OrderStatus {

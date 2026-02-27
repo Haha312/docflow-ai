@@ -4,7 +4,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 export interface User {
     id: string;
     email: string;
-    subscriptionStatus: 'FREE' | 'PRO' | 'TEAM';
+    subscriptionStatus: 'FREE' | 'PLUS' | 'PRO' | 'ULTRA';
     subscriptionEndDate?: string;
 }
 

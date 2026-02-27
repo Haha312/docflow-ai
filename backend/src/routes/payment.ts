@@ -10,15 +10,19 @@ import prisma from '../config/database';
 
 const router = Router();
 
-// 定价配置 - 简化版
+// 定价配置
 const PRICING: Record<string, { amountUSD: number, amountCNY: number, duration: number, title: string }> = {
+    // Plus
+    'plus_monthly': { amountUSD: 2.99, amountCNY: 19, duration: 30, title: 'Plus 会员 (月付)' },
+    'plus_yearly': { amountUSD: 29.99, amountCNY: 198, duration: 365, title: 'Plus 会员 (年付)' },
+
     // Pro
     'pro_monthly': { amountUSD: 3.99, amountCNY: 29, duration: 30, title: 'Pro 专业版 (月付)' },
     'pro_yearly': { amountUSD: 39.99, amountCNY: 298, duration: 365, title: 'Pro 专业版 (年付)' },
 
-    // Team
-    'team_monthly': { amountUSD: 26.99, amountCNY: 199, duration: 30, title: '团队版 (月付)' },
-    'team_yearly': { amountUSD: 269.99, amountCNY: 1999, duration: 365, title: '团队版 (年付)' }
+    // Ultra
+    'ultra_monthly': { amountUSD: 13.99, amountCNY: 99, duration: 30, title: 'Ultra 旗舰版 (月付)' },
+    'ultra_yearly': { amountUSD: 139.99, amountCNY: 998, duration: 365, title: 'Ultra 旗舰版 (年付)' }
 };
 
 /**
@@ -354,13 +358,16 @@ router.get('/mock-alipay-gateway', async (req: Request, res: Response) => {
                 data: { status: 'PAID' }
             });
             // Update user status
-            const plan = Object.values(PRICING).find(p => p.amountCNY === order.amount || p.amountUSD === order.amount); // loose match
+            const orderAmount = Number(order.amount);
+            const plan = Object.values(PRICING).find(p => p.amountCNY === orderAmount || p.amountUSD === orderAmount); // loose match
             // Better: store plan details in order. Oh wait order has planType.
             if (order.planType && PRICING[order.planType]) {
                 const p = PRICING[order.planType];
                 const endDate = new Date();
                 endDate.setDate(endDate.getDate() + p.duration);
-                let tier: 'PRO' | 'TEAM' = order.planType.includes('team') ? 'TEAM' : 'PRO';
+                let tier: 'PLUS' | 'PRO' | 'ULTRA' = 'PLUS';
+                if (order.planType.includes('pro')) tier = 'PRO';
+                else if (order.planType.includes('ultra')) tier = 'ULTRA';
 
                 await prisma.user.update({
                     where: { id: order.userId },
@@ -455,8 +462,9 @@ router.post('/confirm-by-amount', async (req: Request, res: Response): Promise<v
             const endDate = new Date();
             endDate.setDate(endDate.getDate() + planConfig.duration);
 
-            let tier: 'PRO' | 'TEAM' = 'PRO';
-            if (order.planType.includes('team')) tier = 'TEAM';
+            let tier: 'PLUS' | 'PRO' | 'ULTRA' = 'PLUS';
+            if (order.planType.includes('pro')) tier = 'PRO';
+            else if (order.planType.includes('ultra')) tier = 'ULTRA';
 
             await prisma.user.update({
                 where: { id: order.userId },
@@ -563,8 +571,9 @@ router.post('/stripe', async (req: Request, res: Response): Promise<void> => {
             endDate.setDate(endDate.getDate() + plan.duration);
 
             // Determine Tier
-            let tier: 'PRO' | 'TEAM' = 'PRO';
-            if (planType.includes('team')) tier = 'TEAM';
+            let tier: 'PLUS' | 'PRO' | 'ULTRA' = 'PLUS';
+            if (planType.includes('pro')) tier = 'PRO';
+            else if (planType.includes('ultra')) tier = 'ULTRA';
 
             await prisma.user.update({
                 where: { id: userId },
@@ -659,8 +668,9 @@ router.all('/alipay', async (req: Request, res: Response): Promise<void> => {
             endDate.setDate(endDate.getDate() + plan.duration);
 
             // Determine Tier
-            let tier: 'PRO' | 'TEAM' = 'PRO';
-            if (planType.includes('team')) tier = 'TEAM';
+            let tier: 'PLUS' | 'PRO' | 'ULTRA' = 'PLUS';
+            if (planType.includes('pro')) tier = 'PRO';
+            else if (planType.includes('ultra')) tier = 'ULTRA';
 
             await prisma.user.update({
                 where: { id: userId },

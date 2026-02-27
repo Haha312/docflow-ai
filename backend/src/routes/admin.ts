@@ -18,8 +18,9 @@ const requireAdmin = (req: AuthRequest, res: Response, next: express.NextFunctio
  * GET /api/admin/stats
  * Get Token Usage Statistics
  */
-router.get('/stats', authenticate, requireAdmin, async (_req: AuthRequest, res: Response) => {
+router.get('/stats', authenticate, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
+        const days = parseInt(req.query.days as string) || 7;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -45,9 +46,9 @@ router.get('/stats', authenticate, requireAdmin, async (_req: AuthRequest, res: 
             include: { user: { select: { email: true, subscriptionStatus: true } } }
         });
 
-        // 4. Daily History (Last 7 days) for line chart
+        // 4. Daily History (Dynamic days) for line chart
         const dailyHistory = [];
-        for (let i = 6; i >= 0; i--) {
+        for (let i = days - 1; i >= 0; i--) {
             const dayStart = new Date();
             dayStart.setDate(dayStart.getDate() - i);
             dayStart.setHours(0, 0, 0, 0);
@@ -109,6 +110,142 @@ router.get('/stats', authenticate, requireAdmin, async (_req: AuthRequest, res: 
     } catch (error) {
         console.error('Admin Stats Error:', error);
         res.status(500).json({ error: 'Failed to fetch admin stats' });
+    }
+});
+
+/**
+ * GET /api/admin/logs
+ * Get Paginated Usage Logs
+ */
+router.get('/logs', authenticate, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const skip = (page - 1) * limit;
+
+        const [total, logs] = await Promise.all([
+            prisma.usageLog.count(),
+            prisma.usageLog.findMany({
+                skip,
+                take: limit,
+                orderBy: { createdAt: 'desc' },
+                include: { user: { select: { email: true, subscriptionStatus: true } } }
+            })
+        ]);
+
+        res.json({
+            data: logs,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+    } catch (error) {
+        console.error('Admin Logs Error:', error);
+        res.status(500).json({ error: 'Failed to fetch admin logs' });
+    }
+});
+
+/**
+ * GET /api/admin/users
+ * Get Paginated Users
+ */
+router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const search = req.query.search as string;
+        const skip = (page - 1) * limit;
+
+        const whereClause = search ? {
+            email: { contains: search } // PostgreSQL implicitly case-sensitive generally, but depends on collation. Using standard contains.
+        } : {};
+
+        const [total, users] = await Promise.all([
+            prisma.user.count({ where: whereClause }),
+            prisma.user.findMany({
+                where: whereClause,
+                skip,
+                take: limit,
+                orderBy: { createdAt: 'desc' },
+                select: {
+                    id: true,
+                    email: true,
+                    subscriptionStatus: true,
+                    subscriptionEndDate: true,
+                    createdAt: true,
+                    usageLogs: {
+                        select: { id: true } // just to eventually get count if needed, or we compute in separate query
+                    }
+                }
+            })
+        ]);
+
+        // getting total usage logs count per user is easier through aggregate
+        const enrichedUsers = await Promise.all(users.map(async u => {
+            const usageCount = await prisma.usageLog.count({ where: { userId: u.id } });
+            return {
+                id: u.id,
+                email: u.email,
+                subscriptionStatus: u.subscriptionStatus,
+                subscriptionEndDate: u.subscriptionEndDate,
+                createdAt: u.createdAt,
+                usageCount
+            };
+        }));
+
+        res.json({
+            data: enrichedUsers,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+    } catch (error) {
+        console.error('Admin Users Error:', error);
+        res.status(500).json({ error: 'Failed to fetch users' });
+    }
+});
+
+/**
+ * POST /api/admin/users/:id
+ * Update User subscription
+ */
+router.post('/users/:id', authenticate, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.params.id;
+        const { subscriptionStatus, additionalDays } = req.body;
+
+        const data: any = {};
+        if (subscriptionStatus) {
+            data.subscriptionStatus = subscriptionStatus;
+        }
+
+        if (additionalDays && typeof additionalDays === 'number') {
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            if (user) {
+                const currentEnd = user.subscriptionEndDate && user.subscriptionEndDate > new Date()
+                    ? user.subscriptionEndDate
+                    : new Date();
+                currentEnd.setDate(currentEnd.getDate() + additionalDays);
+                data.subscriptionEndDate = currentEnd;
+            }
+        }
+
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data,
+            select: { id: true, email: true, subscriptionStatus: true, subscriptionEndDate: true }
+        });
+
+        res.json({ success: true, user: updatedUser });
+    } catch (error) {
+        console.error('Admin Edit User Error:', error);
+        res.status(500).json({ error: 'Failed to update user' });
     }
 });
 

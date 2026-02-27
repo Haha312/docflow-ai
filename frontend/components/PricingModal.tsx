@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { paymentService } from '../services/paymentService';
+import { useTranslation } from 'react-i18next';
 import alipayQrCode from '../image/alipay_qr.png';
 import wechatQrCode from '../image/wechat_qr.png';
 import alipayLogo from '../image/Alipaylogo.png';
@@ -15,10 +16,11 @@ interface PricingModalProps {
 
 type PaymentMethod = 'alipay' | 'wechat';
 type BillingCycle = 'monthly' | 'yearly';
-type Tier = 'pro' | 'team';
+type Tier = 'plus' | 'pro' | 'ultra';
 
 export function PricingModal({ isOpen, onClose }: PricingModalProps) {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('yearly');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('alipay');
   const [isLoading, setIsLoading] = useState(false);
@@ -96,36 +98,61 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
   const currency = isAlipay ? 'CNY' : 'USD';
   const symbol = isAlipay ? '¥' : '$';
 
-  const pricingData = {
-    pro: {
-      title: 'Pro 专业版',
-      monthly: { CNY: 29 },
-      yearly: { CNY: 298 },
-      quota: '适合独立创作者',
+  const pricingData: Record<Tier, any> = {
+    plus: {
+      title: t('pricing.plus_title'),
+      monthly: { CNY: 19 },
+      yearly: { CNY: 198 },
+      quota: t('pricing.plus_quota'),
       features: [
-        '每月 50 次智能文档生成',
-        '集成 GPT-5.2旗舰级大模型',
-        '解锁所有高级排版模板',
-        '导出高清无水印 Word',
-        '7x24小时 优先生成队列'
+        t('pricing.plus_f1'),
+        t('pricing.plus_f2'),
+        t('pricing.plus_f3'),
+        t('pricing.plus_f4')
       ]
     },
-    team: {
-      title: 'Team 团队版',
-      monthly: { CNY: 199 },
-      yearly: { CNY: 1999 },
-      quota: '适合工作室与小团队',
+    pro: {
+      title: t('pricing.pro_title'),
+      monthly: { CNY: 29 },
+      yearly: { CNY: 298 },
+      quota: t('pricing.pro_quota'),
       features: [
-        '每月 500 次极速生成额度',
-        '独享Gemini 深度推理模型',
-        '支持团队多人协作与共享',
-        '专属 API 接口对接支持',
-        '1对1 专属客户经理服务'
+        t('pricing.pro_f1'),
+        t('pricing.pro_f2'),
+        t('pricing.pro_f3'),
+        t('pricing.pro_f4'),
+        t('pricing.pro_f5')
+      ]
+    },
+    ultra: {
+      title: t('pricing.ultra_title'),
+      monthly: { CNY: 99 },
+      yearly: { CNY: 998 },
+      quota: t('pricing.ultra_quota'),
+      features: [
+        t('pricing.ultra_f1'),
+        t('pricing.ultra_f2'),
+        t('pricing.ultra_f3'),
+        t('pricing.ultra_f4'),
+        t('pricing.ultra_f5')
       ]
     }
   };
 
-  const tiers: Tier[] = ['pro', 'team'];
+  const allTiers: Tier[] = ['plus', 'pro', 'ultra'];
+
+  const getTierLevel = (tierName: string) => {
+    switch (tierName.toLowerCase()) {
+      case 'ultra': return 3;
+      case 'pro': return 2;
+      case 'plus': return 1;
+      default: return 0; // FREE or unknown
+    }
+  };
+
+  const userLevel = user ? getTierLevel(user.subscriptionStatus) : 0;
+  // Filter out tiers that are lower than the user's current tier
+  const tiers = allTiers.filter(t => getTierLevel(t) >= userLevel);
 
   // getPrice helper - always returns CNY
   const getPrice = (tier: Tier) => {
@@ -147,9 +174,9 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
             <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 text-green-600 animate-bounce">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">支付成功！</h2>
-            <p className="text-gray-500 text-lg mb-8">您的会员权益已激活</p>
-            <div className="text-sm text-gray-400">正在刷新账户状态...</div>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">{t('pricing.success_title')}</h2>
+            <p className="text-gray-500 text-lg mb-8">{t('pricing.success_subtitle')}</p>
+            <div className="text-sm text-gray-400">{t('pricing.refreshing_status')}</div>
           </div>
         )}
 
@@ -161,16 +188,16 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                 onClick={() => setStep('payment')}
                 className="group flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors px-2 py-1 -ml-2 rounded-lg hover:bg-gray-100"
               >
-                <span className="text-sm font-medium">{'< 返回支付方式'}</span>
+                <span className="text-sm font-medium">{t('pricing.back_to_payment')}</span>
               </button>
             </div>
 
             <div className="flex-1 flex flex-col items-center justify-center text-center">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                {paymentMethod === 'wechat' ? '打开微信 [扫一扫]' : '打开支付宝 [扫一扫]'}
+                {paymentMethod === 'wechat' ? t('pricing.scan_wechat') : t('pricing.scan_alipay')}
               </h2>
               <p className="text-gray-500 mb-6">
-                支付 <span className={`font-bold text-xl ${paymentMethod === 'wechat' ? 'text-green-600' : 'text-blue-600'}`}>¥{getPrice(selectedTier)}</span> 元
+                {t('pricing.pay_amount')} <span className={`font-bold text-xl ${paymentMethod === 'wechat' ? 'text-green-600' : 'text-blue-600'}`}>¥{getPrice(selectedTier)}</span> {t('pricing.currency_unit')}
               </p>
 
               <div className={`p-4 bg-gradient-to-br ${paymentMethod === 'wechat' ? 'from-green-50 to-white border-green-100' : 'from-blue-50 to-white border-blue-100'} border-2 rounded-3xl shadow-lg`}>
@@ -182,15 +209,15 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
               </div>
 
               <div className="mt-6 text-sm text-gray-500 max-w-xs">
-                <p>请使用{paymentMethod === 'wechat' ? '微信' : '支付宝'}扫描上方二维码完成支付</p>
-                <p className="mt-2 text-xs text-gray-400">支付完成后，您的会员权益将在几分钟内自动激活</p>
+                <p>{t('pricing.please_use')}{paymentMethod === 'wechat' ? t('pricing.wechat') : t('pricing.alipay')}{t('pricing.scan_qr_prompt')}</p>
+                <p className="mt-2 text-xs text-gray-400">{t('pricing.payment_completion_notice')}</p>
               </div>
 
               <button
                 onClick={onClose}
                 className={`mt-6 px-6 py-2 text-white rounded-full text-sm font-medium transition-colors ${paymentMethod === 'wechat' ? 'bg-green-500 hover:bg-green-600' : 'bg-blue-500 hover:bg-blue-600'}`}
               >
-                我已完成支付
+                {t('pricing.payment_completed_btn')}
               </button>
             </div>
           </div>
@@ -207,19 +234,19 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                 <div className="w-8 h-8 rounded-full bg-gray-100 group-hover:bg-white border border-transparent group-hover:border-gray-200 flex items-center justify-center transition-all shadow-sm">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6" /></svg>
                 </div>
-                <span className="font-bold text-sm">返回</span>
+                <span className="font-bold text-sm">{t('pricing.back_btn')}</span>
               </button>
               <div className="flex-1 text-center pr-12">
-                <h2 className="text-xl font-bold text-gray-900">确认支付方式</h2>
+                <h2 className="text-xl font-bold text-gray-900">{t('pricing.confirm_payment_method')}</h2>
               </div>
             </div>
 
             <div className="flex-1 flex flex-col justify-center max-w-2xl mx-auto w-full">
               <div className="text-center mb-10">
                 <p className="text-gray-500 text-lg">
-                  您选择了 <strong className="text-gray-900">{pricingData[selectedTier].title}</strong>
+                  {t('pricing.you_selected')} <strong className="text-gray-900">{pricingData[selectedTier].title}</strong>
                   <span className="mx-2 text-gray-300">|</span>
-                  {billingCycle === 'monthly' ? '月付方案' : '年付方案'}
+                  {billingCycle === 'monthly' ? t('pricing.monthly_plan') : t('pricing.yearly_plan')}
                 </p>
                 <div className="mt-4 text-4xl font-extrabold text-gray-900 tracking-tight">
                   <span className="text-2xl text-gray-400 font-normal mr-1">¥</span>
@@ -239,10 +266,10 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                     }`}
                 >
                   <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm mb-4 group-hover:scale-110 transition-transform duration-300 overflow-hidden">
-                    <img src={alipayLogo} alt="支付宝" className="w-16 h-16 object-cover rounded-2xl" />
+                    <img src={alipayLogo} alt={t('pricing.alipay')} className="w-16 h-16 object-cover rounded-2xl" />
                   </div>
-                  <div className="text-lg font-bold text-gray-900 mb-1">支付宝支付</div>
-                  <div className="text-sm text-gray-500 font-medium">推荐中国用户使用</div>
+                  <div className="text-lg font-bold text-gray-900 mb-1">{t('pricing.alipay_pay')}</div>
+                  <div className="text-sm text-gray-500 font-medium">{t('pricing.recommended_cn')}</div>
                   {paymentMethod === 'alipay' && (
                     <div className="absolute top-4 right-4 text-blue-500">
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
@@ -261,10 +288,10 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                     }`}
                 >
                   <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm mb-4 group-hover:scale-110 transition-transform duration-300 overflow-hidden">
-                    <img src={wechatLogo} alt="微信支付" className="w-16 h-16 object-cover rounded-2xl" />
+                    <img src={wechatLogo} alt={t('pricing.wechat')} className="w-16 h-16 object-cover rounded-2xl" />
                   </div>
-                  <div className="text-lg font-bold text-gray-900 mb-1">微信支付</div>
-                  <div className="text-sm text-gray-500 font-medium">推荐中国用户使用</div>
+                  <div className="text-lg font-bold text-gray-900 mb-1">{t('pricing.wechat_pay')}</div>
+                  <div className="text-sm text-gray-500 font-medium">{t('pricing.recommended_cn')}</div>
                   {paymentMethod === 'wechat' && (
                     <div className="absolute top-4 right-4 text-green-500">
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
@@ -275,7 +302,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
 
               {isLoading && (
                 <div className="mt-12 flex flex-col items-center justify-center animate-pulse">
-                  <div className="text-sm font-medium text-gray-500">正在跳转到第三方安全收银台...</div>
+                  <div className="text-sm font-medium text-gray-500">{t('pricing.redirecting_checkout')}</div>
                 </div>
               )}
 
@@ -312,8 +339,8 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
               </button>
 
               <div className="text-center">
-                <h2 className="text-2xl font-bold text-gray-900">升级您的计划</h2>
-                <p className="text-base text-gray-500 mt-2">选择最适合您的方案，解锁无限可能</p>
+                <h2 className="text-2xl font-bold text-gray-900">{t('pricing.upgrade_plan_title')}</h2>
+                <p className="text-base text-gray-500 mt-2">{t('pricing.upgrade_plan_subtitle')}</p>
               </div>
 
               <div className="flex items-center justify-center mt-8">
@@ -324,15 +351,15 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                     className={`flex-1 min-w-[100px] px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 ${billingCycle === 'monthly' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                       }`}
                   >
-                    月付
+                    {t('pricing.monthly')}
                   </button>
                   <button
                     onClick={() => setBillingCycle('yearly')}
                     className={`flex-1 min-w-[120px] px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 flex items-center justify-center gap-2 whitespace-nowrap ${billingCycle === 'yearly' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                       }`}
                   >
-                    年付
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">省15%</span>
+                    {t('pricing.yearly')}
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">{t('pricing.save_15')}</span>
                   </button>
                 </div>
 
@@ -341,21 +368,22 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
             </div>
 
             {/* Pricing Cards */}
-            <div className="p-6 pb-8">
-              <div className="grid grid-cols-2 gap-8 items-stretch">
+            <div className="p-6 pb-8 flex justify-center">
+              <div className="flex flex-col md:flex-row flex-wrap justify-center gap-6 items-stretch w-full max-w-6xl">
                 {tiers.map(tier => {
                   const data = pricingData[tier];
                   const price = getPrice(tier);
-                  const isTeam = tier === 'team';
+                  const isUltra = tier === 'ultra';
+                  const isPro = tier === 'pro';
 
                   return (
                     <div
                       key={tier}
-                      className={`relative flex flex-col rounded-[2rem] p-6 transition-all duration-300 bg-white border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:-translate-y-1`}
+                      className={`relative flex flex-col rounded-[2rem] p-6 transition-all duration-300 bg-white border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:-translate-y-1 w-full md:w-[320px] md:flex-1 md:max-w-[340px]`}
                     >
-                      {isTeam && (
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-blue-600 text-white text-xs font-bold tracking-wide uppercase rounded-full shadow-sm">
-                          推荐
+                      {(isPro || isUltra) && (
+                        <div className={`absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 ${isUltra ? 'bg-purple-600' : 'bg-blue-600'} text-white text-xs font-bold tracking-wide uppercase rounded-full shadow-sm`}>
+                          {isUltra ? t('pricing.exclusive') : t('pricing.recommended')}
                         </div>
                       )}
 
@@ -373,14 +401,14 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                           {symbol}{price}
                         </span>
                         <span className="text-sm font-medium text-gray-500 ml-2">
-                          /{billingCycle === 'yearly' ? '年' : '月'}
+                          /{billingCycle === 'yearly' ? t('pricing.yearly') : t('pricing.monthly')}
                         </span>
                       </div>
 
                       <div className="h-6">
                         {billingCycle === 'yearly' && (
                           <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-bold">
-                            节省 15% (约 {symbol}{Math.round(price / 12)}/月)
+                            {t('pricing.save_15_approx', { symbol, amount: Math.round(price / 12) })}
                           </div>
                         )}
                       </div>
@@ -390,7 +418,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                       <ul className="space-y-4 flex-1">
                         {data.features.map((f, i) => (
                           <li key={i} className="flex items-start gap-3">
-                            <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isTeam ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                            <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isUltra ? 'bg-purple-600 text-white' : isPro ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                                 <polyline points="20 6 9 17 4 12"></polyline>
                               </svg>
@@ -400,15 +428,44 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                         ))}
                       </ul>
 
-                      <button
-                        onClick={() => handlePlanSelect(tier)}
-                        className={`mt-6 w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all active:scale-[0.98] ${isTeam
-                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 hover:bg-blue-700 hover:shadow-blue-300'
-                          : 'bg-white text-blue-600 border-2 border-blue-50 hover:border-blue-100 hover:bg-blue-50'
-                          }`}
-                      >
-                        {tier === 'team' ? '立即订阅' : '选择此方案'}
-                      </button>
+                      {(() => {
+                        const isCurrentPlan = user?.subscriptionStatus?.toLowerCase() === tier;
+                        if (isCurrentPlan) {
+                          // Allow upgrade to yearly if viewing yearly tab 
+                          if (billingCycle === 'yearly') {
+                            return (
+                              <button
+                                onClick={() => handlePlanSelect(tier)}
+                                className="mt-6 w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all active:scale-[0.98] bg-green-600 text-white shadow-lg shadow-green-200 hover:bg-green-700 hover:shadow-green-300"
+                              >
+                                {t('pricing.upgrade_to_yearly')}
+                              </button>
+                            );
+                          }
+
+                          return (
+                            <button
+                              disabled
+                              className="mt-6 w-full py-3.5 rounded-xl text-sm font-bold tracking-wide bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                            >
+                              {t('pricing.current_plan')}
+                            </button>
+                          );
+                        }
+                        return (
+                          <button
+                            onClick={() => handlePlanSelect(tier)}
+                            className={`mt-6 w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all active:scale-[0.98] ${isUltra
+                              ? 'bg-purple-600 text-white shadow-lg shadow-purple-200 hover:bg-purple-700 hover:shadow-purple-300'
+                              : isPro
+                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 hover:bg-blue-700 hover:shadow-blue-300'
+                                : 'bg-white text-blue-600 border-2 border-blue-50 hover:border-blue-100 hover:bg-blue-50'
+                              }`}
+                          >
+                            {isUltra ? t('pricing.upgrade_to_ultra') : isPro ? t('pricing.upgrade_to_pro') : t('pricing.upgrade_to_plus')}
+                          </button>
+                        );
+                      })()}
                     </div>
                   );
                 })}

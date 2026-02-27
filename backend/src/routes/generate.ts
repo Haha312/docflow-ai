@@ -24,24 +24,17 @@ const cleanOutput = (text: string): string => {
 
 // Tier Configuration - 简化版会员体系
 const TIER_LIMITS = {
-    'FREE': 3,      // 3次/日
-    'PRO': 50,      // 50次/月
-    'TEAM': 500     // 500次/月
+    'FREE': 3,      // 终身3次
+    'PLUS': 50,     // 50次/月
+    'PRO': 200,     // 200次/月
+    'ULTRA': 1000   // 1000次/月
 };
 
-// 统一使用 Gemini 3 Pro Preview 模型
-const TIER_MODELS = {
-    'FREE': 'gemini-3-pro-preview',
-    'PRO': 'gemini-3-pro-preview',
-    'TEAM': 'gemini-3-pro-preview'
-};
-
-// OpenAI Compatible 使用的模型（通过代理访问 Gemini）
-const OPENAI_COMPATIBLE_MODELS = {
-    'FREE': 'gemini-3-pro-preview',
-    'PRO': 'gemini-3-pro-preview',
-    'TEAM': 'gemini-3-pro-preview'
-};
+// 智能混合模型策略：
+// PRIMARY_MODEL - 高质量排版模型，用于第一个 chunk 建立文档格式标准
+// FAST_MODEL    - 快速模型，用于后续 chunk 跟随已建立的排版格式
+const PRIMARY_MODEL = 'gemini-3-pro-preview';
+const FAST_MODEL = 'gemini-2.0-flash';
 
 // OpenAI Compatible API Call (for Gemini via proxy)
 async function* callOpenAICompatible(
@@ -128,30 +121,40 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         }
 
         // Usage Check
-        const currentMonthStart = new Date();
-        currentMonthStart.setDate(1);
-        currentMonthStart.setHours(0, 0, 0, 0);
+        let usageCount = 0;
 
-        const usageCount = await prisma.usageLog.count({
-            where: {
-                userId: user.id,
-                actionType: 'generate_document',
-                createdAt: {
-                    gte: currentMonthStart
+        if (userTier === 'FREE') {
+            usageCount = await prisma.usageLog.count({
+                where: {
+                    userId: user.id,
+                    actionType: 'generate_document'
                 }
-            }
-        });
+            });
+        } else {
+            const currentMonthStart = new Date();
+            currentMonthStart.setDate(1);
+            currentMonthStart.setHours(0, 0, 0, 0);
+
+            usageCount = await prisma.usageLog.count({
+                where: {
+                    userId: user.id,
+                    actionType: 'generate_document',
+                    createdAt: {
+                        gte: currentMonthStart
+                    }
+                }
+            });
+        }
 
         const limit = TIER_LIMITS[userTier] || 10;
 
         if (usageCount >= limit) {
-            res.status(403).json(errorResponse(`本月生成额度已用完 (${usageCount}/${limit})。请升级套餐以获取更多额度。`, 403));
+            const extraMsg = userTier === 'FREE' ? `免费总额度已耗尽` : `本月生成额度已用完`;
+            res.status(403).json(errorResponse(`${extraMsg} (${usageCount}/${limit})。请升级套餐以获取更多额度。`, 403));
             return;
         }
 
-        // Determine Model based on tier
-        const geminiModelName = TIER_MODELS[userTier] || 'gemini-1.5-flash';
-        const openAIModelName = OPENAI_COMPATIBLE_MODELS[userTier] || 'gemini-1.5-flash';
+        // 模型将在 chunk 循环中根据索引动态选择
 
         // 构建系统指令
         const numberingRules = getNumberingInstruction(styleConfig.headingNumbering);
@@ -276,10 +279,10 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const imageCount = Object.keys(imageMap).length;
         if (imageCount > 0) console.log(`📷 Extracted ${imageCount} images`);
 
-        // 2. 语义切分 (TEAM 用户跳过，直接单次处理)
+        // 2. 语义切分 (ULTRA 用户跳过，直接单次处理)
         let chunks: string[] = [];
-        if (userTier === 'TEAM') {
-            console.log('🚀 TEAM Mode: Skipping chunking for Gemini 3 Pro (Single Pass)');
+        if (userTier === 'ULTRA') {
+            console.log('🚀 ULTRA Mode: Skipping chunking for Gemini 3 Pro (Single Pass)');
             chunks = [contentWithoutImages];
         } else {
             chunks = splitContentBySemantics(contentWithoutImages);
@@ -293,10 +296,14 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        // 3. 循环处理 Chunks
+        // 3. 循环处理 Chunks（智能模型选择）
         for (let i = 0; i < chunks.length; i++) {
             const chunkContent = chunks[i];
-            console.log(`Processing Chunk ${i + 1}/${chunks.length} (${chunkContent.length} chars)...`);
+
+            // 智能模型选择：第一个 chunk 或单 chunk 用高质量模型，后续用快速模型
+            const isFirstOrOnly = i === 0 || chunks.length === 1;
+            const currentModel = isFirstOrOnly ? PRIMARY_MODEL : FAST_MODEL;
+            console.log(`Processing Chunk ${i + 1}/${chunks.length} (${chunkContent.length} chars) 🤖 Model: ${currentModel}`);
 
             // 动态构建 System Prompt
             // 动态构建 System Prompt
@@ -329,8 +336,8 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
                 if (geminiOpenAIBaseUrl) {
                     // 使用 OpenAI Compatible Endpoint (如 hiapi.online)
-                    const maxTokens = userTier === 'TEAM' ? 32000 : 16000;
-                    for await (const delta of callOpenAICompatible(geminiApiKey!, geminiOpenAIBaseUrl, currentSystemPrompt, userContent, openAIModelName, maxTokens)) {
+                    const maxTokens = userTier === 'ULTRA' ? 32000 : 16000;
+                    for await (const delta of callOpenAICompatible(geminiApiKey!, geminiOpenAIBaseUrl, currentSystemPrompt, userContent, currentModel, maxTokens)) {
                         chunkOutput += delta;
                     }
                 } else {
@@ -344,7 +351,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                     const genAI = new GoogleGenerativeAI(geminiApiKey!);
                     const model = genAI.getGenerativeModel(
                         {
-                            model: geminiModelName,
+                            model: currentModel,
                             systemInstruction: currentSystemPrompt
                         },
                         { customFetch } as any

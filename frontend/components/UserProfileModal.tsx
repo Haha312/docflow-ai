@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { OrderHistory } from './OrderHistory';
 import { DocumentList } from './DocumentList';
+import { useTranslation } from 'react-i18next';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -10,13 +11,15 @@ interface UserProfileModalProps {
 
 export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
   const { user, remainingQuota, logout } = useAuth();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'profile' | 'documents' | 'orders'>('profile');
 
   if (!isOpen || !user) return null;
 
-  const isPro = user.subscriptionStatus === 'PRO' || user.subscriptionStatus === 'TEAM';
-  const tierLabel = user.subscriptionStatus === 'TEAM' ? '团队版' :
-    user.subscriptionStatus === 'PRO' ? 'Pro 专业版' : '免费版';
+  const isPro = user.subscriptionStatus !== 'FREE';
+  const tierLabel = user.subscriptionStatus === 'ULTRA' ? t('admin.tier_ultra_label') :
+    user.subscriptionStatus === 'PRO' ? t('admin.tier_pro_label') :
+      user.subscriptionStatus === 'PLUS' ? t('admin.tier_plus_label') : t('admin.tier_free_label');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -40,7 +43,7 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
               {user.email.charAt(0).toUpperCase()}
             </div>
             <div>
-              <h2 className="text-xl font-medium text-gray-900">用户中心</h2>
+              <h2 className="text-xl font-medium text-gray-900">{t('profile.title')}</h2>
               <p className="text-sm text-gray-500 mt-0.5">{user.email}</p>
             </div>
           </div>
@@ -48,9 +51,9 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
           {/* Tabs - Simple Underline Style */}
           <div className="flex gap-6 border-b border-gray-200">
             {[
-              { key: 'profile', label: '个人资料' },
-              { key: 'documents', label: '文档历史' },
-              { key: 'orders', label: '订单记录' }
+              { key: 'profile', label: t('profile.tab_profile') },
+              { key: 'documents', label: t('profile.tab_documents') },
+              { key: 'orders', label: t('profile.tab_orders') }
             ].map(tab => (
               <button
                 key={tab.key}
@@ -75,24 +78,22 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
             <div className="space-y-4">
               <div className="bg-white rounded-xl border border-gray-200 p-4">
                 <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-sm text-gray-500">当前会员</span>
-                  <span className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${user.subscriptionStatus === 'TEAM' ? 'bg-gray-900 text-white' :
-                    isPro ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'
-                    }`}>
+                  <span className="text-sm text-gray-500">{t('profile.current_tier')}</span>
+                  <span className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${isPro ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
                     {tierLabel}
                   </span>
                 </div>
 
                 {user.subscriptionStatus === 'FREE' && (
                   <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                    <span className="text-sm text-gray-500">今日额度</span>
-                    <span className="text-sm font-medium text-gray-900">{remainingQuota} / 3 次</span>
+                    <span className="text-sm text-gray-500">{t('profile.remaining_free_quota')}</span>
+                    <span className="text-sm font-medium text-gray-900">{remainingQuota} {t('profile.times')}</span>
                   </div>
                 )}
 
                 {user.subscriptionEndDate && (
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-sm text-gray-500">有效期至</span>
+                    <span className="text-sm text-gray-500">{t('profile.valid_until')}</span>
                     <span className="text-sm font-medium text-gray-900">
                       {new Date(user.subscriptionEndDate).toLocaleDateString()}
                     </span>
@@ -109,7 +110,7 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                   <polyline points="16 17 21 12 16 7"></polyline>
                   <line x1="21" y1="12" x2="9" y2="12"></line>
                 </svg>
-                退出登录
+                {t('profile.logout')}
               </button>
             </div>
           )}

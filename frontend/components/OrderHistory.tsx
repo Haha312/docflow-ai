@@ -1,74 +1,76 @@
 import React, { useEffect, useState } from 'react';
 import { getUserOrders } from '../services/backendApiService';
+import { useTranslation } from 'react-i18next';
 
 interface Order {
-    id: string;
-    amount: number;
-    currency: string;
-    planType: string;
-    status: string;
-    createdAt: string;
+  id: string;
+  amount: number;
+  currency: string;
+  planType: string;
+  status: string;
+  createdAt: string;
 }
 
 export function OrderHistory() {
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+  const { t } = useTranslation();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-    useEffect(() => {
-        loadOrders();
-    }, []);
+  useEffect(() => {
+    loadOrders();
+  }, []);
 
-    const loadOrders = async () => {
-        try {
-            setLoading(true);
-            const data = await getUserOrders();
-            setOrders(data);
-        } catch (err: any) {
-            setError('无法获取订单历史');
-        } finally {
-            setLoading(false);
-        }
-    };
+  const loadOrders = async () => {
+    try {
+      setLoading(true);
+      const data = await getUserOrders();
+      setOrders(data);
+    } catch (err: any) {
+      setError(t('profile.fetch_order_failed'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    if (loading) return <div className="loading">加载中...</div>;
-    if (error) return <div className="error">{error}</div>;
-    if (orders.length === 0) return <div className="empty">暂无订单记录</div>;
+  if (loading) return <div className="loading">{t('profile.loading')}</div>;
+  if (error) return <div className="error">{error}</div>;
+  if (orders.length === 0) return <div className="empty">{t('profile.no_order_history')}</div>;
 
-    return (
-        <div className="order-history">
-            <h3>订单历史</h3>
-            <div className="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>时间</th>
-                            <th>项目</th>
-                            <th>金额</th>
-                            <th>状态</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {orders.map(order => (
-                            <tr key={order.id}>
-                                <td>{new Date(order.createdAt).toLocaleDateString()}</td>
-                                <td>{order.planType === 'monthly' ? '月度会员' : '年度会员'}</td>
-                                <td>
-                                    {order.currency.toUpperCase()} {order.amount}
-                                </td>
-                                <td>
-                                    <span className={`status ${order.status.toLowerCase()}`}>
-                                        {order.status === 'PAID' ? '已支付' :
-                                            order.status === 'PENDING' ? '待支付' : '失败'}
-                                    </span>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+  return (
+    <div className="order-history">
+      <h3>{t('profile.tab_orders')}</h3>
+      <div className="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>{t('profile.time')}</th>
+              <th>{t('profile.item')}</th>
+              <th>{t('profile.amount')}</th>
+              <th>{t('profile.status')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map(order => (
+              <tr key={order.id}>
+                <td>{new Date(order.createdAt).toLocaleDateString()}</td>
+                <td>{order.planType === 'monthly' ? t('profile.monthly_plan') : t('profile.yearly_plan')}</td>
+                <td>
+                  {order.currency.toUpperCase()} {order.amount}
+                </td>
+                <td>
+                  <span className={`status ${order.status.toLowerCase()}`}>
+                    {order.status === 'PAID' ? t('profile.paid') :
+                      order.status === 'PENDING' ? t('profile.pending') : t('profile.failed')}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-            <style>{`
+      <style>{`
         .order-history {
           margin-top: 1rem;
         }
@@ -137,6 +139,6 @@ export function OrderHistory() {
           color: #dc2626;
         }
       `}</style>
-        </div>
-    );
+    </div>
+  );
 }

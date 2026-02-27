@@ -1,16 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 interface UserInfoProps {
   onOpenPricing: () => void;
   onOpenAuth: () => void;
   onOpenProfile: () => void;
+  onOpenAdmin?: () => void;
 }
 
-export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile }: UserInfoProps) {
+export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin }: UserInfoProps) {
   const { user, isAuthenticated, isLoading, remainingQuota, logout } = useAuth();
+  const { t, i18n } = useTranslation();
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const toggleLanguage = () => {
+    const nextLang = i18n.language === 'zh' ? 'en' : 'zh';
+    i18n.changeLanguage(nextLang);
+    setShowMenu(false);
+  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -32,18 +41,20 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile }: UserInfoP
         onClick={onOpenAuth}
         className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
       >
-        登录
+        {t('nav.login')}
       </button>
     );
   }
 
-  const isPro = user.subscriptionStatus === 'PRO' || user.subscriptionStatus === 'TEAM';
-  const tierLabel = user.subscriptionStatus === 'TEAM' ? 'Team' :
-    user.subscriptionStatus === 'PRO' ? 'Pro' : 'Free';
+  const isPro = user.subscriptionStatus !== 'FREE';
+  const tierLabel = user.subscriptionStatus === 'ULTRA' ? 'Ultra' :
+    user.subscriptionStatus === 'PRO' ? 'Pro' :
+      user.subscriptionStatus === 'PLUS' ? 'Plus' : 'Free';
 
   const getTierColor = (status: string) => {
-    if (status === 'TEAM') return 'text-purple-600';
-    if (status === 'PRO') return 'text-amber-600';
+    if (status === 'ULTRA') return 'text-purple-600';
+    if (status === 'PRO') return 'text-blue-600';
+    if (status === 'PLUS') return 'text-amber-600';
     return 'text-gray-400';
   };
 
@@ -81,7 +92,7 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile }: UserInfoP
                 {tierLabel}
               </span>
               {!isPro && (
-                <span className="text-xs text-gray-400">剩余: {remainingQuota}</span>
+                <span className="text-xs text-gray-400">{t('nav.remaining', { count: remainingQuota })}</span>
               )}
             </div>
           </div>
@@ -94,7 +105,7 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile }: UserInfoP
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
               <circle cx="12" cy="7" r="4"></circle>
             </svg>
-            用户中心
+            {t('nav.profile')}
           </button>
 
           <button
@@ -104,10 +115,36 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile }: UserInfoP
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
             </svg>
-            升级套餐
+            {t('nav.upgrade')}
           </button>
 
+          {user.email.toLowerCase() === 'admin@docuflow.ai' && (
+            <button
+              onClick={() => { setShowMenu(false); onOpenAdmin && onOpenAdmin(); }}
+              className="w-full text-left px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="21" x2="9" y2="9"></line>
+              </svg>
+              {t('nav.dashboard')}
+            </button>
+          )}
+
           <div className="h-px bg-gray-100 my-1"></div>
+
+          <button
+            onClick={toggleLanguage}
+            className="w-full text-left px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+            {t('nav.switch_lang')}
+          </button>
 
           <button
             onClick={() => { setShowMenu(false); logout(); }}
@@ -118,7 +155,7 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile }: UserInfoP
               <polyline points="16 17 21 12 16 7"></polyline>
               <line x1="21" y1="12" x2="9" y2="12"></line>
             </svg>
-            退出登录
+            {t('nav.logout')}
           </button>
         </div>
       )}

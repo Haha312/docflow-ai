@@ -13,11 +13,11 @@ const svgCaptcha = require('svg-captcha');
 
 const router = Router();
 
-// Tier Configuration (MUST MATCH generate.ts and rateLimit.ts)
 const TIER_LIMITS = {
-    'FREE': 3,      // 3次/日
-    'PRO': 50,      // 50次/月
-    'TEAM': 500     // 500次/月
+    'FREE': 3,      // 终身3次免费
+    'PLUS': 50,     // 50次/月
+    'PRO': 200,     // 200次/月
+    'ULTRA': 1000   // 1000次/月
 };
 
 /**
@@ -163,22 +163,36 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
             return;
         }
 
-        // Calculate Monthly Usage & Remaining Quota
-        const currentMonthStart = new Date();
-        currentMonthStart.setDate(1);
-        currentMonthStart.setHours(0, 0, 0, 0);
-
-        const usageCount = await prisma.usageLog.count({
-            where: {
-                userId: user.id,
-                actionType: 'generate_document',
-                createdAt: {
-                    gte: currentMonthStart
-                }
-            }
-        });
-
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
+
+        // Calculate Usage & Remaining Quota
+        let usageCount = 0;
+
+        if (userTier === 'FREE') {
+            // 免费用户：无论何时，只计算总数
+            usageCount = await prisma.usageLog.count({
+                where: {
+                    userId: user.id,
+                    actionType: 'generate_document'
+                }
+            });
+        } else {
+            // 付费用户：按自然月计算
+            const currentMonthStart = new Date();
+            currentMonthStart.setDate(1);
+            currentMonthStart.setHours(0, 0, 0, 0);
+
+            usageCount = await prisma.usageLog.count({
+                where: {
+                    userId: user.id,
+                    actionType: 'generate_document',
+                    createdAt: {
+                        gte: currentMonthStart
+                    }
+                }
+            });
+        }
+
         const limit = TIER_LIMITS[userTier] || 10;
         const remainingQuota = Math.max(0, limit - usageCount);
 

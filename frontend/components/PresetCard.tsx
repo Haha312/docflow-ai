@@ -1,5 +1,6 @@
 import React from 'react';
 import { PresetConfig } from '../types';
+import { useTranslation } from 'react-i18next';
 
 interface PresetCardProps {
   config: PresetConfig;
@@ -8,6 +9,10 @@ interface PresetCardProps {
 }
 
 export const PresetCard: React.FC<PresetCardProps> = ({ config, isSelected, onSelect }) => {
+  const { t } = useTranslation();
+  const titleKey = `home.preset_${config.id.toLowerCase().replace('-', '_')}`;
+  const descKey = `home.preset_${config.id.toLowerCase().replace('-', '_')}_desc`;
+
   return (
     <div
       onClick={() => onSelect(config.id)}
@@ -37,8 +42,11 @@ export const PresetCard: React.FC<PresetCardProps> = ({ config, isSelected, onSe
 
       <div className="min-w-0">
         <h3 className={`font-medium text-sm truncate ${isSelected ? 'text-emerald-900 font-semibold' : 'text-gray-700'}`}>
-          {config.title}
+          {t(titleKey, config.title)}
         </h3>
+        <p className="text-xs mt-1 text-gray-500 line-clamp-2 leading-relaxed">
+          {t(descKey, config.description)}
+        </p>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import './i18n'; // <-- Added here
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
 
