@@ -71,11 +71,12 @@ function Home() {
   };
 
   useEffect(() => {
-    if (shouldAutoScroll && previewContainerRef.current) {
+    // 只在生成期间自动滚动，生成完成后用户可以自由滚动查看内容
+    if (shouldAutoScroll && aiState.isThinking && previewContainerRef.current) {
       const el = previewContainerRef.current;
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
-  }, [displayedText, shouldAutoScroll]);
+  }, [displayedText, shouldAutoScroll, aiState.isThinking]);
 
   const handlePreviewScroll = () => {
     if (previewContainerRef.current) {
@@ -108,8 +109,8 @@ function Home() {
       setAiState(prev => ({
         ...prev,
         isThinking: false,
-        error: "已手动停止生成",
-        progressStep: "已停止",
+        error: t('home.stopped_manually', "已手动停止生成"),
+        progressStep: t('home.stopped_manually', "已停止"),
         progress: 0
       }));
     }
@@ -127,8 +128,9 @@ function Home() {
       return;
     }
 
-    setAiState({ isThinking: true, error: null, progressStep: '正在分析文档结构...', progress: 0 });
+    setAiState({ isThinking: true, error: null, progressStep: t('home.analyzing', '正在分析文档结构...'), progress: 0 });
     setOutputText('');
+    setShouldAutoScroll(true); // 每次新生成重置自动滚动
 
     // Initial Estimate
     const estimatedSec = calculateEstimate(inputText.length);
@@ -159,7 +161,7 @@ function Home() {
           if (progressData) {
             const pct = Math.round((progressData.current / progressData.total) * 100);
             const remaining = progressData.estimatedRemainingSeconds
-              ? ` (预计剩余 ${Math.ceil(progressData.estimatedRemainingSeconds)} 秒)`
+              ? t('home.estimated_time', ' (预计剩余 {{seconds}} 秒)', { seconds: Math.ceil(progressData.estimatedRemainingSeconds) })
               : '';
             setAiState(prev => ({
               ...prev,
@@ -175,9 +177,9 @@ function Home() {
 
       clearInterval(progressTimer);
       if (abortControllerRef.current !== null) {
-        setAiState(prev => ({ ...prev, progress: 100, progressStep: '排版生成完毕' }));
+        setAiState(prev => ({ ...prev, progress: 100, progressStep: t('home.generation_complete', '排版生成完毕') }));
         await new Promise(r => setTimeout(r, 600));
-        setAiState({ isThinking: false, error: null, progressStep: '完成', progress: 0 });
+        setAiState({ isThinking: false, error: null, progressStep: t('home.done', '完成'), progress: 0 });
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
         await refreshUser();
@@ -186,16 +188,16 @@ function Home() {
     } catch (err: any) {
       clearInterval(progressTimer);
       if (err.message === 'QUOTA_EXCEEDED') {
-        setAiState({ isThinking: false, error: "今日额度已用尽,升级 Pro 享受无限生成", progressStep: '', progress: 0 });
+        setAiState({ isThinking: false, error: t('home.quota_exceeded', "免费额度已用尽，升级 Pro 享受无限生成"), progressStep: '', progress: 0 });
         setTimeout(() => setShowPricingModal(true), 1000);
       } else if (err.message === 'LOGIN_REQUIRED') {
-        setAiState({ isThinking: false, error: "登录已失效,请重新登录", progressStep: '', progress: 0 });
+        setAiState({ isThinking: false, error: t('home.login_required', "登录已失效,请重新登录"), progressStep: '', progress: 0 });
         setTimeout(() => setShowAuthModal(true), 1000);
       } else if (err.message === 'ABORT_ERR' || err.name === 'AbortError') {
-        setAiState({ isThinking: false, error: "已手动停止生成", progressStep: '', progress: 0 });
+        setAiState({ isThinking: false, error: t('home.stopped_manually', "已手动停止生成"), progressStep: '', progress: 0 });
       } else {
         console.error("Processing error:", err);
-        setAiState({ isThinking: false, error: err.message || "文档处理失败,请重试。", progressStep: '', progress: 0 });
+        setAiState({ isThinking: false, error: err.message || t('home.processing_failed', "文档处理失败,请重试。"), progressStep: '', progress: 0 });
       }
     } finally {
       if (abortControllerRef.current === controller) {
@@ -247,9 +249,11 @@ function Home() {
   };
 
   const getRenderedContent = () => {
-    if (!displayedText) return '';
+    // 生成完成后直接用完整 outputText，生成中才用 typewriter 的 displayedText
+    const textToRender = aiState.isThinking ? displayedText : outputText;
+    if (!textToRender) return '';
     // Match Display Math ($$...$$) OR Inline Math ($...$)
-    return displayedText.replace(/(\$\$[\s\S]*?\$\$|\$([^\$\n]+)\$)/g, (match) => {
+    return textToRender.replace(/(\$\$[\s\S]*?\$\$|\$([^\$\n]+)\$)/g, (match) => {
       try {
         const isDisplay = match.startsWith('$$');
         const tex = isDisplay
@@ -272,7 +276,16 @@ function Home() {
   const generatePreviewStyles = () => {
     const s = activeStyle;
     return `
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes shimmer {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(200%); }
+      }
       #preview-content {
+        animation: fadeInUp 0.35s ease;
         font-family: ${getPreviewFontStack(s.fontFamily)};
         font-size: ${s.baseSize};
         line-height: ${s.lineHeight};
@@ -289,8 +302,9 @@ function Home() {
       #preview-content h4 { font-family: ${getPreviewFontStack(s.h4Font || s.headingFont)}; font-size: ${s.h4Size}; font-weight: ${s.h4Bold ? 'bold' : 'normal'}; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.h4Indent}; }
       #preview-content .doc-title { font-size: 26pt; text-align: center; margin-bottom: 1em; column-span: all; }
       #preview-content table { width: 100%; border-collapse: collapse; margin: 1em 0; font-family: ${getPreviewFontStack(s.tableFont)}; font-size: ${s.tableSize}; }
-      #preview-content th, #preview-content td { border: 1px solid #e5e5e5; padding: 8px 12px; text-align: left; }
+      #preview-content th, #preview-content td { border: 1px solid #e5e5e5; padding: 8px 12px; text-align: left; text-indent: 0; }
       #preview-content td p, #preview-content th p { text-indent: 0; margin: 0; }
+      #preview-content td li, #preview-content th li { text-indent: 0; }
       #preview-content th { background-color: #f9fafb; font-weight: 600; }
       #preview-content .table-caption, #preview-content caption { text-align: ${s.tableCaptionAlign}; font-family: ${getPreviewFontStack(s.tableCaptionFont)}; font-size: ${s.tableCaptionSize}; font-weight: 600; margin-bottom: 8px; display: block; }
       #preview-content .figure-caption { text-align: ${s.figureAlign || 'center'}; font-family: ${getPreviewFontStack(s.figureFont || s.fontFamily)}; font-size: ${s.figureSize || '9pt'}; font-weight: 600; margin-top: 12px; margin-bottom: 24px; }
@@ -520,7 +534,7 @@ function Home() {
                 <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
                   <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">{t('home.result_text', '结果')}</span>
                   {selectedPreset && (
-                    <span className="text-xs text-gray-500">{activePresetConfig.title}</span>
+                    <span className="text-xs text-gray-500">{t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}</span>
                   )}
                 </div>
 
@@ -533,31 +547,47 @@ function Home() {
                 >
                   {outputText ? (
                     <>
-                      <div id="preview-content" dangerouslySetInnerHTML={{ __html: getRenderedContent() }} />
+                      {/* 生成中顶部流动进度条 */}
                       {aiState.isThinking && (
-                        <div className="mt-4 flex items-center justify-center gap-1.5 text-gray-400 py-4">
-                          <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                          <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                          <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                        <div className="h-[2px] bg-gray-100 relative overflow-hidden flex-shrink-0">
+                          <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-500 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
                         </div>
+                      )}
+                      <div id="preview-content" dangerouslySetInnerHTML={{ __html: getRenderedContent() }} />
+                      {/* 生成中光标 */}
+                      {aiState.isThinking && (
+                        <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
                       )}
                     </>
                   ) : aiState.isThinking ? (
-                    <div className="h-full flex flex-col items-center justify-center">
-                      <div className="relative w-12 h-12">
-                        <svg className="animate-spin h-12 w-12 text-gray-300" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-xs font-medium text-gray-500">{Math.round(aiState.progress)}%</span>
-                        </div>
+                    /* 等待开始：极简状态区 */
+                    <div className="h-full flex flex-col items-center justify-center gap-6">
+                      {/* 三点足跡动画 */}
+                      <div className="flex gap-1.5">
+                        {[0, 1, 2].map(i => (
+                          <div
+                            key={i}
+                            className="w-2 h-2 rounded-full bg-gray-300"
+                            style={{ animation: `bounce 1.4s ease-in-out ${i * 0.16}s infinite` }}
+                          />
+                        ))}
                       </div>
-                      <p className="mt-4 text-sm text-gray-500">{aiState.progressStep}</p>
+                      <div className="text-center">
+                        <p className="text-sm font-medium text-gray-700">{aiState.progressStep || t('home.processing_doc', '正在处理文档...')}</p>
+                        <p className="mt-1 text-xs text-gray-400">{t('home.model_thinking', '模型思考中，请稍候')}</p>
+                      </div>
+                      {aiState.progress > 0 && (
+                        <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gray-400 rounded-full transition-all duration-700 ease-out"
+                            style={{ width: `${Math.max(3, aiState.progress)}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-gray-300">
-                      <svg className="w-16 h-16 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                      <svg className="w-12 h-12 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
                         <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
                         <line x1="8" y1="6" x2="16" y2="6"></line>
                         <line x1="8" y1="10" x2="16" y2="10"></line>
@@ -578,7 +608,7 @@ function Home() {
         onClose={() => setStyleEditorOpen(false)}
         config={activeStyle}
         onUpdate={handleStyleUpdate}
-        presetTitle={activePresetConfig.title}
+        presetTitle={t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}
       />
       <ProductRequirements isOpen={showPRD} onClose={() => setShowPRD(false)} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />

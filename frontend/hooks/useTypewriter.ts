@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export const useTypewriter = (outputText: string, speed: number = 10) => {
+export const useTypewriter = (outputText: string, speed: number = 8) => {
     const [displayedText, setDisplayedText] = useState<string>('');
 
     useEffect(() => {
@@ -14,12 +14,12 @@ export const useTypewriter = (outputText: string, speed: number = 10) => {
 
         const timer = setTimeout(() => {
             const remaining = outputText.length - displayedText.length;
-            // Adaptive speed: faster if behind
-            // If very far behind (>1000 chars), add 50 chars per frame
-            // If moderately behind (>200 chars), add 10 chars per frame
-            // Otherwise, smooth typing (3 chars per frame)
-            const chunk = remaining > 1000 ? 50 : remaining > 200 ? 10 : 3;
-
+            // Adaptive speed: faster when far behind so content feels fluid
+            // > 2000 chars behind: jump 200 chars/frame (catch-up mode)
+            // > 500 chars behind:  jump 50 chars/frame  (fast mode)
+            // > 100 chars behind:  jump 15 chars/frame  (medium mode)
+            // otherwise:           smooth 5 chars/frame (smooth mode)
+            const chunk = remaining > 2000 ? 200 : remaining > 500 ? 50 : remaining > 100 ? 15 : 5;
             setDisplayedText(outputText.slice(0, displayedText.length + chunk));
         }, speed);
 

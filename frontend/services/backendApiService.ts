@@ -63,20 +63,15 @@ export async function generateDocumentViaBackend(
 
     const decoder = new TextDecoder();
     let fullText = '';
-    let buffer = ''; // Buffer for incomplete SSE lines
+    let buffer = '';
 
     try {
         while (true) {
             const { done, value } = await reader.read();
-
             if (done) break;
 
-            // 解码数据块并追加到 buffer
             buffer += decoder.decode(value, { stream: true });
-
-            // 处理 buffer 中完整的 SSE 事件 (以 \n\n 结尾)
             const events = buffer.split('\n\n');
-            // 最后一个元素可能是不完整的,保留在 buffer 中
             buffer = events.pop() || '';
 
             for (const event of events) {
@@ -87,30 +82,28 @@ export async function generateDocumentViaBackend(
                         try {
                             const data = JSON.parse(dataStr);
 
-                            // 检查是否有错误
-                            if (data.error) {
-                                throw new Error(data.error);
+                            if (data.error) throw new Error(data.error);
+                            if (data.done) return fullText;
+
+                            // ping 事件 — 只更新进度，不改变内容
+                            if (data.ping) {
+                                onProgress(fullText, data.progress);
+                                continue;
                             }
 
-                            // 检查是否完成
-                            if (data.done) {
-                                return fullText;
-                            }
-
-                            // Delta Mode (More efficient)
+                            // delta — 追加内容
                             if (data.delta) {
                                 fullText += data.delta;
                                 onProgress(fullText, data.progress);
                             }
-                            // Legacy Mode (Full Replacement)
+                            // legacy full replacement
                             else if (data.text) {
                                 fullText = data.text;
                                 onProgress(fullText, data.progress);
                             }
                         } catch (e) {
-                            // 忽略 JSON 解析错误 (可能是不完整的数据块)
                             if (e instanceof SyntaxError) {
-                                console.warn('SSE JSON parse error, skipping:', dataStr.substring(0, 100));
+                                console.warn('SSE parse error, skipping:', dataStr.substring(0, 100));
                                 continue;
                             }
                             throw e;
@@ -119,7 +112,6 @@ export async function generateDocumentViaBackend(
                 }
             }
         }
-
         return fullText;
     } finally {
         reader.releaseLock();

@@ -62,15 +62,8 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
         // 2. Advanced: Extract raw XML text to capture Native Word Formulas (OMML)
         try {
           const rawContext = await extractRawTextWithFormulas(arrayBuffer);
-
-          // 简单的小字提示,表示已捕获公式
-          if (rawContext && rawContext.includes("$$")) {
-            finalContent += `
-              <p style="margin-top: 24px; font-size: 12px; color: #71717a; text-align: center;">
-                ${t('home.formula_extracted', '✓ 已自动识别并提取 Word 公式数据')}
-              </p>
-            `;
-          }
+          // 公式提取成功但不追加任何提示文字到内容中（避免被导出到 Word）
+          console.log('Formula extraction:', rawContext?.includes("$$") ? 'found formulas' : 'no formulas');
         } catch (xmlErr) {
           console.warn("Failed to extract raw XML context", xmlErr);
         }

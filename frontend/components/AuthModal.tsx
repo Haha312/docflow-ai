@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
 
@@ -23,6 +24,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [countdown, setCountdown] = useState(0);
 
   const { login, register } = useAuth();
+  const { t } = useTranslation();
 
   // Load Captcha when switching to register
   React.useEffect(() => {
@@ -43,7 +45,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
   const handleSendCode = async () => {
     if (!email || !captchaInput) {
-      setError('请填写邮箱和图形验证码');
+      setError(t('auth.error_fill_captcha', '请填写邮箱和图形验证码'));
       return;
     }
     setError('');
@@ -61,7 +63,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         });
       }, 1000);
     } catch (e: any) {
-      setError(e.message || '发送失败');
+      setError(e.message || t('auth.error_send_failed', '发送失败'));
       refreshCaptcha();
     } finally {
       setIsLoading(false);
@@ -88,7 +90,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       setEmailCode('');
       setCountdown(0);
     } catch (err: any) {
-      setError(err.message || '操作失败,请重试');
+      setError(err.message || t('auth.error_operation_failed', '操作失败,请重试'));
     } finally {
       setIsLoading(false);
     }
@@ -124,8 +126,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               </svg>
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">{mode === 'login' ? '欢迎回来' : '创建账号'}</h2>
-              <p className="text-sm text-gray-500">{mode === 'login' ? '登录以继续使用' : '注册开始使用'}</p>
+              <h2 className="text-xl font-semibold text-gray-900">{mode === 'login' ? t('auth.welcome_back', '欢迎回来') : t('auth.create_account', '创建账号')}</h2>
+              <p className="text-sm text-gray-500">{mode === 'login' ? t('auth.login_to_continue', '登录以继续使用') : t('auth.register_to_start', '注册开始使用')}</p>
             </div>
           </div>
         </div>
@@ -135,7 +137,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
-                邮箱地址
+                {t('auth.email_address', '邮箱地址')}
               </label>
               <input
                 id="email"
@@ -151,7 +153,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
-                密码
+                {t('auth.password', '密码')}
               </label>
               <div className="relative">
                 <input
@@ -159,7 +161,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="至少 6 位字符"
+                  placeholder={t('auth.password_placeholder', '至少 6 位字符')}
                   minLength={6}
                   required
                   disabled={isLoading}
@@ -184,31 +186,31 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               <>
                 {/* Captcha */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">图形验证码</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('auth.captcha', '图形验证码')}</label>
                   <div className="flex gap-3">
                     <input
                       value={captchaInput}
                       onChange={(e) => setCaptchaInput(e.target.value)}
-                      placeholder="输入右侧字符"
+                      placeholder={t('auth.captcha_placeholder', '输入右侧字符')}
                       className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                     />
                     <div
                       className="h-[46px] w-[100px] bg-gray-100 rounded-xl overflow-hidden cursor-pointer border border-gray-200"
                       onClick={refreshCaptcha}
                       dangerouslySetInnerHTML={{ __html: captchaImage }}
-                      title="点击刷新"
+                      title={t('auth.click_to_refresh', '点击刷新')}
                     />
                   </div>
                 </div>
 
                 {/* Email Code */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">邮箱验证码</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('auth.email_code', '邮箱验证码')}</label>
                   <div className="flex gap-3">
                     <input
                       value={emailCode}
                       onChange={(e) => setEmailCode(e.target.value)}
-                      placeholder="输入6位验证码"
+                      placeholder={t('auth.email_code_placeholder', '输入6位验证码')}
                       className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                     />
                     <button
@@ -217,7 +219,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                       disabled={countdown > 0 || isLoading || !email || !captchaInput}
                       className="px-4 py-3 bg-gray-900 text-white text-sm font-medium rounded-xl hover:bg-gray-800 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors min-w-[100px]"
                     >
-                      {countdown > 0 ? `${countdown}s` : '获取验证码'}
+                      {countdown > 0 ? `${countdown}s` : t('auth.get_code', '获取验证码')}
                     </button>
                   </div>
                 </div>
@@ -242,10 +244,10 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  处理中...
+                  {t('auth.processing', '处理中...')}
                 </span>
               ) : (
-                mode === 'login' ? '登录' : '创建账号'
+                mode === 'login' ? t('auth.login_btn', '登录') : t('auth.create_account', '创建账号')
               )}
             </button>
           </form>
@@ -253,26 +255,26 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
           <div className="mt-6 pt-6 border-t border-gray-100 text-center text-sm text-gray-500">
             {mode === 'login' ? (
               <p>
-                还没有账号?{' '}
+                {t('auth.no_account', '还没有账号? ')}
                 <button
                   type="button"
                   onClick={switchMode}
                   disabled={isLoading}
                   className="text-gray-900 font-medium hover:underline disabled:text-gray-400"
                 >
-                  立即注册
+                  {t('auth.register_now', '立即注册')}
                 </button>
               </p>
             ) : (
               <p>
-                已有账号?{' '}
+                {t('auth.has_account', '已有账号? ')}
                 <button
                   type="button"
                   onClick={switchMode}
                   disabled={isLoading}
                   className="text-gray-900 font-medium hover:underline disabled:text-gray-400"
                 >
-                  立即登录
+                  {t('auth.login_now', '立即登录')}
                 </button>
               </p>
             )}

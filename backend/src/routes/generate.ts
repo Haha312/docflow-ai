@@ -30,11 +30,8 @@ const TIER_LIMITS = {
     'ULTRA': 1000   // 1000次/月
 };
 
-// 智能混合模型策略：
-// PRIMARY_MODEL - 高质量排版模型，用于第一个 chunk 建立文档格式标准
-// FAST_MODEL    - 快速模型，用于后续 chunk 跟随已建立的排版格式
+// 统一使用高质量排版模型
 const PRIMARY_MODEL = 'gemini-3-pro-preview';
-const FAST_MODEL = 'gemini-2.0-flash';
 
 // OpenAI Compatible API Call (for Gemini via proxy)
 async function* callOpenAICompatible(
@@ -60,7 +57,7 @@ async function* callOpenAICompatible(
                 { role: 'user', content: userContent }
             ],
             stream: true,
-            temperature: 0.7,
+            temperature: 0.1,
             max_tokens: maxTokens
         });
 
@@ -188,7 +185,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             - DO NOT rename them (e.g. to \`__IMG_1__\` if it was \`__IMG_0__\`).
             - DO NOT delete them. If input has 5 images, output MUST have 5 images.
 
-       5. **MATH & FORMULAS (HIGHEST PRIORITY)**:
+       5. **MATH & FORMULAS & VARIABLES (HIGHEST PRIORITY)**:
           - Use **LaTeX** for ALL mathematical expressions (e.g. variables \`$x$\`, equations).
           - DELIMITERS:
              - Use \`$$\` for Display/Block Math (e.g. \`$$ E=mc^2 $$\`).
@@ -197,8 +194,14 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
              - Do NOT change variable names (e.g. \`a_0\` must remain \`a_0\`).
              - Do NOT simplify or solve equations.
              - Reproduce the exact notation from the source text.
+          - **VARIABLE DEFINITION LISTS (CRITICAL)**:
+             - When the source text has patterns like "vx, vy: meaning" or "x, y——meaning" or "a0 constant term", treat these as **definition items**, NOT standalone list items.
+             - NEVER convert variable names (latin letters, subscripts) into Chinese punctuation "、" or "，".
+             - Keep the original variable identifiers (e.g. $v_x$, $v_y$) in their LaTeX form.
+             - Format each variable definition as: \`<p>$v_x$, $v_y$：第i个GCP的X/Y方向坐标残差</p>\`
+             - Do NOT turn "vx, vy：" into bullet points like "·、：" or "•、".
 
-      6. **IMAGES & FIGURES (CRITICAL)**:
+       6. **IMAGES & FIGURES (CRITICAL)**:
          - **MANDATORY**: Generate a FIGURE CAPTION for EVERY image based on context.
          - Position: **IMMEDIATELY BELOW** the image.
          - Format: \`<div class="figure-caption">图 {N} {Description}</div>\`
@@ -206,11 +209,12 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
            \`__IMG_0__\`
            \`<div class="figure-caption">图 1 系统架构示意图</div>\`
 
-      7. **TABLES (CRITICAL)**:
-         - **MANDATORY**: Generate a TABLE TITLE for EVERY table.
-         - Position: **IMMEDIATELY ABOVE** the table.
-         - Format: \`<div class="table-caption">表 {N} {Description}</div>\`
-         - Example: \`<div class="table-caption">表 1 价格方案对比</div>\n<table>...</table>\`
+       7. **TABLES (CRITICAL)**:
+          - **MANDATORY**: Generate a TABLE TITLE for EVERY table.
+          - Position: **IMMEDIATELY ABOVE** the table.
+          - Format: \`<div class="table-caption">表 {N} {Description}</div>\`
+          - Example: \`<div class="table-caption">表 1 价格方案对比</div>\n<table>...</table>\`
+          - **NO TEXT-INDENT in table cells**: Do NOT use text-indent in \`<td>\` or \`<th>\` content.
 
       8. **CAPTION STYLE**:
          - Use generic counters (图 1, 图 2... 表 1, 表 2...) unless specific numbering is required.
@@ -279,15 +283,17 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const imageCount = Object.keys(imageMap).length;
         if (imageCount > 0) console.log(`📷 Extracted ${imageCount} images`);
 
-        // 2. 语义切分 (ULTRA 用户跳过，直接单次处理)
+        // 2. 语义切分
+        // ULTRA 用户：单次全文处理，确保章节顺序和编号完全正确（SSE ping 保活连接）
+        // 普通用户：按 12000 chars 切分
         let chunks: string[] = [];
         if (userTier === 'ULTRA') {
-            console.log('🚀 ULTRA Mode: Skipping chunking for Gemini 3 Pro (Single Pass)');
+            console.log('🚀 ULTRA Mode: Single-pass full document processing');
             chunks = [contentWithoutImages];
         } else {
             chunks = splitContentBySemantics(contentWithoutImages);
         }
-        console.log(`🧩 Document split into ${chunks.length} smart chunks`);
+        console.log(`🧩 Document split into ${chunks.length} chunk(s)`);
 
         let lastContext = '';
 
@@ -296,13 +302,10 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        // 3. 循环处理 Chunks（智能模型选择）
+        // 3. 循环处理 Chunks
         for (let i = 0; i < chunks.length; i++) {
             const chunkContent = chunks[i];
-
-            // 智能模型选择：第一个 chunk 或单 chunk 用高质量模型，后续用快速模型
-            const isFirstOrOnly = i === 0 || chunks.length === 1;
-            const currentModel = isFirstOrOnly ? PRIMARY_MODEL : FAST_MODEL;
+            const currentModel = PRIMARY_MODEL;
             console.log(`Processing Chunk ${i + 1}/${chunks.length} (${chunkContent.length} chars) 🤖 Model: ${currentModel}`);
 
             // 动态构建 System Prompt
@@ -334,36 +337,46 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 // 检查是否使用 OpenAI Compatible 代理
                 const geminiOpenAIBaseUrl = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL;
 
-                if (geminiOpenAIBaseUrl) {
-                    // 使用 OpenAI Compatible Endpoint (如 hiapi.online)
-                    const maxTokens = userTier === 'ULTRA' ? 32000 : 16000;
-                    for await (const delta of callOpenAICompatible(geminiApiKey!, geminiOpenAIBaseUrl, currentSystemPrompt, userContent, currentModel, maxTokens)) {
-                        chunkOutput += delta;
-                    }
-                } else {
-                    // 使用原生 Google SDK
-                    const proxyUrl = process.env.HTTPS_PROXY || 'http://127.0.0.1:7890';
-                    const dispatcher = new ProxyAgent(proxyUrl);
-                    const customFetch = (url: string | URL, init?: any) => {
-                        return undiciFetch(url, { ...init, dispatcher });
-                    };
+                const statusText = chunks.length > 1
+                    ? `正在生成第 ${i + 1}/${chunks.length} 部分...`
+                    : `正在智能排版...`;
 
-                    const genAI = new GoogleGenerativeAI(geminiApiKey!);
-                    const model = genAI.getGenerativeModel(
-                        {
-                            model: currentModel,
-                            systemInstruction: currentSystemPrompt
-                        },
-                        { customFetch } as any
-                    );
-                    const result = await model.generateContentStream([userContent]);
-                    for await (const chunk of result.stream) {
-                        const txt = chunk.text();
-                        if (txt) chunkOutput += txt;
+                // 每隔 1s 发送进度 ping，让前端骨架屏进度条有响应
+                const pingInterval = setInterval(() => {
+                    res.write(`data: ${JSON.stringify({ ping: true, progress: { current: i + 1, total: chunks.length, status: statusText, estimatedRemainingSeconds: null } })}\n\n`);
+                }, 1000);
+
+                try {
+                    if (geminiOpenAIBaseUrl) {
+                        // 使用 OpenAI Compatible Endpoint (如 hiapi.online)
+                        const maxTokens = userTier === 'ULTRA' ? 32000 : 16000;
+                        for await (const delta of callOpenAICompatible(geminiApiKey!, geminiOpenAIBaseUrl, currentSystemPrompt, userContent, currentModel, maxTokens)) {
+                            chunkOutput += delta;
+                        }
+                    } else {
+                        // 使用原生 Google SDK
+                        const proxyUrl = process.env.HTTPS_PROXY || 'http://127.0.0.1:7890';
+                        const dispatcher = new ProxyAgent(proxyUrl);
+                        const customFetch = (url: string | URL, init?: any) => {
+                            return undiciFetch(url, { ...init, dispatcher });
+                        };
+
+                        const genAI = new GoogleGenerativeAI(geminiApiKey!);
+                        const model = genAI.getGenerativeModel(
+                            { model: currentModel, systemInstruction: currentSystemPrompt },
+                            { customFetch } as any
+                        );
+                        const result = await model.generateContentStream([userContent]);
+                        for await (const chunk of result.stream) {
+                            const txt = chunk.text();
+                            if (txt) chunkOutput += txt;
+                        }
                     }
+                } finally {
+                    clearInterval(pingInterval);
                 }
 
-                // Chunk 完成处理
+                // Chunk 完成后处理（cleanOutput 和图片还原需要完整文本）
                 let cleanChunk = cleanOutput(chunkOutput);
                 lastContext = cleanChunk.replace(/<[^>]+>/g, ' ');
 
@@ -374,13 +387,13 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
                 fullRestoredText += cleanChunk;
 
-                // 发送进度
+                // 发送完整干净的 chunk 给前端
                 res.write(`data: ${JSON.stringify({
                     delta: cleanChunk,
                     progress: {
                         current: i + 1,
                         total: chunks.length,
-                        status: `正在生成第 ${i + 1}/${chunks.length} 部分...`,
+                        status: `第 ${i + 1}/${chunks.length} 部分完成`,
                         estimatedRemainingSeconds: (chunks.length - (i + 1)) * 15
                     }
                 })}\n\n`);

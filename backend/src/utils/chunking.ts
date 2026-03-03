@@ -14,14 +14,11 @@ export interface Chunk {
 
 /**
  * 估算 Token 数量 (简单按字符数估算, 中文 1 char ≈ 1-2 tokens)
- * 保守起见，我们按字符数切分，Doubao 支持 128k input，但 output 有限。
- * output 通常限制在 4k-16k。
- * 假设排版后的 HTML 膨胀率为 1.5倍。
- * 6000字符输入 -> 约 9000 输出字符 -> 约 4500-5000 tokens。
- * 这对 Doubao (4k-8k output) 和 Gemini (8k output) 都可接受。
- * 更大的块 = 更少的 API 调用 = 更快的速度。
+ * Gemini 3 Pro Preview 支持大上下文窗口和 16k output。
+ * 12000 字符输入 -> 约 18000 输出字符 -> 约 12000-14000 tokens。
+ * 更大的块 = 更少的 API 调用 = 更快的速度，同时保持在模型输出限制内。
  */
-const CHUNK_SIZE_CHARS = 6000;
+const CHUNK_SIZE_CHARS = 12000;
 const OVERLAP_CHARS = 500; // 重叠上下文长度 (用于 prompt context, 不用于实际 content 重叠)
 
 // 实际上我们不需要物理重叠 content (这会导致重复输出)，
