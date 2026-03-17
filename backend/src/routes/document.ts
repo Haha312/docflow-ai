@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+﻿import { Router, Response } from 'express';
 import { AuthRequest } from '../types';
 import { successResponse, errorResponse } from '../utils/response';
 import { authenticate } from '../middleware/auth';
@@ -7,13 +7,14 @@ import prisma from '../config/database';
 const router = Router();
 
 // 保存文档
-router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
+router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const userId = req.user!.id;
         const { title, content, preset, wordCount } = req.body;
 
         if (!title || !content) {
-            return res.status(400).json(errorResponse('标题和内容不能为空', 400));
+            res.status(400).json(errorResponse('标题和内容不能为空', 400));
+            return;
         }
 
         const document = await prisma.document.create({
@@ -34,7 +35,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // 获取文档列表
-router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const userId = req.user!.id;
         const page = parseInt(req.query.page as string) || 1;
@@ -53,7 +54,6 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
                     preset: true,
                     wordCount: true,
                     createdAt: true
-                    // 不返回 connect 以减少传输量
                 }
             }),
             prisma.document.count({ where: { userId } })
@@ -75,21 +75,23 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // 获取特定文档详情
-router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
+router.get('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const userId = req.user!.id;
-        const { id } = req.params;
+        const id = String(req.params.id || '');
 
         const document = await prisma.document.findUnique({
             where: { id }
         });
 
         if (!document) {
-            return res.status(404).json(errorResponse('文档不存在', 404));
+            res.status(404).json(errorResponse('文档不存在', 404));
+            return;
         }
 
         if (document.userId !== userId) {
-            return res.status(403).json(errorResponse('无权访问该文档', 403));
+            res.status(403).json(errorResponse('无权访问该文档', 403));
+            return;
         }
 
         res.json(successResponse(document));
@@ -100,21 +102,23 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // 删除文档
-router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const userId = req.user!.id;
-        const { id } = req.params;
+        const id = String(req.params.id || '');
 
         const document = await prisma.document.findUnique({
             where: { id }
         });
 
         if (!document) {
-            return res.status(404).json(errorResponse('文档不存在', 404));
+            res.status(404).json(errorResponse('文档不存在', 404));
+            return;
         }
 
         if (document.userId !== userId) {
-            return res.status(403).json(errorResponse('无权删除该文档', 403));
+            res.status(403).json(errorResponse('无权删除该文档', 403));
+            return;
         }
 
         await prisma.document.delete({

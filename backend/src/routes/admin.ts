@@ -1,17 +1,30 @@
-import express, { Request, Response } from 'express';
+import express, { Response } from 'express';
 import prisma from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest } from '../types';
 
 const router = express.Router();
 
-// Middleware to check for Admin Email
-const requireAdmin = (req: AuthRequest, res: Response, next: express.NextFunction) => {
-    if (!req.user || req.user.email !== 'admin@docuflow.ai') {
-        res.status(403).json({ error: 'Access Denied: Admins Only' });
-        return;
+// Middleware to check for Admin
+const requireAdmin = async (req: AuthRequest, res: Response, next: express.NextFunction) => {
+    try {
+        // Read admin emails from SystemConfig, fallback to hardcoded default
+        let adminEmails = ['admin@docuflow.ai'];
+        try {
+            const config = await prisma.systemConfig.findUnique({ where: { key: 'ADMIN_EMAILS' } });
+            if (config?.value) {
+                adminEmails = config.value.split(',').map((e: string) => e.trim().toLowerCase());
+            }
+        } catch { /* SystemConfig may not exist yet */ }
+
+        if (!req.user || !adminEmails.includes(req.user.email.toLowerCase())) {
+            res.status(403).json({ error: 'Access Denied: Admins Only' });
+            return;
+        }
+        next();
+    } catch (error) {
+        res.status(500).json({ error: 'Admin check failed' });
     }
-    next();
 };
 
 /**
@@ -217,7 +230,7 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
  */
 router.post('/users/:id', authenticate, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-        const userId = req.params.id;
+        const userId = String(req.params.id || '');
         const { subscriptionStatus, additionalDays } = req.body;
 
         const data: any = {};
@@ -253,7 +266,7 @@ router.post('/users/:id', authenticate, requireAdmin, async (req: AuthRequest, r
  * GET /api/admin/config
  * Get System Configuration
  */
-router.get('/config', authenticate, requireAdmin, async (req: AuthRequest, res) => {
+router.get('/config', authenticate, requireAdmin, async (_req: AuthRequest, res) => {
     try {
         const configs = await prisma.systemConfig.findMany();
         // Convert array to object

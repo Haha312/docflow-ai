@@ -158,6 +158,29 @@ export function DocumentList() {
         ))}
       </div>
 
+      {/* Pagination */}
+      {total > 20 && (
+        <div className="pagination">
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            className="page-btn"
+          >
+            {t('admin.prev_page', '上一页')}
+          </button>
+          <span className="page-info">
+            {t('admin.page_info', { page, total: Math.ceil(total / 20) })}
+          </span>
+          <button
+            disabled={page >= Math.ceil(total / 20)}
+            onClick={() => setPage(p => p + 1)}
+            className="page-btn"
+          >
+            {t('admin.next_page', '下一页')}
+          </button>
+        </div>
+      )}
+
       <style>{`
         .document-list {
           margin-top: 1rem;
@@ -251,6 +274,43 @@ export function DocumentList() {
 
         .error {
           color: #dc2626;
+        }
+
+        .pagination {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 1rem;
+          margin-top: 1rem;
+          padding-top: 0.75rem;
+          border-top: 1px solid #e5e7eb;
+        }
+
+        .page-btn {
+          padding: 6px 16px;
+          font-size: 0.8rem;
+          font-weight: 500;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          background: white;
+          color: #374151;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .page-btn:hover:not(:disabled) {
+          background: #f9fafb;
+          border-color: #d1d5db;
+        }
+
+        .page-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+
+        .page-info {
+          font-size: 0.8rem;
+          color: #6b7280;
         }
       `}</style>
     </div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -15,12 +16,16 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     isOpen,
     title,
     message,
-    confirmText = '确定',
-    cancelText = '取消',
+    confirmText,
+    cancelText,
     onConfirm,
     onCancel,
     variant = 'warning'
 }) => {
+    const { t } = useTranslation();
+    const finalConfirmText = confirmText || t('common.confirm', '确定');
+    const finalCancelText = cancelText || t('common.cancel', '取消');
+
     if (!isOpen) return null;
 
     const variantStyles = {
@@ -55,7 +60,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             />
 
             {/* Dialog */}
-            <div className="relative bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="relative bg-white border border-gray-200 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
                 {/* Header with Icon */}
                 <div className="flex items-start gap-4 p-6 pb-4">
                     <div className={`flex-shrink-0 w-12 h-12 rounded-xl ${style.iconBg} flex items-center justify-center text-2xl`}>
@@ -63,11 +68,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                     </div>
                     <div className="flex-1 min-w-0">
                         {title && (
-                            <h3 className="text-lg font-semibold text-white mb-1">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-1">
                                 {title}
                             </h3>
                         )}
-                        <p className="text-sm text-white/70 leading-relaxed">
+                        <p className="text-sm text-gray-600 leading-relaxed">
                             {message}
                         </p>
                     </div>
@@ -77,15 +82,15 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 <div className="flex items-center gap-3 px-6 pb-6 pt-2">
                     <button
                         onClick={onCancel}
-                        className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white/70 bg-white/5 hover:bg-white/10 border border-white/10 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-white/20"
+                        className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-300"
                     >
-                        {cancelText}
+                        {finalCancelText}
                     </button>
                     <button
                         onClick={onConfirm}
                         className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white ${style.confirmBtn} transition-all duration-200 focus:outline-none focus:ring-2 shadow-lg`}
                     >
-                        {confirmText}
+                        {finalConfirmText}
                     </button>
                 </div>
             </div>

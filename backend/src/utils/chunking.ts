@@ -1,7 +1,7 @@
-
+﻿
 /**
  * Smart Chunking Utility
- * 用于将长文档语义化切分为适合 LLM 处理的片段
+ * 鐢ㄤ簬灏嗛暱鏂囨。璇箟鍖栧垏鍒嗕负閫傚悎 LLM 澶勭悊鐨勭墖娈?
  */
 
 export interface Chunk {
@@ -13,16 +13,15 @@ export interface Chunk {
 }
 
 /**
- * 估算 Token 数量 (简单按字符数估算, 中文 1 char ≈ 1-2 tokens)
- * Gemini 3 Pro Preview 支持大上下文窗口和 16k output。
- * 12000 字符输入 -> 约 18000 输出字符 -> 约 12000-14000 tokens。
- * 更大的块 = 更少的 API 调用 = 更快的速度，同时保持在模型输出限制内。
+ * 浼扮畻 Token 鏁伴噺 (绠€鍗曟寜瀛楃鏁颁及绠? 涓枃 1 char 鈮?1-2 tokens)
+ * Gemini 3 Pro Preview 鏀寔澶т笂涓嬫枃绐楀彛鍜?16k output銆?
+ * 12000 瀛楃杈撳叆 -> 绾?18000 杈撳嚭瀛楃 -> 绾?12000-14000 tokens銆?
+ * 鏇村ぇ鐨勫潡 = 鏇村皯鐨?API 璋冪敤 = 鏇村揩鐨勯€熷害锛屽悓鏃朵繚鎸佸湪妯″瀷杈撳嚭闄愬埗鍐呫€?
  */
 const CHUNK_SIZE_CHARS = 12000;
-const OVERLAP_CHARS = 500; // 重叠上下文长度 (用于 prompt context, 不用于实际 content 重叠)
 
-// 实际上我们不需要物理重叠 content (这会导致重复输出)，
-// 我们需要的是将上一段的末尾作为 Context 传给 AI。
+// 瀹為檯涓婃垜浠笉闇€瑕佺墿鐞嗛噸鍙?content (杩欎細瀵艰嚧閲嶅杈撳嚭)锛?
+// 鎴戜滑闇€瑕佺殑鏄皢涓婁竴娈电殑鏈熬浣滀负 Context 浼犵粰 AI銆?
 
 export const splitContentBySemantics = (content: string, maxChars: number = CHUNK_SIZE_CHARS): string[] => {
     if (content.length <= maxChars) {
@@ -33,24 +32,24 @@ export const splitContentBySemantics = (content: string, maxChars: number = CHUN
     let processed = 0;
 
     while (processed < content.length) {
-        // 剩余内容是否足够小
+        // 鍓╀綑鍐呭鏄惁瓒冲灏?
         if (content.length - processed <= maxChars) {
             chunks.push(content.slice(processed));
             break;
         }
 
-        // 寻找最佳切分点
+        // 瀵绘壘鏈€浣冲垏鍒嗙偣
         let splitIndex = processed + maxChars;
 
-        // 向前搜索最近的段落结束符 (\n\n)
-        // 搜索范围：splitIndex 往前 1000 字符
+        // 鍚戝墠鎼滅储鏈€杩戠殑娈佃惤缁撴潫绗?(\n\n)
+        // 鎼滅储鑼冨洿锛歴plitIndex 寰€鍓?1000 瀛楃
         const searchWindow = content.slice(Math.max(processed, splitIndex - 1000), splitIndex);
 
-        // 优先级 1: 双换行 (段落)
+        // 浼樺厛绾?1: 鍙屾崲琛?(娈佃惤)
         const lastDoubleLine = searchWindow.lastIndexOf('\n\n');
-        // 优先级 2: 单换行
+        // 浼樺厛绾?2: 鍗曟崲琛?
         const lastSingleLine = searchWindow.lastIndexOf('\n');
-        // 优先级 3: 句子结束符 (。！？)
+        // 浼樺厛绾?3: 鍙ュ瓙缁撴潫绗?(銆傦紒锛?
         const lastSentenceEnd = Math.max(
             searchWindow.lastIndexOf('。'),
             searchWindow.lastIndexOf('！'),
@@ -60,21 +59,21 @@ export const splitContentBySemantics = (content: string, maxChars: number = CHUN
         let cutPointRel = -1;
 
         if (lastDoubleLine !== -1) {
-            cutPointRel = lastDoubleLine + 2; // 包括换行符
+            cutPointRel = lastDoubleLine + 2; // 鍖呮嫭鎹㈣绗?
         } else if (lastSingleLine !== -1) {
             cutPointRel = lastSingleLine + 1;
         } else if (lastSentenceEnd !== -1) {
-            cutPointRel = lastSentenceEnd + 1; // 包括标点
+            cutPointRel = lastSentenceEnd + 1; // 鍖呮嫭鏍囩偣
         }
 
         if (cutPointRel !== -1) {
-            // 找到了语义切分点
-            // searchWindow 的起始位置是 Math.max(processed, splitIndex - 1000)
+            // 鎵惧埌浜嗚涔夊垏鍒嗙偣
+            // searchWindow 鐨勮捣濮嬩綅缃槸 Math.max(processed, splitIndex - 1000)
             const windowStart = Math.max(processed, splitIndex - 1000);
             splitIndex = windowStart + cutPointRel;
         } else {
-            // 实在找不到（比如超长的一段无标点文本），强制切分
-            // 保持 splitIndex = processed + maxChars
+            // 瀹炲湪鎵句笉鍒帮紙姣斿瓒呴暱鐨勪竴娈垫棤鏍囩偣鏂囨湰锛夛紝寮哄埗鍒囧垎
+            // 淇濇寔 splitIndex = processed + maxChars
         }
 
         chunks.push(content.slice(processed, splitIndex));

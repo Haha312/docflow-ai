@@ -1,6 +1,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { DocPreset, StyleConfig } from "../types";
+import i18n from '../i18n';
 
 // Helper to generate instructions based on the numbering style
 const getNumberingInstruction = (style: string): string => {
@@ -90,7 +91,7 @@ const htmlToParts = (html: string): any[] => {
   const parts: any[] = [];
   // Regex to capture the full img tag containing base64 data
   const imgRegex = /(<img\s+[^>]*src="data:image\/([^;]+);base64,([^"]+)"[^>]*>)/g;
-  
+
   let lastIndex = 0;
   let match;
 
@@ -109,7 +110,7 @@ const htmlToParts = (html: string): any[] => {
         data: base64Data
       }
     });
-    
+
     // Hint for the model to treat the previous image part as context
     parts.push({ text: "\n[The image above is likely a formula or figure. If it's a formula, transcribe it to LaTeX wrapped in $$. If it's a diagram, describe it.]\n" });
 
@@ -125,7 +126,7 @@ const htmlToParts = (html: string): any[] => {
 };
 
 export const restructureDocument = async (
-  content: string, 
+  content: string,
   preset: DocPreset,
   fileName: string,
   styleConfig?: StyleConfig,
@@ -137,27 +138,27 @@ export const restructureDocument = async (
   }
 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
+
   // Build dynamic system instruction
   let systemInstruction = BASE_SYSTEM_PROMPTS[preset];
-  
+
   if (styleConfig) {
     const numberingRules = getNumberingInstruction(styleConfig.headingNumbering);
-    
+
     // Determine figure numbering logic
     let figureInstruction = "";
     if (styleConfig.figureNumbering === 'chapter-relative') {
-        figureInstruction = `If the text describes an image/chart that is NOT a formula, insert a placeholder: <div class="image-placeholder">图[Chapter]-[Sequence]：[Description]</div>.`;
+      figureInstruction = `If the text describes an image/chart that is NOT a formula, insert a placeholder: <div class="image-placeholder">图[Chapter]-[Sequence]：[Description]</div>.`;
     } else {
-        figureInstruction = `If the text describes an image/chart that is NOT a formula, insert a placeholder: <div class="image-placeholder">图[Sequence] [Description]</div>.`;
+      figureInstruction = `If the text describes an image/chart that is NOT a formula, insert a placeholder: <div class="image-placeholder">图[Sequence] [Description]</div>.`;
     }
 
     // Determine table numbering logic
     let tableInstruction = "";
     if (styleConfig.tableNumbering === 'chapter-relative') {
-        tableInstruction = `Identify tables in the content. Insert a caption paragraph BEFORE each table formatted strictly as: <p class="table-caption">表[Chapter]-[Sequence] [Title derived from context]</p>. (e.g., 表1-1 数据统计). Reset sequence at new H1.`;
+      tableInstruction = `Identify tables in the content. Insert a caption paragraph BEFORE each table formatted strictly as: <p class="table-caption">表[Chapter]-[Sequence] [Title derived from context]</p>. (e.g., 表1-1 数据统计). Reset sequence at new H1.`;
     } else {
-        tableInstruction = `Identify tables in the content. Insert a caption paragraph BEFORE each table formatted strictly as: <p class="table-caption">表[Sequence] [Title derived from context]</p>. (e.g., 表1 数据统计). Continuous numbering.`;
+      tableInstruction = `Identify tables in the content. Insert a caption paragraph BEFORE each table formatted strictly as: <p class="table-caption">表[Sequence] [Title derived from context]</p>. (e.g., 表1 数据统计). Continuous numbering.`;
     }
 
     systemInstruction += `
@@ -220,7 +221,7 @@ export const restructureDocument = async (
       ],
       config: {
         systemInstruction: systemInstruction,
-        temperature: 0.1, 
+        temperature: 0.1,
       }
     });
 
@@ -228,32 +229,32 @@ export const restructureDocument = async (
 
     for await (const chunk of responseStream) {
       if (signal?.aborted) {
-         throw new Error("ABORT_ERR");
+        throw new Error("ABORT_ERR");
       }
-      
+
       const chunkText = chunk.text;
       if (chunkText) {
         fullText += chunkText;
         if (onStreamUpdate) {
-            onStreamUpdate(cleanOutput(fullText));
+          onStreamUpdate(cleanOutput(fullText));
         }
       }
     }
 
     if (!fullText) throw new Error("No content generated.");
-    
+
     return cleanOutput(fullText);
 
   } catch (error: any) {
     if (error.message === "ABORT_ERR") {
-        throw error;
+      throw error;
     }
 
     console.error("Gemini API Error:", error);
     if (error.message && (error.message.includes("token count") || error.message.includes("400"))) {
-       throw new Error("文档内容过长或图片过多（超过AI处理上限），请尝试删除文档中的大型装饰性图片。");
+      throw new Error(i18n.t('errors.doc_too_long', "文档内容过长或图片过多（超过AI处理上限），请尝试删除文档中的大型装饰性图片。"));
     }
-    
+
     throw error;
   }
 };

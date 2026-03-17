@@ -48,8 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 登录
     const login = async (email: string, password: string) => {
-        const authResponse = await authService.login(email, password);
-        setUser(authResponse.user);
+        await authService.login(email, password);
         // 登录后刷新用户信息获取额度
         await loadUser();
     };

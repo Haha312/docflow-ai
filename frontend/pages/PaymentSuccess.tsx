@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 
 export function PaymentSuccess() {
   const { refreshUser, user } = useAuth();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,7 +21,7 @@ export function PaymentSuccess() {
       <div className="payment-result-page">
         <div className="result-card">
           <div className="loading-spinner"></div>
-          <h2>正在确认支付状态...</h2>
+          <h2>{t('pricing.confirming_payment', '正在确认支付状态...')}</h2>
         </div>
       </div>
     );
@@ -34,17 +36,17 @@ export function PaymentSuccess() {
           </svg>
         </div>
 
-        <h1>支付成功!</h1>
-        <h2 className="mt-6 text-3xl font-extrabold text-gray-900">欢迎加入 DocFlow AI Pro 会员</h2>
+        <h1>{t('pricing.success_title', '支付成功!')}</h1>
+        <h2 className="mt-6 text-3xl font-extrabold text-gray-900">{t('pricing.welcome_pro', '欢迎加入 DocFlow AI Pro 会员')}</h2>
 
         <div className="info-box">
           <div className="info-item">
-            <span className="label">会员状态</span>
+            <span className="label">{t('pricing.membership_status', '会员状态')}</span>
             <span className="value pro">⭐ Pro</span>
           </div>
           {user?.subscriptionEndDate && (
             <div className="info-item">
-              <span className="label">到期时间</span>
+              <span className="label">{t('pricing.expiration_time', '到期时间')}</span>
               <span className="value">
                 {new Date(user.subscriptionEndDate).toLocaleDateString('zh-CN')}
               </span>
@@ -53,17 +55,17 @@ export function PaymentSuccess() {
         </div>
 
         <div className="benefits">
-          <h3>你现在可以享受:</h3>
+          <h3>{t('pricing.enjoy_benefits', '你现在可以享受:')}</h3>
           <ul>
-            <li>✅ 无限次文档生成</li>
-            <li>✅ 所有预设模板</li>
-            <li>✅ 自定义样式配置</li>
-            <li>✅ 优先客服支持</li>
+            <li>✅ {t('pricing.benefit_unlimited', '无限次文档生成')}</li>
+            <li>✅ {t('pricing.benefit_presets', '所有预设模板')}</li>
+            <li>✅ {t('pricing.benefit_custom_style', '自定义样式配置')}</li>
+            <li>✅ {t('pricing.benefit_priority_support', '优先客服支持')}</li>
           </ul>
         </div>
 
         <button className="back-button" onClick={handleBackToApp}>
-          开始使用
+          {t('pricing.start_using', '开始使用')}
         </button>
       </div>
 

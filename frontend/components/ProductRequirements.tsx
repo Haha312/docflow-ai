@@ -38,7 +38,7 @@ export const ProductRequirements: React.FC<Props> = ({ isOpen, onClose }) => {
 
           <section>
             <h3 className="text-sm font-semibold text-gray-900 mb-4">{t('help.section_quick_start', '快速开始')}</h3>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
                 { step: '1', title: t('help.qs_1_title', '上传文档'), desc: t('help.qs_1_desc', '支持 .docx, .txt, .md 格式') },
                 { step: '2', title: t('help.qs_2_title', '选择模板'), desc: t('help.qs_2_desc', '报告、期刊、公文等预设') },

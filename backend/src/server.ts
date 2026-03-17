@@ -9,59 +9,63 @@ import documentRoutes from './routes/document';
 import adminRoutes from './routes/admin';
 import { errorResponse } from './utils/response';
 
-// 加载环境变量
 dotenv.config();
 
-console.log('🔄 DocuFlow Backend Restarting...');
+console.log('DocuFlow Backend Restarting...');
 console.log('DEBUG: GEMINI_OPENAI_BASE_URL =', process.env.GEMINI_OPENAI_BASE_URL);
 console.log('DEBUG: GOOGLE_API_KEY (First 5) =', process.env.GOOGLE_API_KEY?.substring(0, 5));
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const BODY_LIMIT = process.env.BODY_LIMIT || '100mb';
+const rawOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+const allowedOrigins = new Set(rawOrigins);
 
-// ===== 中间件配置 =====
-
-// CORS 配置
 const corsOptions = {
     origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-        // 允许无 Origin 的请求 (如 Postman, 移动端)
         if (!origin) return callback(null, true);
-        // 允许所有来源 (开发环境方便局域网访问)
-        // 生产环境建议限制为具体域名
-        return callback(null, true);
+
+        const normalizedOrigin = origin.replace(/\/+$/, '');
+        if (allowedOrigins.size === 0) {
+            // Without an explicit whitelist, only allow all in non-production envs.
+            return callback(null, process.env.NODE_ENV !== 'production');
+        }
+
+        return callback(null, allowedOrigins.has(normalizedOrigin));
     },
     credentials: true,
     optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
 
-// Stripe Webhook 需要原始请求体,所以在这里特殊处理
+// Stripe webhook needs raw body for signature verification
 app.use('/api/webhook/stripe', express.raw({ type: 'application/json' }));
+app.use('/api/payment/webhook/stripe', express.raw({ type: 'application/json' }));
+// WeChat Pay callback posts XML body
+app.use('/api/webhook/wechat', express.text({ type: '*/*' }));
+app.use('/api/payment/webhook/wechat', express.text({ type: '*/*' }));
 
-// JSON 解析中间件 - 增加限制支持大文档
-app.use(express.json({ limit: '200mb' }));
-app.use(express.urlencoded({ extended: true, limit: '200mb' }));
+app.use(express.json({ limit: BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 
-// 请求日志中间件 (开发环境)
 if (process.env.NODE_ENV === 'development') {
-    app.use((req: Request, res: Response, next: NextFunction) => {
+    app.use((req: Request, _res: Response, next: NextFunction) => {
         console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
         next();
     });
 }
 
-// 安全头部
-app.use((req: Request, res: Response, next: NextFunction) => {
+app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     next();
 });
 
-// ===== 路由配置 =====
-
-// 健康检查
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (_req: Request, res: Response) => {
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
@@ -69,7 +73,6 @@ app.get('/health', (req: Request, res: Response) => {
     });
 });
 
-// API 路由
 app.use('/api/auth', authRoutes);
 app.use('/api/generate', generateRoutes);
 app.use('/api/payment', paymentRoutes);
@@ -77,32 +80,25 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/documents', documentRoutes);
 
-// 404 处理
-app.use((req: Request, res: Response) => {
+app.use((_req: Request, res: Response) => {
     res.status(404).json(errorResponse('接口不存在', 404));
 });
 
-// 全局错误处理
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     console.error('Unhandled error:', err);
     res.status(500).json(errorResponse('服务器内部错误', 500));
 });
 
-// ===== 启动服务器 =====
-
-// Vercel 需要导出 app
 export default app;
 
-// 仅在本地非 Vercel 环境启动监听
 if (!process.env.VERCEL) {
-    // 监听 0.0.0.0 以支持局域网访问
     app.listen(Number(PORT), '0.0.0.0', () => {
-        console.log('\n🚀 DocuFlow AI Backend Server');
+        console.log('\nDocuFlow AI Backend Server');
         console.log('================================');
-        console.log(`📡 Server running on: http://localhost:${PORT}`);
-        console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-        console.log(`🔗 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
-        console.log(`✅ Health check: http://localhost:${PORT}/health`);
+        console.log(`Server running on: http://localhost:${PORT}`);
+        console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        console.log(`Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+        console.log(`Health check: http://localhost:${PORT}/health`);
         console.log('================================\n');
     });
 }

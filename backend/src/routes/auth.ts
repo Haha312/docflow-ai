@@ -13,12 +13,7 @@ const svgCaptcha = require('svg-captcha');
 
 const router = Router();
 
-const TIER_LIMITS = {
-    'FREE': 3,      // 终身3次免费
-    'PLUS': 50,     // 50次/月
-    'PRO': 200,     // 200次/月
-    'ULTRA': 1000   // 1000次/月
-};
+import { TIER_LIMITS } from '../config/tierConfig';
 
 /**
  * POST /api/auth/register
@@ -30,24 +25,24 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 
         // 验证输入
         if (!email || !password || !code) {
-            res.status(400).json(errorResponse('邮箱、密码和验证码不能为空', 400));
+            res.status(400).json(errorResponse('AUTH_MISSING_FIELDS', 400));
             return;
         }
 
         // Verify Email Code
         const storedCode = await redis.get(`email:code:${email}`);
         if (!storedCode || storedCode !== code) {
-            res.status(400).json(errorResponse('验证码错误或已过期', 400));
+            res.status(400).json(errorResponse('AUTH_INVALID_CODE', 400));
             return;
         }
 
         if (!isValidEmail(email)) {
-            res.status(400).json(errorResponse('邮箱格式不正确', 400));
+            res.status(400).json(errorResponse('AUTH_INVALID_EMAIL', 400));
             return;
         }
 
         if (!isValidPassword(password)) {
-            res.status(400).json(errorResponse('密码至少需要 6 位字符', 400));
+            res.status(400).json(errorResponse('AUTH_WEAK_PASSWORD', 400));
             return;
         }
 
@@ -57,7 +52,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
         });
 
         if (existingUser) {
-            res.status(409).json(errorResponse('该邮箱已被注册', 409));
+            res.status(409).json(errorResponse('AUTH_EMAIL_EXISTS', 409));
             return;
         }
 
@@ -86,7 +81,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 
     } catch (error) {
         console.error('Registration error:', error);
-        res.status(500).json(errorResponse('注册失败,请稍后重试', 500));
+        res.status(500).json(errorResponse('AUTH_REGISTER_FAILED', 500));
     }
 });
 
@@ -100,7 +95,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 
         // 验证输入
         if (!email || !password) {
-            res.status(400).json(errorResponse('邮箱和密码不能为空', 400));
+            res.status(400).json(errorResponse('AUTH_MISSING_CREDENTIALS', 400));
             return;
         }
 
@@ -110,7 +105,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         });
 
         if (!user) {
-            res.status(401).json(errorResponse('邮箱或密码错误', 401));
+            res.status(401).json(errorResponse('AUTH_INVALID_CREDENTIALS', 401));
             return;
         }
 
@@ -146,7 +141,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json(errorResponse('登录失败,请稍后重试', 500));
+        res.status(500).json(errorResponse('AUTH_LOGIN_FAILED', 500));
     }
 });
 
@@ -159,7 +154,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
         const user = req.user;
 
         if (!user) {
-            res.status(401).json(errorResponse('未认证', 401));
+            res.status(401).json(errorResponse('AUTH_NOT_AUTHENTICATED', 401));
             return;
         }
 
@@ -208,7 +203,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
 
     } catch (error) {
         console.error('Get user info error:', error);
-        res.status(500).json(errorResponse('获取用户信息失败', 500));
+        res.status(500).json(errorResponse('AUTH_FETCH_USER_FAILED', 500));
     }
 });
 
@@ -216,7 +211,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
  * GET /api/auth/captcha
  * 获取图形验证码
  */
-router.get('/captcha', async (req: Request, res: Response): Promise<void> => {
+router.get('/captcha', async (_req: Request, res: Response): Promise<void> => {
     const captcha = svgCaptcha.create({
         size: 4,
         ignoreChars: '0o1i',
@@ -252,19 +247,19 @@ router.post('/send-verify-code', async (req: Request, res: Response): Promise<vo
         }
 
         if (!captcha || !sessionId) {
-            res.status(400).json(errorResponse('请输入图形验证码', 400));
+            res.status(400).json(errorResponse('AUTH_CAPTCHA_REQUIRED', 400));
             return;
         }
 
         // Verify Captcha
         const storedCaptcha = await redis.get(`captcha:${sessionId}`);
         if (!storedCaptcha) {
-            res.status(400).json(errorResponse('图形验证码已过期，请刷新', 400));
+            res.status(400).json(errorResponse('AUTH_CAPTCHA_EXPIRED', 400));
             return;
         }
 
         if (storedCaptcha !== captcha.toLowerCase()) {
-            res.status(400).json(errorResponse('图形验证码错误', 400));
+            res.status(400).json(errorResponse('AUTH_CAPTCHA_WRONG', 400));
             return;
         }
 
@@ -274,7 +269,7 @@ router.post('/send-verify-code', async (req: Request, res: Response): Promise<vo
         // Rate Limit (Email): 60s cooldown
         const lastSent = await redis.get(`email:limit:${email}`);
         if (lastSent) {
-            res.status(429).json(errorResponse('发送太频繁，请稍后再试', 429));
+            res.status(429).json(errorResponse('AUTH_RATE_LIMIT', 429));
             return;
         }
 
@@ -287,7 +282,7 @@ router.post('/send-verify-code', async (req: Request, res: Response): Promise<vo
         // Send Email
         const success = await sendVerificationEmail(email, code);
         if (!success) {
-            res.status(500).json(errorResponse('邮件发送失败，请稍后重试', 500));
+            res.status(500).json(errorResponse('AUTH_EMAIL_SEND_FAILED', 500));
             return;
         }
 
@@ -299,7 +294,7 @@ router.post('/send-verify-code', async (req: Request, res: Response): Promise<vo
 
     } catch (error) {
         console.error('Send Email Code error:', error);
-        res.status(500).json(errorResponse('发送失败', 500));
+        res.status(500).json(errorResponse('AUTH_SEND_CODE_FAILED', 500));
     }
 });
 

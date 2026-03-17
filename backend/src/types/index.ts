@@ -6,8 +6,9 @@ export interface AuthRequest extends Request {
     user?: {
         id: string;
         email: string;
-        subscriptionStatus: 'FREE' | 'PRO' | 'TEAM';
-        subscriptionEndDate?: Date;
+        subscriptionStatus: 'FREE' | 'PLUS' | 'PRO' | 'ULTRA';
+        subscriptionEndDate?: Date | null;
+        role?: string;
     };
 }
 
@@ -100,8 +101,8 @@ export interface GenerateRequest {
 
 // 支付请求
 export interface CreateCheckoutRequest {
-    planType: 'monthly' | 'yearly';
-    paymentMethod?: 'stripe' | 'alipay'; // 支付方式,默认 stripe
+    planType: string;
+    paymentMethod?: 'stripe' | 'alipay' | 'wechat' | 'qrcode';
 }
 
 // JWT Payload

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FileDropzone } from './components/FileDropzone';
@@ -14,7 +14,7 @@ import { useConfirmDialog } from './components/ConfirmDialog';
 import { generateDocumentViaBackend } from './services/backendApiService';
 import { generateDocx } from './utils/docxGenerator';
 import { useAuth } from './contexts/AuthContext';
-import { useTypewriter } from './hooks/useTypewriter';
+// useTypewriter removed: SSE stream is already incremental, no need for secondary typing animation
 import { PRESETS } from './constants';
 import { DocPreset, AIState, StyleConfig } from './types';
 import katex from 'katex';
@@ -32,8 +32,9 @@ function Home() {
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
   const [selectedPreset, setSelectedPreset] = useState<DocPreset>(DocPreset.ACADEMIC);
   const [outputText, setOutputText] = useState<string>('');
+  const [imageMap, setImageMap] = useState<Record<string, string>>({});
   const [showToast, setShowToast] = useState(false);
-  const displayedText = useTypewriter(outputText);
+  // Directly use outputText for rendering — SSE stream provides natural incremental flow
 
   const [currentStyles, setCurrentStyles] = useState<Record<DocPreset, StyleConfig>>(() => {
     const initial: any = {};
@@ -60,6 +61,13 @@ function Home() {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Layout Resizing States
+  const [sidebarWidth, setSidebarWidth] = useState(360); // Default 360px
+  const [splitRatio, setSplitRatio] = useState(50); // Default 50%
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
+  const [isDraggingSplit, setIsDraggingSplit] = useState(false);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+
   const activeStyle = currentStyles[selectedPreset];
   const activePresetConfig = PRESETS.find(p => p.id === selectedPreset)!;
 
@@ -76,7 +84,7 @@ function Home() {
       const el = previewContainerRef.current;
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     }
-  }, [displayedText, shouldAutoScroll, aiState.isThinking]);
+  }, [outputText, shouldAutoScroll, aiState.isThinking]);
 
   const handlePreviewScroll = () => {
     if (previewContainerRef.current) {
@@ -101,6 +109,62 @@ function Home() {
       setAiState({ isThinking: false, error: null, progressStep: '', progress: 0 });
     }
   };
+
+  // --- Resizing Handlers ---
+  const handleSidebarMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingSidebar(true);
+  };
+
+  const handleSplitMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingSplit(true);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingSidebar) {
+        // Limit sidebar width between 240px and 500px
+        const newWidth = Math.max(240, Math.min(e.clientX, 500));
+        setSidebarWidth(newWidth);
+      } else if (isDraggingSplit && workspaceRef.current) {
+        // Calculate relative position within the workspace
+        const workspaceRect = workspaceRef.current.getBoundingClientRect();
+        // Calculate offset from the start of the workspace area
+        const offsetX = e.clientX - workspaceRect.left;
+        const percentage = (offsetX / workspaceRect.width) * 100;
+        // Limit split ratio between 20% and 80%
+        setSplitRatio(Math.max(20, Math.min(percentage, 80)));
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingSidebar(false);
+      setIsDraggingSplit(false);
+    };
+
+    if (isDraggingSidebar || isDraggingSplit) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      // Disable text selection while dragging to prevent highlighting text
+      document.body.style.userSelect = 'none';
+      if (isDraggingSidebar) {
+        document.body.style.cursor = 'col-resize';
+      } else if (isDraggingSplit) {
+        document.body.style.cursor = 'col-resize';
+      }
+    } else {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+  }, [isDraggingSidebar, isDraggingSplit]);
 
   const handleStop = () => {
     if (abortControllerRef.current) {
@@ -130,21 +194,8 @@ function Home() {
 
     setAiState({ isThinking: true, error: null, progressStep: t('home.analyzing', '正在分析文档结构...'), progress: 0 });
     setOutputText('');
+    setImageMap({});
     setShouldAutoScroll(true); // 每次新生成重置自动滚动
-
-    // Initial Estimate
-    const estimatedSec = calculateEstimate(inputText.length);
-    const progressTimer = setInterval(() => {
-      setAiState(prev => {
-        if (prev.progress >= 90) return prev;
-        // Linear interpolation towards 90% over estimated time
-        const step = 90 / (estimatedSec * 10);
-        return {
-          ...prev,
-          progress: Math.min(90, prev.progress + step)
-        };
-      });
-    }, 100);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -157,25 +208,41 @@ function Home() {
           fileName: inputFileName,
           styleConfig: activeStyle
         },
-        (partialText, progressData) => {
+        (partialText, progressData, newImageMap) => {
+          if (abortControllerRef.current === null) return;
+          if (newImageMap) {
+            setImageMap(prev => ({ ...prev, ...newImageMap }));
+          }
           if (progressData) {
             const pct = Math.round((progressData.current / progressData.total) * 100);
             const remaining = progressData.estimatedRemainingSeconds
               ? t('home.estimated_time', ' (预计剩余 {{seconds}} 秒)', { seconds: Math.ceil(progressData.estimatedRemainingSeconds) })
               : '';
+
+            let displayStatus = progressData.status;
+            if (displayStatus === 'GENERATING') {
+              displayStatus = t('home.status_generating', '正在智能排版...');
+            } else if (displayStatus.startsWith('PARTIAL_GENERATING|')) {
+              const [, cur, tot] = displayStatus.split('|');
+              displayStatus = t('home.status_partial_generating', '正在生成第 {{cur}}/{{tot}} 部分...', { cur, tot });
+            } else if (displayStatus.startsWith('PART_COMPLETE|')) {
+              const [, cur, tot] = displayStatus.split('|');
+              displayStatus = t('home.status_part_complete', '第 {{cur}}/{{tot}} 部分完成', { cur, tot });
+            }
+
             setAiState(prev => ({
               ...prev,
-              progress: Math.max(prev.progress, pct), // Keep progress monotonic
-              progressStep: `${progressData.status}${remaining}`
+              progress: Math.max(prev.progress, pct),
+              progressStep: `${displayStatus}${remaining}`
             }));
           }
-          if (abortControllerRef.current === null) return;
-          setOutputText(partialText);
+          // Only update outputText if content actually changed (skip ping-only events)
+          setOutputText(prev => prev === partialText ? prev : partialText);
         },
         controller.signal
       );
 
-      clearInterval(progressTimer);
+      // Generation complete
       if (abortControllerRef.current !== null) {
         setAiState(prev => ({ ...prev, progress: 100, progressStep: t('home.generation_complete', '排版生成完毕') }));
         await new Promise(r => setTimeout(r, 600));
@@ -186,7 +253,6 @@ function Home() {
       }
 
     } catch (err: any) {
-      clearInterval(progressTimer);
       if (err.message === 'QUOTA_EXCEEDED') {
         setAiState({ isThinking: false, error: t('home.quota_exceeded', "免费额度已用尽，升级 Pro 享受无限生成"), progressStep: '', progress: 0 });
         setTimeout(() => setShowPricingModal(true), 1000);
@@ -248,12 +314,22 @@ function Home() {
     return val;
   };
 
-  const getRenderedContent = () => {
-    // 生成完成后直接用完整 outputText，生成中才用 typewriter 的 displayedText
-    const textToRender = aiState.isThinking ? displayedText : outputText;
-    if (!textToRender) return '';
-    // Match Display Math ($$...$$) OR Inline Math ($...$)
-    return textToRender.replace(/(\$\$[\s\S]*?\$\$|\$([^\$\n]+)\$)/g, (match) => {
+  // Memoize KaTeX and Image rendering — only re-compute when outputText actually changes
+  const renderedContent = useMemo(() => {
+    if (!outputText) return '';
+
+    // 1. Clean Markdown ```html block quotes if they exist in the stream
+    let processedText = outputText.replace(/```html/gi, '').replace(/```/g, '');
+
+    // 2. Restore Image Placeholders
+    if (Object.keys(imageMap).length > 0) {
+      processedText = processedText.replace(/__IMG_\d+__/g, (match) => {
+        return imageMap[match] || match; // Replace with actual img tag if found
+      });
+    }
+
+    // 3. Match Display Math ($$...$$) OR Inline Math ($...$)
+    return processedText.replace(/(\$\$[\s\S]*?\$\$|\$([^\$\n]+)\$)/g, (match) => {
       try {
         const isDisplay = match.startsWith('$$');
         const tex = isDisplay
@@ -271,7 +347,7 @@ function Home() {
         return match;
       }
     });
-  };
+  }, [outputText, imageMap]);
 
   const generatePreviewStyles = () => {
     const s = activeStyle;
@@ -353,10 +429,19 @@ function Home() {
       </header>
 
       <main className="w-full px-4 md:px-6 lg:px-8 py-4 md:py-6">
-        <div className="flex flex-col md:flex-row gap-4 md:gap-6 h-auto md:h-[calc(100vh-100px)]">
+        <div ref={workspaceRef} className="flex flex-col md:flex-row gap-4 md:gap-6 h-auto md:h-[calc(100vh-100px)]">
 
           {/* Left Panel */}
-          <div className="w-full md:w-[320px] lg:w-[360px] xl:w-[400px] flex-shrink-0 flex flex-col gap-4 md:gap-6">
+          <div
+            className="w-full md:w-[var(--sidebar-width)] flex-shrink-0 flex flex-col gap-4 md:gap-6 relative"
+            style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+          >
+            {/* Invisible Sidebar Drag Handle */}
+            <div
+              className="hidden md:block absolute -right-2 md:-right-3 lg:-right-4 top-0 bottom-0 w-4 cursor-col-resize z-10 transition-colors"
+              onMouseDown={handleSidebarMouseDown}
+              title={t('home.drag_resize', '拖拽调整宽度')}
+            />
 
             {/* Upload Section */}
             <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -366,7 +451,7 @@ function Home() {
               </div>
 
               {!inputText ? (
-                <FileDropzone onFileLoaded={handleFileLoaded} />
+                <FileDropzone onFileLoaded={handleFileLoaded} userTier={user?.subscriptionStatus} />
               ) : (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3 min-w-0">
@@ -471,7 +556,7 @@ function Home() {
           </div>
 
           {/* Right Panel - Preview */}
-          <div className="flex-1 flex flex-col min-w-0 bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(0,0,0,0.02)]">
             {/* Toolbar */}
             <div className="h-12 px-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
@@ -512,11 +597,14 @@ function Home() {
             <div className="flex-1 flex min-h-0">
               {/* Original */}
               {viewMode === 'split' && inputText && (
-                <div className="w-1/2 border-r border-gray-100 flex flex-col">
+                <div
+                  className="border-r border-gray-100 flex flex-col relative"
+                  style={{ width: `${splitRatio}%` }}
+                >
                   <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-400 uppercase tracking-wider">
                     {t('home.original_text', '原文')}
                   </div>
-                  <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed">
+                  <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed custom-scrollbar">
                     {inputFileName.endsWith('.docx') ? (
                       <div
                         dangerouslySetInnerHTML={{ __html: inputText }}
@@ -526,11 +614,21 @@ function Home() {
                       <div className="font-mono whitespace-pre-wrap">{inputText}</div>
                     )}
                   </div>
+
+                  {/* Invisible Split Pane Drag Handle */}
+                  <div
+                    className="absolute -right-2 top-0 bottom-0 w-4 cursor-col-resize transition-colors z-10"
+                    onMouseDown={handleSplitMouseDown}
+                    title={t('home.drag_resize', '拖拽调整宽度')}
+                  />
                 </div>
               )}
 
               {/* Result */}
-              <div className={`${viewMode === 'split' && inputText ? 'w-1/2' : 'w-full'} flex flex-col`}>
+              <div
+                className="flex flex-col"
+                style={{ width: viewMode === 'split' && inputText ? `${100 - splitRatio}%` : '100%' }}
+              >
                 <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
                   <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">{t('home.result_text', '结果')}</span>
                   {selectedPreset && (
@@ -553,7 +651,7 @@ function Home() {
                           <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-500 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
                         </div>
                       )}
-                      <div id="preview-content" dangerouslySetInnerHTML={{ __html: getRenderedContent() }} />
+                      <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
                       {/* 生成中光标 */}
                       {aiState.isThinking && (
                         <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
@@ -617,7 +715,7 @@ function Home() {
 
       {/* Toast Notification */}
       {showToast && (
-        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-xl shadow-xl z-50 flex items-center gap-2 animate-fade-in-down">
+        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-xl shadow-xl z-50 flex items-center gap-2" style={{ animation: 'fadeInDown 0.4s ease-out' }}>
           <svg className="w-5 h-5 text-green-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="20 6 9 17 4 12" />
           </svg>

@@ -1,9 +1,9 @@
-
+﻿
 import { Router, Response } from 'express';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ProxyAgent, fetch as undiciFetch } from 'undici';
-import { AuthRequest, GenerateRequest, DocPreset, StyleConfig } from '../types';
-import { successResponse, errorResponse } from '../utils/response';
+import { AuthRequest, GenerateRequest } from '../types';
+import { errorResponse } from '../utils/response';
 import { authenticate } from '../middleware/auth';
 import { checkRateLimit } from '../middleware/rateLimit';
 import prisma from '../config/database';
@@ -22,16 +22,18 @@ const cleanOutput = (text: string): string => {
 
 
 
-// Tier Configuration - 简化版会员体系
-const TIER_LIMITS = {
-    'FREE': 3,      // 终身3次
-    'PLUS': 50,     // 50次/月
-    'PRO': 200,     // 200次/月
-    'ULTRA': 1000   // 1000次/月
-};
+import { TIER_LIMITS } from '../config/tierConfig';
 
-// 统一使用高质量排版模型
+// 缁熶竴浣跨敤楂樿川閲忔帓鐗堟ā鍨?
 const PRIMARY_MODEL = 'gemini-3-pro-preview';
+const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 50));
+let activeGenerations = 0;
+
+const tryAcquireGenerationSlot = (): boolean => {
+    if (activeGenerations >= MAX_CONCURRENT_GENERATIONS) return false;
+    activeGenerations += 1;
+    return true;
+};
 
 // OpenAI Compatible API Call (for Gemini via proxy)
 async function* callOpenAICompatible(
@@ -41,7 +43,7 @@ async function* callOpenAICompatible(
     userContent: string,
     modelName: string,
     maxTokens?: number
-): AsyncGenerator<string> {
+): AsyncGenerator<{ content: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }> {
     console.log('DEBUG: callOpenAICompatible start', { baseUrl, modelName, apiKeyLength: apiKey?.length, maxTokens });
 
     try {
@@ -57,19 +59,29 @@ async function* callOpenAICompatible(
                 { role: 'user', content: userContent }
             ],
             stream: true,
+            stream_options: { include_usage: true },
             temperature: 0.1,
             max_tokens: maxTokens
         });
 
         for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content || '';
-            if (content) yield content;
+            const usage = chunk.usage;
+
+            yield {
+                content,
+                usage: usage ? {
+                    prompt_tokens: usage.prompt_tokens,
+                    completion_tokens: usage.completion_tokens,
+                    total_tokens: usage.total_tokens
+                } : undefined
+            };
         }
     } catch (err: any) {
-        console.error('❌ callOpenAICompatible Error:', err);
+        console.error('鉂?callOpenAICompatible Error:', err);
         if (err.response) {
-            console.error('❌ status:', err.status);
-            console.error('❌ data:', err.response.data);
+            console.error('鉂?status:', err.status);
+            console.error('鉂?data:', err.response.data);
         }
         throw new Error(`OpenAI Compatible Error: ${err.message}`);
     }
@@ -77,19 +89,26 @@ async function* callOpenAICompatible(
 
 /**
  * POST /api/generate
- * 文档生成接口 (需要认证和限流)
- * 统一使用 Gemini API
+ * 鏂囨。鐢熸垚鎺ュ彛 (闇€瑕佽璇佸拰闄愭祦)
+ * 缁熶竴浣跨敤 Gemini API
  */
 router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Response): Promise<void> => {
     let geminiApiKey: string | undefined;
     let fullRestoredText = '';
+    let generationSlotAcquired = false;
 
     try {
         const user = req.user;
         if (!user) {
-            res.status(401).json(errorResponse('未认证', 401));
+            res.status(401).json(errorResponse('Unauthorized', 401));
             return;
         }
+
+        if (!tryAcquireGenerationSlot()) {
+            res.status(503).json(errorResponse('当前生成请求较多，请稍后重试', 503));
+            return;
+        }
+        generationSlotAcquired = true;
 
         // 0. Fetch Dynamic System Config
         let dbConfig: Record<string, string> = {};
@@ -103,11 +122,11 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const { content, preset, fileName, styleConfig }: GenerateRequest = req.body;
 
         if (!content || !preset || !fileName || !styleConfig) {
-            res.status(400).json(errorResponse('缺少必要参数', 400));
+            res.status(400).json(errorResponse('缂哄皯蹇呰鍙傛暟', 400));
             return;
         }
 
-        // 获取用户等级与配置
+        // 鑾峰彇鐢ㄦ埛绛夌骇涓庨厤缃?
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
 
         geminiApiKey = dbConfig['GOOGLE_API_KEY'] || process.env.GOOGLE_API_KEY;
@@ -146,14 +165,14 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const limit = TIER_LIMITS[userTier] || 10;
 
         if (usageCount >= limit) {
-            const extraMsg = userTier === 'FREE' ? `免费总额度已耗尽` : `本月生成额度已用完`;
-            res.status(403).json(errorResponse(`${extraMsg} (${usageCount}/${limit})。请升级套餐以获取更多额度。`, 403));
+            const extraMsg = userTier === 'FREE' ? 'Free quota exhausted' : 'Monthly quota exhausted';
+            res.status(403).json(errorResponse(`${extraMsg} (${usageCount}/${limit})`, 403));
             return;
         }
 
-        // 模型将在 chunk 循环中根据索引动态选择
+        // 妯″瀷灏嗗湪 chunk 寰幆涓牴鎹储寮曞姩鎬侀€夋嫨
 
-        // 构建系统指令
+        // 鏋勫缓绯荤粺鎸囦护
         const numberingRules = getNumberingInstruction(styleConfig.headingNumbering);
 
         const BASE_SHARED_PROMPT = `
@@ -195,29 +214,29 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
              - Do NOT simplify or solve equations.
              - Reproduce the exact notation from the source text.
           - **VARIABLE DEFINITION LISTS (CRITICAL)**:
-             - When the source text has patterns like "vx, vy: meaning" or "x, y——meaning" or "a0 constant term", treat these as **definition items**, NOT standalone list items.
-             - NEVER convert variable names (latin letters, subscripts) into Chinese punctuation "、" or "，".
+             - When the source text has patterns like "vx, vy: meaning" or "x, y鈥斺€攎eaning" or "a0 constant term", treat these as **definition items**, NOT standalone list items.
+             - NEVER convert variable names (latin letters, subscripts) into Chinese punctuation "銆? or "锛?.
              - Keep the original variable identifiers (e.g. $v_x$, $v_y$) in their LaTeX form.
-             - Format each variable definition as: \`<p>$v_x$, $v_y$：第i个GCP的X/Y方向坐标残差</p>\`
-             - Do NOT turn "vx, vy：" into bullet points like "·、：" or "•、".
+             - Format each variable definition as: \`<p>$v_x$, $v_y$锛氱i涓狦CP鐨刋/Y鏂瑰悜鍧愭爣娈嬪樊</p>\`
+             - Do NOT turn "vx, vy锛? into bullet points like "路銆侊細" or "鈥€?.
 
        6. **IMAGES & FIGURES (CRITICAL)**:
          - **MANDATORY**: Generate a FIGURE CAPTION for EVERY image based on context.
          - Position: **IMMEDIATELY BELOW** the image.
-         - Format: \`<div class="figure-caption">图 {N} {Description}</div>\`
+         - Format: \`<div class="figure-caption">鍥?{N} {Description}</div>\`
          - Example: 
            \`__IMG_0__\`
-           \`<div class="figure-caption">图 1 系统架构示意图</div>\`
+           \`<div class="figure-caption">鍥?1 绯荤粺鏋舵瀯绀烘剰鍥?/div>\`
 
        7. **TABLES (CRITICAL)**:
           - **MANDATORY**: Generate a TABLE TITLE for EVERY table.
           - Position: **IMMEDIATELY ABOVE** the table.
-          - Format: \`<div class="table-caption">表 {N} {Description}</div>\`
-          - Example: \`<div class="table-caption">表 1 价格方案对比</div>\n<table>...</table>\`
+          - Format: \`<div class="table-caption">琛?{N} {Description}</div>\`
+          - Example: \`<div class="table-caption">琛?1 浠锋牸鏂规瀵规瘮</div>\n<table>...</table>\`
           - **NO TEXT-INDENT in table cells**: Do NOT use text-indent in \`<td>\` or \`<th>\` content.
 
       8. **CAPTION STYLE**:
-         - Use generic counters (图 1, 图 2... 表 1, 表 2...) unless specific numbering is required.
+         - Use generic counters (鍥?1, 鍥?2... 琛?1, 琛?2...) unless specific numbering is required.
          - Center align captions.
 
       9. **TOC HANDLING**:
@@ -234,17 +253,17 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         if (styleConfig && styleConfig.figureNumbering === 'chapter-relative') {
             figureInstruction = `
           - **FIGURE CAPTIONS (CHAPTER-RELATIVE)**:
-            - You MUST rename figure captions to follow "图[Chapter]-[Sequence]" format.
+            - You MUST rename figure captions to follow "鍥綶Chapter]-[Sequence]" format.
             - Detect the current Chapter (H1) number (e.g. "1", "2", "3").
             - Reset figure sequence at each new Chapter.
-            - Example: In Chapter 1, use "图 1-1", "图 1-2". In Chapter 2, use "图 2-1".
-            - Format: \`<div class="figure-caption">图 {Chapter}-{Sequence} {Description}</div>\`
+            - Example: In Chapter 1, use "鍥?1-1", "鍥?1-2". In Chapter 2, use "鍥?2-1".
+            - Format: \`<div class="figure-caption">鍥?{Chapter}-{Sequence} {Description}</div>\`
             `;
         } else {
             figureInstruction = `
           - **FIGURE CAPTIONS (SEQUENTIAL)**:
-            - Use continuous numbering across the document "图[Sequence]".
-            - Format: \`<div class="figure-caption">图 {Sequence} {Description}</div>\`
+            - Use continuous numbering across the document "鍥綶Sequence]".
+            - Format: \`<div class="figure-caption">鍥?{Sequence} {Description}</div>\`
             `;
         }
 
@@ -253,17 +272,17 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         if (styleConfig && styleConfig.tableNumbering === 'chapter-relative') {
             tableInstruction = `
           - **TABLE CAPTIONS (CHAPTER-RELATIVE)**:
-            - You MUST rename table captions to follow "表[Chapter]-[Sequence]" format.
+            - You MUST rename table captions to follow "琛╗Chapter]-[Sequence]" format.
             - Detect the current Chapter (H1) number.
             - Reset table sequence at each new Chapter.
-            - Example: "表 1-1", "表 2-1".
-            - Format: \`<div class="table-caption">表 {Chapter}-{Sequence} {Description}</div>\`
+            - Example: "琛?1-1", "琛?2-1".
+            - Format: \`<div class="table-caption">琛?{Chapter}-{Sequence} {Description}</div>\`
             `;
         } else {
             tableInstruction = `
           - **TABLE CAPTIONS (SEQUENTIAL)**:
             - Use continuous numbering across the document.
-            - Format: \`<div class="table-caption">表 {Sequence} {Description}</div>\`
+            - Format: \`<div class="table-caption">琛?{Sequence} {Description}</div>\`
             `;
         }
 
@@ -278,38 +297,45 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
         const { splitContentBySemantics } = require('../utils/chunking');
 
-        // 1. 提取图片 (全局处理)
+        // 1. 鎻愬彇鍥剧墖 (鍏ㄥ眬澶勭悊)
         const { textOnly: contentWithoutImages, imageMap } = extractImagesAsPlaceholders(content);
         const imageCount = Object.keys(imageMap).length;
-        if (imageCount > 0) console.log(`📷 Extracted ${imageCount} images`);
+        if (imageCount > 0) console.log(`馃摲 Extracted ${imageCount} images`);
 
-        // 2. 语义切分
-        // ULTRA 用户：单次全文处理，确保章节顺序和编号完全正确（SSE ping 保活连接）
-        // 普通用户：按 12000 chars 切分
+        // 2. 璇箟鍒囧垎
+        // ULTRA 鐢ㄦ埛锛氬崟娆″叏鏂囧鐞嗭紝纭繚绔犺妭椤哄簭鍜岀紪鍙峰畬鍏ㄦ纭紙SSE ping 淇濇椿杩炴帴锛?
+        // 鏅€氱敤鎴凤細鎸?12000 chars 鍒囧垎
         let chunks: string[] = [];
         if (userTier === 'ULTRA') {
-            console.log('🚀 ULTRA Mode: Single-pass full document processing');
+            console.log('馃殌 ULTRA Mode: Single-pass full document processing');
             chunks = [contentWithoutImages];
         } else {
             chunks = splitContentBySemantics(contentWithoutImages);
         }
-        console.log(`🧩 Document split into ${chunks.length} chunk(s)`);
+        console.log(`馃З Document split into ${chunks.length} chunk(s)`);
 
         let lastContext = '';
 
-        // 设置 SSE 响应头
+        // 璁剧疆 SSE 鍝嶅簲澶?
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        // 3. 循环处理 Chunks
+        // 濡傛灉鏈夊浘鐗囷紝灏嗗浘鐗囨槧灏勫瓧鍏稿彂缁欏墠绔紝璁╁墠绔疄鏃舵祦寮忔覆鏌撴椂鍙互鏇挎崲鍥炵湡瀹炵殑 img 鏍囩
+        if (imageCount > 0) {
+            res.write(`data: ${JSON.stringify({ imageMap })}\n\n`);
+        }
+
+        let totalExactTokens = 0;
+
+        // 3. 寰幆澶勭悊 Chunks
         for (let i = 0; i < chunks.length; i++) {
             const chunkContent = chunks[i];
             const currentModel = PRIMARY_MODEL;
-            console.log(`Processing Chunk ${i + 1}/${chunks.length} (${chunkContent.length} chars) 🤖 Model: ${currentModel}`);
+            console.log(`Processing Chunk ${i + 1}/${chunks.length} (${chunkContent.length} chars) 馃 Model: ${currentModel}`);
 
-            // 动态构建 System Prompt
-            // 动态构建 System Prompt
+            // 鍔ㄦ€佹瀯寤?System Prompt
+            // 鍔ㄦ€佹瀯寤?System Prompt
             let currentSystemPrompt = systemInstruction;
 
             if (i > 0) {
@@ -334,27 +360,34 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             let chunkOutput = '';
 
             try {
-                // 检查是否使用 OpenAI Compatible 代理
+                // 妫€鏌ユ槸鍚︿娇鐢?OpenAI Compatible 浠ｇ悊
                 const geminiOpenAIBaseUrl = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL;
 
                 const statusText = chunks.length > 1
-                    ? `正在生成第 ${i + 1}/${chunks.length} 部分...`
-                    : `正在智能排版...`;
+                    ? `PARTIAL_GENERATING|${i + 1}|${chunks.length}`
+                    : `GENERATING`;
 
-                // 每隔 1s 发送进度 ping，让前端骨架屏进度条有响应
+                // 姣忛殧 1s 鍙戦€佽繘搴?ping锛岃鍓嶇楠ㄦ灦灞忚繘搴︽潯鏈夊搷搴?
                 const pingInterval = setInterval(() => {
                     res.write(`data: ${JSON.stringify({ ping: true, progress: { current: i + 1, total: chunks.length, status: statusText, estimatedRemainingSeconds: null } })}\n\n`);
                 }, 1000);
 
                 try {
                     if (geminiOpenAIBaseUrl) {
-                        // 使用 OpenAI Compatible Endpoint (如 hiapi.online)
+                        // 浣跨敤 OpenAI Compatible Endpoint (濡?hiapi.online)
                         const maxTokens = userTier === 'ULTRA' ? 32000 : 16000;
-                        for await (const delta of callOpenAICompatible(geminiApiKey!, geminiOpenAIBaseUrl, currentSystemPrompt, userContent, currentModel, maxTokens)) {
-                            chunkOutput += delta;
+                        for await (const result of callOpenAICompatible(geminiApiKey!, geminiOpenAIBaseUrl, currentSystemPrompt, userContent, currentModel, maxTokens)) {
+                            if (result.content) {
+                                chunkOutput += result.content;
+                                // 鐪熉锋祦寮忚緭鍑猴細鐩存帴鎶?delta 鎺ㄧ粰鍓嶇
+                                res.write(`data: ${JSON.stringify({ delta: result.content })}\n\n`);
+                            }
+                            if (result.usage) {
+                                totalExactTokens += result.usage.total_tokens || 0;
+                            }
                         }
                     } else {
-                        // 使用原生 Google SDK
+                        // 浣跨敤鍘熺敓 Google SDK
                         const proxyUrl = process.env.HTTPS_PROXY || 'http://127.0.0.1:7890';
                         const dispatcher = new ProxyAgent(proxyUrl);
                         const customFetch = (url: string | URL, init?: any) => {
@@ -369,31 +402,39 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                         const result = await model.generateContentStream([userContent]);
                         for await (const chunk of result.stream) {
                             const txt = chunk.text();
-                            if (txt) chunkOutput += txt;
+                            if (txt) {
+                                chunkOutput += txt;
+                                // 鐪熉锋祦寮忚緭鍑猴細鐩存帴鎶?delta 鎺ㄧ粰鍓嶇
+                                res.write(`data: ${JSON.stringify({ delta: txt })}\n\n`);
+                            }
+                        }
+                        // 娴佺粨鏉熷悗锛屼粠鑱氬悎鍝嶅簲涓彁鍙栫簿纭殑 token 鐢ㄩ噺
+                        const aggregatedResponse = await result.response;
+                        if (aggregatedResponse.usageMetadata) {
+                            totalExactTokens += aggregatedResponse.usageMetadata.totalTokenCount || 0;
                         }
                     }
                 } finally {
                     clearInterval(pingInterval);
                 }
 
-                // Chunk 完成后处理（cleanOutput 和图片还原需要完整文本）
+                // Chunk 瀹屾垚鍚庡鐞嗭紙cleanOutput 鍜屽浘鐗囪繕鍘熼渶瑕佸畬鏁存枃鏈級
                 let cleanChunk = cleanOutput(chunkOutput);
                 lastContext = cleanChunk.replace(/<[^>]+>/g, ' ');
 
-                // 还原图片
+                // 杩樺師鍥剧墖
                 if (imageCount > 0) {
                     cleanChunk = restoreImages(cleanChunk, imageMap);
                 }
 
                 fullRestoredText += cleanChunk;
 
-                // 发送完整干净的 chunk 给前端
+                // 浠呭彂閫佽繘搴︽洿鏂帮紝鍓嶇姝ゆ椂宸茬粡閫氳繃娴佸紡娓叉煋鍑烘墍鏈夋枃瀛?
                 res.write(`data: ${JSON.stringify({
-                    delta: cleanChunk,
                     progress: {
                         current: i + 1,
                         total: chunks.length,
-                        status: `第 ${i + 1}/${chunks.length} 部分完成`,
+                        status: `PART_COMPLETE|${i + 1}|${chunks.length}`,
                         estimatedRemainingSeconds: (chunks.length - (i + 1)) * 15
                     }
                 })}\n\n`);
@@ -404,7 +445,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             }
         }
 
-        // 保存文档
+        // 淇濆瓨鏂囨。
         const pureText = fullRestoredText.replace(/<[^>]+>/g, '').replace(/\s+/g, '').trim();
         await prisma.document.create({
             data: {
@@ -416,39 +457,43 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             }
         });
 
-        // 估算 token 使用量 (输入 + 输出)
-        // Gemini 计费: 约 1 token ≈ 0.75 个中文字符
-        const inputTokens = Math.ceil(contentWithoutImages.length / 0.75);
-        const outputTokens = Math.ceil(fullRestoredText.length / 0.75);
-        const totalTokens = inputTokens + outputTokens;
+        // 浼扮畻 token 浣跨敤閲?(杈撳叆 + 杈撳嚭) 褰?API 鏈繑鍥炴椂澶囩敤
+        // Gemini 璁¤垂: 绾?1 token 鈮?0.75 涓腑鏂囧瓧绗?
+        let finalReportedTokens = totalExactTokens;
+        if (finalReportedTokens === 0) {
+            const inputTokens = Math.ceil(contentWithoutImages.length / 0.75);
+            const outputTokens = Math.ceil(fullRestoredText.length / 0.75);
+            finalReportedTokens = inputTokens + outputTokens;
+            console.log(`鈿狅笍 Using estimated tokens instead of API reported tokens.`);
+        }
 
-        // 记录使用日志
+        // 璁板綍浣跨敤鏃ュ織
         await prisma.usageLog.create({
             data: {
                 userId: user.id,
                 actionType: 'generate_document',
                 presetUsed: preset,
-                tokenUsage: totalTokens
+                tokenUsage: finalReportedTokens
             }
         });
 
-        console.log(`✅ Document generated. Tokens: ${totalTokens} (input: ${inputTokens}, output: ${outputTokens})`);
+        console.log(`鉁?Document generated. Tokens: ${finalReportedTokens}`);
 
-        // 发送完成事件
+        // 鍙戦€佸畬鎴愪簨浠?
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         res.end();
 
     } catch (aiError: any) {
         console.error('AI API Error:', aiError);
 
-        let errorMessage = 'AI 服务暂时不可用,请稍后重试';
+        let errorMessage = 'AI service is temporarily unavailable. Please try again later.';
 
         if (aiError.message?.includes('API key') || aiError.message?.includes('403')) {
-            errorMessage = '[GEMINI] API Key 无效或未启用，请检查后端 .env 配置';
+            errorMessage = '[GEMINI] API Key 鏃犳晥鎴栨湭鍚敤锛岃妫€鏌ュ悗绔?.env 閰嶇疆';
         } else if (aiError.message?.includes('token count') || aiError.message?.includes('limit')) {
-            errorMessage = '文档内容过长或图片过多，请尝试删除大型装饰性图片';
+            errorMessage = 'Document is too long or has too many images. Please reduce content size and retry.';
         } else if (aiError.message?.includes('400') || aiError.message?.includes('404')) {
-            errorMessage = '当前区域暂不支持高级 AI 模型，请尝试开启全局代理或更换 API Key';
+            errorMessage = '褰撳墠鍖哄煙鏆備笉鏀寔楂樼骇 AI 妯″瀷锛岃灏濊瘯寮€鍚叏灞€浠ｇ悊鎴栨洿鎹?API Key';
         } else {
             errorMessage += ` (Detailed Error: ${aiError.message?.substring(0, 100)}...)`;
         }
@@ -457,7 +502,15 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
             res.end();
         }
+    } finally {
+        if (generationSlotAcquired) {
+            activeGenerations = Math.max(0, activeGenerations - 1);
+        }
     }
 });
 
 export default router;
+
+
+
+

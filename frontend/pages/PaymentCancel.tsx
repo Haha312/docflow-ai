@@ -1,49 +1,51 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 export function PaymentCancel() {
-    const handleBackToApp = () => {
-        window.location.href = '/';
-    };
+  const { t } = useTranslation();
+  const handleBackToApp = () => {
+    window.location.href = '/';
+  };
 
-    const handleRetry = () => {
-        window.location.href = '/?upgrade=true';
-    };
+  const handleRetry = () => {
+    window.location.href = '/?upgrade=true';
+  };
 
-    return (
-        <div className="payment-result-page">
-            <div className="result-card cancel">
-                <div className="icon-circle cancel">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="15" y1="9" x2="9" y2="15"></line>
-                        <line x1="9" y1="9" x2="15" y2="15"></line>
-                    </svg>
-                </div>
+  return (
+    <div className="payment-result-page">
+      <div className="result-card cancel">
+        <div className="icon-circle cancel">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+        </div>
 
-                <h1>支付已取消</h1>
-                <p className="subtitle">你可以随时返回继续升级</p>
+        <h1>{t('pricing.payment_cancelled', '支付已取消')}</h1>
+        <p className="subtitle">{t('pricing.return_to_upgrade', '你可以随时返回继续升级')}</p>
 
-                <div className="info-box">
-                    <p>💡 升级 Pro 会员可以享受:</p>
-                    <ul>
-                        <li>✅ 无限次文档生成</li>
-                        <li>✅ 所有预设模板</li>
-                        <li>✅ 自定义样式配置</li>
-                        <li>✅ 优先客服支持</li>
-                    </ul>
-                </div>
+        <div className="info-box">
+          <p>{t('pricing.pro_benefits', '💡 升级 Pro 会员可以享受:')}</p>
+          <ul>
+            <li>✅ {t('pricing.benefit_unlimited', '无限次文档生成')}</li>
+            <li>✅ {t('pricing.benefit_presets', '所有预设模板')}</li>
+            <li>✅ {t('pricing.benefit_custom_style', '自定义样式配置')}</li>
+            <li>✅ {t('pricing.benefit_priority_support', '优先客服支持')}</li>
+          </ul>
+        </div>
 
-                <div className="button-group">
-                    <button className="retry-button" onClick={handleRetry}>
-                        重新升级
-                    </button>
-                    <button className="back-button" onClick={handleBackToApp}>
-                        返回应用
-                    </button>
-                </div>
-            </div>
+        <div className="button-group">
+          <button className="retry-button" onClick={handleRetry}>
+            {t('pricing.upgrade_again', '重新升级')}
+          </button>
+          <button className="back-button" onClick={handleBackToApp}>
+            {t('pricing.back_to_app_btn', '返回应用')}
+          </button>
+        </div>
+      </div>
 
-            <style>{`
+      <style>{`
         .payment-result-page {
           min-height: 100vh;
           display: flex;
@@ -148,6 +150,6 @@ export function PaymentCancel() {
           transform: translateY(-2px);
         }
       `}</style>
-        </div>
-    );
+    </div>
+  );
 }

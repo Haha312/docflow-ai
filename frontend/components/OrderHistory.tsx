@@ -54,7 +54,7 @@ export function OrderHistory() {
             {orders.map(order => (
               <tr key={order.id}>
                 <td>{new Date(order.createdAt).toLocaleDateString()}</td>
-                <td>{order.planType === 'monthly' ? t('profile.monthly_plan') : t('profile.yearly_plan')}</td>
+                <td>{order.planType.includes('monthly') ? t('profile.monthly_plan') : t('profile.yearly_plan')}</td>
                 <td>
                   {order.currency.toUpperCase()} {order.amount}
                 </td>

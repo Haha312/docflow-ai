@@ -1,14 +1,15 @@
 // 支付服务
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 import { authService } from './authService';
+import i18n from '../i18n';
 
 export interface CreateCheckoutRequest {
     planType: string;
-    paymentMethod?: 'stripe' | 'alipay';
+    paymentMethod?: 'stripe' | 'alipay' | 'wechat';
 }
 
 export interface CheckoutResponse {
-    paymentMethod: 'stripe' | 'alipay';
+    paymentMethod: 'stripe' | 'alipay' | 'wechat';
     sessionId?: string;
     orderId?: string;
     url?: string;
@@ -20,11 +21,11 @@ class PaymentService {
     // 创建支付会话
     async createCheckoutSession(
         planType: string,
-        paymentMethod: 'stripe' | 'alipay' = 'alipay'
+        paymentMethod: 'stripe' | 'alipay' | 'wechat' = 'alipay'
     ): Promise<CheckoutResponse> {
         const token = authService.getToken();
         if (!token) {
-            throw new Error('请先登录');
+            throw new Error(i18n.t('home.login_first', '请先登录'));
         }
 
         const response = await fetch(`${API_BASE_URL}/api/payment/create-checkout-session`, {
@@ -39,7 +40,7 @@ class PaymentService {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.message || '创建支付会话失败');
+            throw new Error(data.message || i18n.t('pricing.checkout_failed', '创建支付会话失败'));
         }
 
         return data.data;
@@ -58,7 +59,7 @@ class PaymentService {
     }
 
     // 跳转到支付页面 (Legacy support for Stripe)
-    async redirectToCheckout(planType: string, paymentMethod: 'stripe' | 'alipay' = 'alipay'): Promise<CheckoutResponse> {
+    async redirectToCheckout(planType: string, paymentMethod: 'stripe' | 'alipay' | 'wechat' = 'alipay'): Promise<CheckoutResponse> {
         const checkout = await this.createCheckoutSession(planType, paymentMethod);
         if (checkout.url && paymentMethod === 'stripe') {
             window.location.href = checkout.url;

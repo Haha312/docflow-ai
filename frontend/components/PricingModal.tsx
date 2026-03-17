@@ -1,10 +1,8 @@
-
+﻿
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { paymentService } from '../services/paymentService';
 import { useTranslation } from 'react-i18next';
-import alipayQrCode from '../image/alipay_qr.png';
-import wechatQrCode from '../image/wechat_qr.png';
 import alipayLogo from '../image/Alipaylogo.png';
 import wechatLogo from '../image/WeChatlogo.jpg';
 import { QRCodeCanvas } from 'qrcode.react';
@@ -19,7 +17,7 @@ type BillingCycle = 'monthly' | 'yearly';
 type Tier = 'plus' | 'pro' | 'ultra';
 
 export function PricingModal({ isOpen, onClose }: PricingModalProps) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { t } = useTranslation();
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('yearly');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('alipay');
@@ -46,7 +44,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const lang = navigator.language;
       const isChina = lang === 'zh-CN' || timeZone.includes('Shanghai') || timeZone.includes('Beijing');
-      setPaymentMethod(isChina ? 'alipay' : 'stripe');
+      setPaymentMethod(isChina ? 'alipay' : 'wechat');
     }
   }, [isOpen]);
 
@@ -60,10 +58,10 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
           if (status === 'PAID') {
             setStep('success');
             clearInterval(interval);
-            // Refresh user profile after short delay or immediately
-            setTimeout(() => {
-              window.location.reload(); // Simple reload to refresh auth state
-            }, 2000);
+            // Refresh user profile via context (preserves page state)
+            setTimeout(async () => {
+              await refreshUser();
+            }, 1500);
           }
         } catch (e) {
           console.error('Polling error', e);
@@ -83,10 +81,25 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
   const handleFinalPay = async (method: PaymentMethod) => {
     if (!selectedTier) return;
     setError('');
-
-    // Show static QR code directly (no API call needed)
     setPaymentMethod(method);
-    setStep('qrcode');
+    setIsLoading(true);
+    try {
+      const planType = `${selectedTier}_${billingCycle}`;
+      const checkout = await paymentService.createCheckoutSession(planType, method);
+
+      if (!checkout.orderId || !checkout.qrCode) {
+        throw new Error(t('pricing.checkout_failed', '鍒涘缓鏀粯浼氳瘽澶辫触'));
+      }
+
+      setCurrentOrderId(checkout.orderId);
+      setQrCodeData(checkout.qrCode);
+      setIsMockOrder(!!checkout.isMock);
+      setStep('qrcode');
+    } catch (e: any) {
+      setError(e?.message || t('pricing.checkout_failed', '鍒涘缓鏀粯浼氳瘽澶辫触'));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // ... (pricingData and helpers) ...
@@ -96,7 +109,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
   // We'll use the 'paymentMethod' state to determine the viewing currency in Step 1.
   const isAlipay = paymentMethod === 'alipay';
   const currency = isAlipay ? 'CNY' : 'USD';
-  const symbol = isAlipay ? '¥' : '$';
+  const symbol = isAlipay ? '楼' : '$';
 
   const pricingData: Record<Tier, any> = {
     plus: {
@@ -197,20 +210,24 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                 {paymentMethod === 'wechat' ? t('pricing.scan_wechat') : t('pricing.scan_alipay')}
               </h2>
               <p className="text-gray-500 mb-6">
-                {t('pricing.pay_amount')} <span className={`font-bold text-xl ${paymentMethod === 'wechat' ? 'text-green-600' : 'text-blue-600'}`}>¥{getPrice(selectedTier)}</span> {t('pricing.currency_unit')}
+                {t('pricing.pay_amount')} <span className={`font-bold text-xl ${paymentMethod === 'wechat' ? 'text-green-600' : 'text-blue-600'}`}>楼{getPrice(selectedTier)}</span> {t('pricing.currency_unit')}
               </p>
 
               <div className={`p-4 bg-gradient-to-br ${paymentMethod === 'wechat' ? 'from-green-50 to-white border-green-100' : 'from-blue-50 to-white border-blue-100'} border-2 rounded-3xl shadow-lg`}>
-                <img
-                  src={paymentMethod === 'wechat' ? wechatQrCode : alipayQrCode}
-                  alt={paymentMethod === 'wechat' ? '微信收款码' : '支付宝收款码'}
-                  className="w-56 h-56 object-contain rounded-xl"
-                />
+                {qrCodeData ? (
+                  <QRCodeCanvas value={qrCodeData} size={224} includeMargin />
+                ) : (
+                  <div className="w-56 h-56 flex items-center justify-center text-sm text-gray-400 bg-white rounded-xl">
+                    {t('pricing.loading_qr', '正在生成支付二维码...')}
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 text-sm text-gray-500 max-w-xs">
                 <p>{t('pricing.please_use')}{paymentMethod === 'wechat' ? t('pricing.wechat') : t('pricing.alipay')}{t('pricing.scan_qr_prompt')}</p>
                 <p className="mt-2 text-xs text-gray-400">{t('pricing.payment_completion_notice')}</p>
+                {!!currentOrderId && <p className="mt-2 text-xs text-gray-400">Order: {currentOrderId}</p>}
+                {isMockOrder && <p className="mt-2 text-xs text-amber-500">{t('pricing.mock_order_hint', '当前是测试模式订单')}</p>}
               </div>
 
               <button
@@ -249,7 +266,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                   {billingCycle === 'monthly' ? t('pricing.monthly_plan') : t('pricing.yearly_plan')}
                 </p>
                 <div className="mt-4 text-4xl font-extrabold text-gray-900 tracking-tight">
-                  <span className="text-2xl text-gray-400 font-normal mr-1">¥</span>
+                  <span className="text-2xl text-gray-400 font-normal mr-1">楼</span>
                   {pricingData[selectedTier][billingCycle].CNY}
                 </div>
               </div>
@@ -316,7 +333,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
             <div className="mt-auto text-center">
               <div className="flex items-center justify-center gap-2 text-xs text-gray-400 bg-gray-50 py-2 rounded-full inline-block px-4 mx-auto">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                SSL Secure Payment Encrypted
+                {t('pricing.secure_payment', 'SSL Secure Payment Encrypted')}
               </div>
             </div>
           </div>
@@ -330,7 +347,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
               <button
                 onClick={onClose}
                 className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
-                title="关闭"
+                title={t('common.close', '鍏抽棴')}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -477,3 +494,5 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
     </div>
   );
 }
+
+

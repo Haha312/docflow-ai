@@ -12,10 +12,10 @@ interface Props {
 // 根据用户等级获取文件大小限制 (MB)
 const getFileSizeLimit = (tier?: string): number => {
   switch (tier) {
-    case 'ULTRA': return 1000;      // 1000MB
-    case 'PRO': return 500;         // 500MB
-    case 'PLUS': return 500;        // 500MB
-    default: return 200;            // FREE: 200MB
+    case 'ULTRA': return 100;       // 100MB
+    case 'PRO': return 50;          // 50MB
+    case 'PLUS': return 50;         // 50MB
+    default: return 20;             // FREE: 20MB
   }
 };
 

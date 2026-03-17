@@ -1,6 +1,7 @@
 // 后端 API 调用服务 (替换直接调用 Gemini)
 import { DocPreset, StyleConfig } from '../types';
 import { authService } from './authService';
+import i18n from '../i18n';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -19,12 +20,12 @@ export interface GenerateDocumentRequest {
  */
 export async function generateDocumentViaBackend(
     request: GenerateDocumentRequest,
-    onProgress: (html: string, progress?: any) => void,
+    onProgress: (html: string, progress?: any, imageMap?: Record<string, string>) => void,
     abortSignal?: AbortSignal
 ): Promise<string> {
     const token = authService.getToken();
     if (!token) {
-        throw new Error('请先登录');
+        throw new Error(i18n.t('errors.login_required', '请先登录'));
     }
 
     const response = await fetch(`${API_BASE_URL}/api/generate`, {
@@ -52,13 +53,13 @@ export async function generateDocumentViaBackend(
             throw new Error('LOGIN_REQUIRED');
         }
 
-        throw new Error(data.message || '文档生成失败');
+        throw new Error(data.message || i18n.t('errors.generate_failed', '文档生成失败'));
     }
 
     // 处理 SSE 流式响应
     const reader = response.body?.getReader();
     if (!reader) {
-        throw new Error('无法读取响应流');
+        throw new Error(i18n.t('errors.cannot_read_stream', '无法读取响应流'));
     }
 
     const decoder = new TextDecoder();
@@ -84,6 +85,12 @@ export async function generateDocumentViaBackend(
 
                             if (data.error) throw new Error(data.error);
                             if (data.done) return fullText;
+
+                            // imageMap 事件 — 初始化图片映射
+                            if (data.imageMap) {
+                                onProgress(fullText, data.progress, data.imageMap);
+                                continue;
+                            }
 
                             // ping 事件 — 只更新进度，不改变内容
                             if (data.ping) {
@@ -121,51 +128,51 @@ export async function generateDocumentViaBackend(
 // 获取用户订单历史
 export async function getUserOrders(): Promise<any[]> {
     const token = authService.getToken();
-    if (!token) throw new Error('请先登录');
+    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
 
     const response = await fetch(`${API_BASE_URL}/api/user/orders`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.message || '获取订单失败');
+    if (!response.ok) throw new Error(data.message || i18n.t('errors.fetch_order_failed', '获取订单失败'));
     return data.data;
 }
 
 // 获取用户文档列表
 export async function getUserDocuments(page = 1, pageSize = 20): Promise<{ list: any[], pagination: any }> {
     const token = authService.getToken();
-    if (!token) throw new Error('请先登录');
+    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
 
     const response = await fetch(`${API_BASE_URL}/api/documents?page=${page}&pageSize=${pageSize}`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.message || '获取文档失败');
+    if (!response.ok) throw new Error(data.message || i18n.t('errors.fetch_doc_failed', '获取文档失败'));
     return data.data;
 }
 
 // 获取文档详情
 export async function getDocument(id: string): Promise<any> {
     const token = authService.getToken();
-    if (!token) throw new Error('请先登录');
+    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
 
     const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
         headers: { 'Authorization': `Bearer ${token}` }
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.message || '获取文档失败');
+    if (!response.ok) throw new Error(data.message || i18n.t('errors.fetch_doc_failed', '获取文档失败'));
     return data.data;
 }
 
 // 删除文档
 export async function deleteDocument(id: string): Promise<void> {
     const token = authService.getToken();
-    if (!token) throw new Error('请先登录');
+    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
 
     const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.message || '删除文档失败');
+    if (!response.ok) throw new Error(data.message || i18n.t('errors.delete_doc_failed', '删除文档失败'));
 }

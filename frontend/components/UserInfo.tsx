@@ -118,7 +118,7 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin
             {t('nav.upgrade')}
           </button>
 
-          {user.email.toLowerCase() === 'admin@docuflow.ai' && (
+          {['admin@docuflow.ai'].includes(user.email.toLowerCase()) && (
             <button
               onClick={() => { setShowMenu(false); onOpenAdmin && onOpenAdmin(); }}
               className="w-full text-left px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-2"

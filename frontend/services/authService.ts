@@ -1,5 +1,18 @@
 // 认证服务
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+import i18n from '../i18n';
+
+/**
+ * 翻译后端返回的错误码为用户可读消息
+ * 后端现在返回结构化错误码 (如 AUTH_INVALID_CREDENTIALS)
+ * 前端通过 i18n 映射为当前语言的错误消息
+ */
+export function translateBackendError(message: string): string {
+    const key = `backend_errors.${message}`;
+    const translated = i18n.t(key);
+    // 如果 i18n 找不到翻译, 会返回 key 本身, 此时使用原始消息
+    return translated === key ? message : translated;
+}
 
 export interface User {
     id: string;
@@ -46,7 +59,7 @@ class AuthService {
         const response = await fetch(`${API_BASE_URL}/api/auth/captcha`);
         const data = await response.json();
         if (!response.ok) {
-            throw new Error(data.message || '获取验证码失败');
+            throw new Error(data.message || i18n.t('errors.fetch_captcha_failed', '获取验证码失败'));
         }
         return data.data;
     }
@@ -64,7 +77,7 @@ class AuthService {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.message || '验证码发送失败');
+            throw new Error(data.message || i18n.t('errors.send_captcha_failed', '验证码发送失败'));
         }
     }
 
@@ -81,7 +94,7 @@ class AuthService {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.message || '注册失败');
+            throw new Error(data.message || i18n.t('errors.register_failed', '注册失败'));
         }
 
         return data.data;
@@ -100,7 +113,7 @@ class AuthService {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.message || '登录失败');
+            throw new Error(data.message || i18n.t('errors.login_failed', '登录失败'));
         }
 
         // 保存 token
@@ -118,7 +131,7 @@ class AuthService {
     async getCurrentUser(): Promise<UserInfoResponse> {
         const token = this.getToken();
         if (!token) {
-            throw new Error('未登录');
+            throw new Error(i18n.t('errors.not_logged_in', '未登录'));
         }
 
         const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
@@ -134,7 +147,7 @@ class AuthService {
             if (response.status === 401) {
                 this.clearToken();
             }
-            throw new Error(data.message || '获取用户信息失败');
+            throw new Error(data.message || i18n.t('errors.fetch_user_failed', '获取用户信息失败'));
         }
 
         return data.data;

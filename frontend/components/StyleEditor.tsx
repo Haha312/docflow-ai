@@ -3,6 +3,7 @@ import React from 'react';
 import { StyleConfig, NumberingStyle, FigureNumberingStyle, DocPreset } from '../types';
 import { FONT_FAMILY_OPTIONS, FONT_SIZE_OPTIONS, SPACING_OPTIONS, ALIGNMENT_OPTIONS, FIGURE_NUMBERING_OPTIONS, TABLE_NUMBERING_OPTIONS, TEXT_INDENT_OPTIONS } from '../constants';
 import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 
 interface Props {
     isOpen: boolean;
@@ -43,7 +44,6 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                         // Since many strings are complex, it's safer to map directly via an exact dictionary match or keep it simple.
                         // We added these exactly to zh.json/en.json under "styles".
 
-                        // Map specific constant values to style translation keys
                         const translations: Record<string, string> = {
                             "两端对齐": "align_justify",
                             "左对齐": "align_left",
@@ -58,11 +58,27 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                             "顺序编号 (表1, 表2)": "tab_num_seq",
                             "章节编号 (表1-1, 表2-1)": "tab_num_chap"
                         };
+
+                        let displayLabel = opt.label;
                         const transKey = translations[opt.label];
+
+                        if (transKey) {
+                            displayLabel = t(`styles.${transKey}`, opt.label);
+                        } else if (i18n.language.startsWith('en')) {
+                            // Extract English part from fonts and sizes, e.g. "宋体 (SimSun)" -> "SimSun", "一号 (26pt)" -> "26pt"
+                            const parenMatch = opt.label.match(/\((.*?)\)/);
+                            if (parenMatch) {
+                                displayLabel = parenMatch[1];
+                            } else if (opt.label.endsWith('行')) {
+                                displayLabel = opt.label.replace('行', ' lines');
+                            } else if (opt.label.endsWith('磅')) {
+                                displayLabel = opt.label.replace('磅', ' pt');
+                            }
+                        }
 
                         return (
                             <option key={opt.value} value={opt.value}>
-                                {transKey ? t(`styles.${transKey}`, opt.label) : opt.label}
+                                {displayLabel}
                             </option>
                         );
                     })}
@@ -73,6 +89,16 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
             </div>
         </div>
     );
+
+    // Helper to get translated label for any option
+    const getOptionLabel = (label: string): string => {
+        if (!i18n.language.startsWith('en')) return label;
+        const parenMatch = label.match(/\((.+?)\)/);
+        if (parenMatch) return parenMatch[1];
+        if (label.endsWith('行')) return label.replace('行', ' lines');
+        if (label.endsWith('磅')) return label.replace('磅', ' pt');
+        return label;
+    };
 
     const renderHeadingStyleRow = (
         label: string,
@@ -93,7 +119,7 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                 className="w-full text-sm p-2.5 pr-6 border border-zinc-200 rounded-lg bg-zinc-50 focus:border-indigo-500 outline-none appearance-none truncate"
                             >
                                 {FONT_SIZE_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    <option key={opt.value} value={opt.value}>{getOptionLabel(opt.label)}</option>
                                 ))}
                             </select>
                             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1 text-zinc-500">
@@ -127,7 +153,7 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                 className="w-full text-xs p-2 pr-6 border border-zinc-200 rounded-lg bg-zinc-50/50 text-zinc-600 focus:border-indigo-500 outline-none appearance-none truncate"
                             >
                                 {FONT_FAMILY_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    <option key={opt.value} value={opt.value}>{getOptionLabel(opt.label)}</option>
                                 ))}
                             </select>
                             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1 text-zinc-400">

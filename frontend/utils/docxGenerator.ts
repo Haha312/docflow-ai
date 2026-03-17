@@ -1,6 +1,7 @@
 
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LineRuleType, Table, TableRow, TableCell, BorderStyle, WidthType, SectionType, Footer, PageNumber, Math as DocxMath, MathRun, MathSuperScript, MathSubScript, MathFraction, MathRadical, ImageRun, TableOfContents, PageBreak, NumberFormat } from "docx";
 import { StyleConfig, Alignment } from "../types";
+import i18n from '../i18n';
 
 // --- Helpers ---
 
@@ -18,11 +19,11 @@ const getSpacingTwips = (str: string, fontSizePt: number): number => {
     const val = parseFloat(str);
     if (isNaN(val)) return 0;
 
-    if (str.includes("行")) {
+    if (str.includes(i18n.t('generator.lines', '行'))) {
         return Math.round(val * fontSizePt * 30);
     }
 
-    if (str.includes("pt") || str.includes("磅")) {
+    if (str.includes("pt") || str.includes(i18n.t('generator.pt', '磅'))) {
         return Math.round(val * 20);
     }
 
@@ -34,7 +35,7 @@ const getLineHeightConfig = (str: string) => {
     const val = parseFloat(s);
     if (isNaN(val)) return { line: 240, rule: LineRuleType.AUTO };
 
-    if (s.includes("pt") || s.includes("磅")) {
+    if (s.includes("pt") || s.includes(i18n.t('generator.pt', '磅'))) {
         return { line: Math.round(val * 20), rule: LineRuleType.EXACT };
     }
 
@@ -83,7 +84,7 @@ const getIndentConfig = (indentStr: string, fontSizePt: number) => {
         return { firstLine: Math.round(val * 20) };
     }
 
-    if (indentStr.includes("字符")) {
+    if (indentStr.includes(i18n.t('generator.chars', '字符')) || indentStr.includes('chars') || indentStr.includes('ch')) {
         const val = parseFloat(indentStr) || 2;
         return {
             firstLine: Math.round(val * fontSizePt * 20),
@@ -586,12 +587,12 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                             console.log('✅ ImageRun created successfully, dimensions:', finalWidth, 'x', finalHeight);
                         } catch (imgError) {
                             console.error('❌ Failed to create ImageRun:', imgError);
-                            runs.push(new TextRun({ text: '[图片]', font: baseFont, size: baseSize }));
+                            runs.push(new TextRun({ text: `[${i18n.t('generator.image', '图片')}]`, font: baseFont, size: baseSize }));
                         }
                     } else {
                         // Fallback for non-base64 images
                         console.warn('⚠️ Image not in base64 format, src:', src.substring(0, 100));
-                        runs.push(new TextRun({ text: '[图片]', font: baseFont, size: baseSize }));
+                        runs.push(new TextRun({ text: `[${i18n.t('generator.image', '图片')}]`, font: baseFont, size: baseSize }));
                     }
                     return;
                 }
@@ -620,9 +621,9 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         let fontName = headingFont;
 
         if (level === 1) {
-            size = getHalfPtSize(styleConfig.h1Size); align = mapAlignment(styleConfig.h1Align); headingLevel = HeadingLevel.HEADING_1; beforeTwips = getSpacingTwips("1行", getPtSize(styleConfig.h1Size)); afterTwips = getSpacingTwips("1行", getPtSize(styleConfig.h1Size)); indent = getIndentConfig(styleConfig.h1Indent, getPtSize(styleConfig.h1Size)); bold = styleConfig.h1Bold; italics = styleConfig.h1Italic; fontName = h1Font;
+            size = getHalfPtSize(styleConfig.h1Size); align = mapAlignment(styleConfig.h1Align); headingLevel = HeadingLevel.HEADING_1; beforeTwips = getSpacingTwips(`1${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h1Size)); afterTwips = getSpacingTwips(`1${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h1Size)); indent = getIndentConfig(styleConfig.h1Indent, getPtSize(styleConfig.h1Size)); bold = styleConfig.h1Bold; italics = styleConfig.h1Italic; fontName = h1Font;
         } else if (level === 2) {
-            size = getHalfPtSize(styleConfig.h2Size); align = mapAlignment(styleConfig.h2Align); headingLevel = HeadingLevel.HEADING_2; beforeTwips = getSpacingTwips("0.8行", getPtSize(styleConfig.h2Size)); afterTwips = getSpacingTwips("0.5行", getPtSize(styleConfig.h2Size)); indent = getIndentConfig(styleConfig.h2Indent, getPtSize(styleConfig.h2Size)); bold = styleConfig.h2Bold; italics = styleConfig.h2Italic; fontName = h2Font;
+            size = getHalfPtSize(styleConfig.h2Size); align = mapAlignment(styleConfig.h2Align); headingLevel = HeadingLevel.HEADING_2; beforeTwips = getSpacingTwips(`0.8${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h2Size)); afterTwips = getSpacingTwips(`0.5${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h2Size)); indent = getIndentConfig(styleConfig.h2Indent, getPtSize(styleConfig.h2Size)); bold = styleConfig.h2Bold; italics = styleConfig.h2Italic; fontName = h2Font;
         } else if (level === 3) {
             size = getHalfPtSize(styleConfig.h3Size); headingLevel = HeadingLevel.HEADING_3; beforeTwips = 200; afterTwips = 100; indent = getIndentConfig(styleConfig.h3Indent, getPtSize(styleConfig.h3Size)); bold = styleConfig.h3Bold; italics = styleConfig.h3Italic; fontName = h3Font;
         } else {
@@ -781,14 +782,14 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                         console.error('❌ Failed to create image:', imgError);
                         elements.push(new Paragraph({
                             alignment: AlignmentType.CENTER,
-                            children: [new TextRun({ text: '[图片]', font: makeFont(bodyFont), size: getHalfPtSize(styleConfig.baseSize) })]
+                            children: [new TextRun({ text: `[${i18n.t('generator.image', '图片')}]`, font: makeFont(bodyFont), size: getHalfPtSize(styleConfig.baseSize) })]
                         }));
                     }
                 } else {
                     console.warn('⚠️ Image not in base64 format');
                     elements.push(new Paragraph({
                         alignment: AlignmentType.CENTER,
-                        children: [new TextRun({ text: '[图片]', font: makeFont(bodyFont), size: getHalfPtSize(styleConfig.baseSize) })]
+                        children: [new TextRun({ text: `[${i18n.t('generator.image', '图片')}]`, font: makeFont(bodyFont), size: getHalfPtSize(styleConfig.baseSize) })]
                     }));
                 }
                 return;
@@ -796,7 +797,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
 
             if (tagName === 'HR') return;
 
-            if (text.includes("image-placeholder") || (text.startsWith("图") && text.length < 50 && !tagName.startsWith('H'))) {
+            if (text.includes("image-placeholder") || (text.startsWith(i18n.t('generator.figure', '图')) && text.length < 50 && !tagName.startsWith('H'))) {
                 elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.figureAlign), spacing: { before: 240, after: 240 }, children: [new TextRun({ text: text, font: makeFont(figureFont), size: getHalfPtSize(styleConfig.figureSize), color: "000000" })] }));
                 return;
             }
@@ -810,7 +811,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
 
             // ===== 目录处理 =====
             // 目录由section生成逻辑处理,这里跳过
-            if (className.includes('toc-placeholder') || text.includes('TOC_PLACEHOLDER') || (text === '目录' && tagName === 'H1')) {
+            if (className.includes('toc-placeholder') || text.includes('TOC_PLACEHOLDER') || (text === i18n.t('generator.toc', '目录') && tagName === 'H1')) {
                 // 跳过,不在这里生成目录,由section逻辑统一生成
                 return;
             }
@@ -820,7 +821,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             if (className.includes('author-info')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 100 }, children: [new TextRun({ text: text, font: makeFont(authorFont), size: getHalfPtSize(styleConfig.authorSize || '16pt'), color: "000000" })] })); return; }
             if (className.includes('affiliation')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 50, after: 200 }, children: [new TextRun({ text: text, font: makeFont(affiliationFont), size: getHalfPtSize(styleConfig.affiliationSize || '9pt'), color: "000000" })] })); return; }
             if (className.includes('abstract-cn') || className.includes('abstract-en')) { elements.push(...processNodes(el.childNodes, undefined, tableContext)); return; }
-            if (className.includes('table-caption') || tagName === 'CAPTION' || (tagName === 'P' && text.startsWith('表') && text.length < 40 && !tableContext.inTable)) { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: true, color: "000000" })] })); return; }
+            if (className.includes('table-caption') || tagName === 'CAPTION' || (tagName === 'P' && text.startsWith(i18n.t('generator.table', '表')) && text.length < 40 && !tableContext.inTable)) { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: true, color: "000000" })] })); return; }
 
             if (tagName === 'H1') elements.push(createHeading(text, 1));
             else if (tagName === 'H2') elements.push(createHeading(text, 2));
@@ -884,7 +885,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             }
 
             // 检测目录
-            if (className.includes('toc-placeholder') || text.includes('TOC_PLACEHOLDER') || (text === '目录' && el.tagName === 'H1')) {
+            if (className.includes('toc-placeholder') || text.includes('TOC_PLACEHOLDER') || (text === i18n.t('generator.toc', '目录') && el.tagName === 'H1')) {
                 hasToc = true;
                 currentSection = 'toc';
                 tocNodes.push(node);
@@ -932,10 +933,10 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             tocElements.push(new Paragraph({
                 alignment: AlignmentType.CENTER,
                 spacing: { before: 480, after: 480 },
-                children: [new TextRun({ text: "目  录", font: makeFont(headingFont), bold: true, size: 44 })]
+                children: [new TextRun({ text: i18n.t('generator.toc_title', "目  录"), font: makeFont(headingFont), bold: true, size: 44 })]
             }));
             // 添加 Word 原生目录
-            tocElements.push(new TableOfContents("目录", {
+            tocElements.push(new TableOfContents(i18n.t('generator.toc', "目录"), {
                 hyperlink: true,
                 headingStyleRange: "1-3",
                 stylesWithLevels: [
