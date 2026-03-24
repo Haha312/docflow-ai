@@ -60,6 +60,9 @@ function Home() {
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Buffer for batching SSE text updates — flush via requestAnimationFrame (max 60fps)
+  const textBufferRef = useRef<string>('');
+  const rafIdRef = useRef<number | null>(null);
 
   // Layout Resizing States
   const [sidebarWidth, setSidebarWidth] = useState(360); // Default 360px
@@ -70,6 +73,7 @@ function Home() {
 
   const activeStyle = currentStyles[selectedPreset];
   const activePresetConfig = PRESETS.find(p => p.id === selectedPreset)!;
+
 
   const handleFileLoaded = (content: string, name: string) => {
     setInputText(content);
@@ -196,6 +200,11 @@ function Home() {
     setOutputText('');
     setImageMap({});
     setShouldAutoScroll(true); // 每次新生成重置自动滚动
+    textBufferRef.current = '';
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -236,8 +245,16 @@ function Home() {
               progressStep: `${displayStatus}${remaining}`
             }));
           }
-          // Only update outputText if content actually changed (skip ping-only events)
-          setOutputText(prev => prev === partialText ? prev : partialText);
+          // Buffer incoming text; RAF-batched display at up to 60fps (no char-by-char typewriter)
+          if (partialText !== textBufferRef.current) {
+            textBufferRef.current = partialText;
+            if (rafIdRef.current === null) {
+              rafIdRef.current = requestAnimationFrame(() => {
+                setOutputText(textBufferRef.current);
+                rafIdRef.current = null;
+              });
+            }
+          }
         },
         controller.signal
       );
@@ -245,7 +262,15 @@ function Home() {
       // Generation complete
       if (abortControllerRef.current !== null) {
         setAiState(prev => ({ ...prev, progress: 100, progressStep: t('home.generation_complete', '排版生成完毕') }));
-        await new Promise(r => setTimeout(r, 600));
+        // Flush: cancel any pending RAF and show final text
+        if (rafIdRef.current !== null) {
+          cancelAnimationFrame(rafIdRef.current);
+          rafIdRef.current = null;
+        }
+        setOutputText(textBufferRef.current);
+        // Brief pause for React to finish rendering, then trigger KaTeX (runs when isThinking=false)
+        setAiState(prev => ({ ...prev, progressStep: t('home.rendering', '正在应用排版格式...') }));
+        await new Promise(r => setTimeout(r, 300));
         setAiState({ isThinking: false, error: null, progressStep: t('home.done', '完成'), progress: 0 });
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
@@ -275,7 +300,13 @@ function Home() {
   const handleDownload = async () => {
     if (!outputText) return;
     try {
-      const blob = await generateDocx(outputText, activeStyle);
+      // Restore __IMG_N__ placeholders before export (same as renderedContent step 2,
+      // but WITHOUT KaTeX — KaTeX HTML would break docxGenerator)
+      let docxReadyHtml = outputText.replace(/```html/gi, '').replace(/```/g, '');
+      if (Object.keys(imageMap).length > 0) {
+        docxReadyHtml = docxReadyHtml.replace(/__IMG_\d+__/g, (match) => imageMap[match] || match);
+      }
+      const blob = await generateDocx(docxReadyHtml, activeStyle);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -324,11 +355,28 @@ function Home() {
     // 2. Restore Image Placeholders
     if (Object.keys(imageMap).length > 0) {
       processedText = processedText.replace(/__IMG_\d+__/g, (match) => {
-        return imageMap[match] || match; // Replace with actual img tag if found
+        return imageMap[match] || match;
       });
     }
 
-    // 3. Match Display Math ($$...$$) OR Inline Math ($...$)
+    // 3. Strip AI-generated inline font styles so preset CSS takes effect
+    processedText = processedText.replace(/(\s+style=")([^"]*?)(")/gi, (_m, open, styleContent: string, close) => {
+      const cleaned = styleContent
+        .split(';')
+        .filter(decl => {
+          const prop = decl.split(':')[0]?.trim().toLowerCase() || '';
+          return !['font-size', 'font-family', 'line-height'].includes(prop);
+        })
+        .join(';')
+        .trim()
+        .replace(/;$/, '');
+      return cleaned ? `${open}${cleaned}${close}` : '';
+    });
+
+    // 4. Skip KaTeX during active streaming — too expensive per-token, run once after done
+    if (aiState.isThinking) return processedText;
+
+    // 4. Match Display Math ($$...$$) OR Inline Math ($...$)
     return processedText.replace(/(\$\$[\s\S]*?\$\$|\$([^\$\n]+)\$)/g, (match) => {
       try {
         const isDisplay = match.startsWith('$$');
@@ -347,7 +395,7 @@ function Home() {
         return match;
       }
     });
-  }, [outputText, imageMap]);
+  }, [outputText, imageMap, aiState.isThinking]);
 
   const generatePreviewStyles = () => {
     const s = activeStyle;
@@ -543,7 +591,7 @@ function Home() {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  <span>{aiState.progressStep} ({Math.round(aiState.progress)}%)</span>
+                  <span>{aiState.progressStep}</span>
                 </div>
               )}
 
@@ -675,11 +723,12 @@ function Home() {
                         <p className="mt-1 text-xs text-gray-400">{t('home.model_thinking', '模型思考中，请稍候')}</p>
                       </div>
                       {aiState.progress > 0 && (
-                        <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gray-400 rounded-full transition-all duration-700 ease-out"
-                            style={{ width: `${Math.max(3, aiState.progress)}%` }}
-                          />
+                        <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden relative">
+                          {aiState.progress >= 100 ? (
+                            <div className="h-full w-full bg-green-500 rounded-full transition-all duration-500" />
+                          ) : (
+                            <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-400 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
+                          )}
                         </div>
                       )}
                     </div>

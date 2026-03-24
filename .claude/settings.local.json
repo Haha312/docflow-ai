@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \":*)",
+      "Bash(python -V)",
+      "Bash(python -c \"print\\(''hello''\\)\")",
+      "Bash(where python:*)",
+      "Bash(where python3:*)",
+      "Bash(where py:*)",
+      "Bash(node -e \":*)",
+      "Bash(dir D:docuflow-aifrontendcomponents)",
+      "Bash(Write-Output \"test\")",
+      "Bash(npx tsc:*)",
+      "Bash(cd /d D:docuflow-aifrontend)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(npx --no tsc --noEmit)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(node -e \"const ts = require\\(''typescript''\\); const program = ts.createProgram\\([''components/PricingModal.tsx'', ''components/AuthModal.tsx''], {jsx: 1, strict: false, noEmit: true}\\); const diags = ts.getPreEmitDiagnostics\\(program\\); diags.forEach\\(d => console.log\\(ts.flattenDiagnosticMessageText\\(d.messageText, ''\\\\n''\\)\\)\\);\")"
+    ]
+  }
+}

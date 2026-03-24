@@ -1,19 +1,20 @@
-// 支付服务
+﻿// 支付服务
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 import { authService } from './authService';
 import i18n from '../i18n';
 
 export interface CreateCheckoutRequest {
     planType: string;
-    paymentMethod?: 'stripe' | 'alipay' | 'wechat';
+    paymentMethod?: 'alipay' | 'wechat' | 'qrcode';
 }
 
 export interface CheckoutResponse {
-    paymentMethod: 'stripe' | 'alipay' | 'wechat';
-    sessionId?: string;
+    paymentMethod: 'alipay' | 'wechat' | 'qrcode';
     orderId?: string;
-    url?: string;
     qrCode?: string;
+    amount?: number;
+    alipayQrUrl?: string;
+    wechatQrUrl?: string;
     isMock?: boolean;
 }
 
@@ -21,7 +22,7 @@ class PaymentService {
     // 创建支付会话
     async createCheckoutSession(
         planType: string,
-        paymentMethod: 'stripe' | 'alipay' | 'wechat' = 'alipay'
+        paymentMethod: 'alipay' | 'wechat' = 'alipay'
     ): Promise<CheckoutResponse> {
         const token = authService.getToken();
         if (!token) {
@@ -54,17 +55,11 @@ class PaymentService {
                 'Authorization': `Bearer ${token}`
             }
         });
+        if (!response.ok) {
+            throw new Error(`Payment status check failed: ${response.status}`);
+        }
         const data = await response.json();
         return data.data?.status || 'PENDING';
-    }
-
-    // 跳转到支付页面 (Legacy support for Stripe)
-    async redirectToCheckout(planType: string, paymentMethod: 'stripe' | 'alipay' | 'wechat' = 'alipay'): Promise<CheckoutResponse> {
-        const checkout = await this.createCheckoutSession(planType, paymentMethod);
-        if (checkout.url && paymentMethod === 'stripe') {
-            window.location.href = checkout.url;
-        }
-        return checkout;
     }
 }
 

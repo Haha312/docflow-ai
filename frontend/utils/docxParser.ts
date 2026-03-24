@@ -1,5 +1,17 @@
 import JSZip from 'jszip';
 
+// Read a ZIP entry as text, auto-detecting encoding from the XML declaration.
+// Handles legacy Chinese DOCX files that use GBK/GB2312 instead of UTF-8.
+async function readXmlEntry(entry: JSZip.JSZipObject | null | undefined): Promise<string> {
+    if (!entry) return '';
+    const bytes = await entry.async('uint8array');
+    const sniff = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 200));
+    const encMatch = sniff.match(/encoding=["']([^"']+)["']/i);
+    const enc = encMatch ? encMatch[1].toLowerCase() : 'utf-8';
+    const normalized = ['gb2312', 'gbk', 'gb18030', 'chinese', 'csgb2312'].includes(enc) ? 'gbk' : enc;
+    return new TextDecoder(normalized, { fatal: false }).decode(bytes);
+}
+
 // Mapping of Word OMML operators to LaTeX
 const CHR_MAP: Record<string, string> = {
     '∑': '\\sum',
@@ -185,20 +197,58 @@ const parseOMML = (node: Element): string => {
     return result;
 };
 
+// Recursively find first element matching local tag name
+const findElement = (el: Element, localName: string): Element | null => {
+    const name = el.tagName.includes(':') ? el.tagName.split(':')[1] : el.tagName;
+    if (name === localName) return el;
+    for (const child of Array.from(el.children)) {
+        const found = findElement(child as Element, localName);
+        if (found) return found;
+    }
+    return null;
+};
+
 // Main extraction function
 export const extractRawTextWithFormulas = async (arrayBuffer: ArrayBuffer): Promise<string> => {
     try {
         const zip = await JSZip.loadAsync(arrayBuffer);
-        const docXml = await zip.file("word/document.xml")?.async("string");
-        
+        const docXml = await readXmlEntry(zip.file("word/document.xml"));
+
         if (!docXml) {
             console.warn("No word/document.xml found in docx.");
-            return ""; 
+            return "";
+        }
+
+        // Build rId -> base64 data URI map from relationships file
+        const imageDataMap: Record<string, string> = {};
+        const relsXml = await readXmlEntry(zip.file("word/_rels/document.xml.rels"));
+        if (relsXml) {
+            const relsDoc = new DOMParser().parseFromString(relsXml, "application/xml");
+            const rels = relsDoc.getElementsByTagName("Relationship");
+            for (const rel of Array.from(rels)) {
+                const id = rel.getAttribute("Id") || '';
+                const type = rel.getAttribute("Type") || '';
+                const target = rel.getAttribute("Target") || '';
+                if (type.includes("/image") && id && target) {
+                    const imagePath = target.startsWith('/') ? target.slice(1) : `word/${target}`;
+                    const imageFile = zip.file(imagePath);
+                    if (imageFile) {
+                        const base64 = await imageFile.async("base64");
+                        const ext = target.split('.').pop()?.toLowerCase() || 'png';
+                        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+                                   : ext === 'gif' ? 'image/gif'
+                                   : ext === 'bmp' ? 'image/bmp'
+                                   : ext === 'webp' ? 'image/webp'
+                                   : 'image/png';
+                        imageDataMap[id] = `data:${mime};base64,${base64}`;
+                    }
+                }
+            }
         }
 
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(docXml, "application/xml");
-        
+
         const parserError = xmlDoc.getElementsByTagName("parsererror");
         if (parserError.length > 0) {
             console.error("XML Parsing Error", parserError[0]);
@@ -211,21 +261,48 @@ export const extractRawTextWithFormulas = async (arrayBuffer: ArrayBuffer): Prom
             const tagName = node.tagName.includes(':') ? node.tagName.split(':')[1] : node.tagName;
 
             // Paragraphs imply newlines
-            if (tagName === 'p') { 
+            if (tagName === 'p') {
                 Array.from(node.childNodes).forEach(child => {
                     if (child.nodeType === 1) traverse(child as Element);
                 });
                 extractedText += "\n";
             }
             // Math Blocks (OMML)
-            else if (tagName === 'oMath' || tagName === 'oMathPara') { 
+            else if (tagName === 'oMath' || tagName === 'oMathPara') {
                 const latex = parseOMML(node);
                 if (latex && latex.trim()) {
                     extractedText += ` $$ ${latex} $$ `;
                 }
             }
+            // Images (inline drawings)
+            else if (tagName === 'drawing') {
+                const blip = findElement(node, 'blip');
+                if (blip) {
+                    // r:embed attribute may appear with or without namespace prefix
+                    const rId = blip.getAttribute('r:embed')
+                        || blip.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed')
+                        || '';
+                    if (rId && imageDataMap[rId]) {
+                        // Extract EMU dimensions from <a:ext cx="..." cy="...">
+                        const ext = findElement(node, 'ext');
+                        let widthAttr = '';
+                        let heightAttr = '';
+                        if (ext) {
+                            const cx = ext.getAttribute('cx');
+                            const cy = ext.getAttribute('cy');
+                            if (cx && cy) {
+                                // 1 inch = 914400 EMU, 1 inch = 96px → 1 EMU = 96/914400 px
+                                widthAttr = ` width="${Math.round(parseInt(cx) / 9525)}"`;
+                                heightAttr = ` height="${Math.round(parseInt(cy) / 9525)}"`;
+                            }
+                        }
+                        extractedText += `<img src="${imageDataMap[rId]}"${widthAttr}${heightAttr} />`;
+                    }
+                }
+                // Do not recurse into drawing children
+            }
             // Text Nodes
-            else if (tagName === 't') { 
+            else if (tagName === 't') {
                  extractedText += node.textContent;
             }
             // Runs / Generic Containers
@@ -239,7 +316,7 @@ export const extractRawTextWithFormulas = async (arrayBuffer: ArrayBuffer): Prom
         if (xmlDoc.documentElement) {
             traverse(xmlDoc.documentElement);
         }
-        
+
         return extractedText.trim();
 
     } catch (e) {

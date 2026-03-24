@@ -23,9 +23,9 @@ const cleanOutput = (text: string): string => {
 
 
 import { TIER_LIMITS } from '../config/tierConfig';
+import { splitContentBySemantics } from '../utils/chunking';
 
-// 缁熶竴浣跨敤楂樿川閲忔帓鐗堟ā鍨?
-const PRIMARY_MODEL = 'gemini-3-pro-preview';
+const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3-pro-preview';
 const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 50));
 let activeGenerations = 0;
 
@@ -128,6 +128,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
         // 鑾峰彇鐢ㄦ埛绛夌骇涓庨厤缃?
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
+
+        // Truncate fileName to prevent oversized prompt injection
+        const safeFileName = String(fileName).slice(0, 200);
 
         geminiApiKey = dbConfig['GOOGLE_API_KEY'] || process.env.GOOGLE_API_KEY;
 
@@ -295,7 +298,6 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
       ${tableInstruction}
         `;
 
-        const { splitContentBySemantics } = require('../utils/chunking');
 
         // 1. 鎻愬彇鍥剧墖 (鍏ㄥ眬澶勭悊)
         const { textOnly: contentWithoutImages, imageMap } = extractImagesAsPlaceholders(content);
@@ -356,7 +358,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 currentSystemPrompt += `\n\n**MODE**: PART 1 (Start of Document). Start numbering from the beginning.`;
             }
 
-            const userContent = `Filename: ${fileName}\n\nContent Part ${i + 1}:\n${chunkContent}`;
+            const userContent = `Filename: ${safeFileName}\n\nContent Part ${i + 1}:\n${chunkContent}`;
             let chunkOutput = '';
 
             try {
@@ -461,10 +463,11 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // Gemini 璁¤垂: 绾?1 token 鈮?0.75 涓腑鏂囧瓧绗?
         let finalReportedTokens = totalExactTokens;
         if (finalReportedTokens === 0) {
-            const inputTokens = Math.ceil(contentWithoutImages.length / 0.75);
-            const outputTokens = Math.ceil(fullRestoredText.length / 0.75);
+            // Gemini with Chinese text: ~3 chars per token (vs GPT's ~0.75 for English)
+            const inputTokens = Math.ceil(contentWithoutImages.length / 3);
+            const outputTokens = Math.ceil(fullRestoredText.length / 3);
             finalReportedTokens = inputTokens + outputTokens;
-            console.log(`鈿狅笍 Using estimated tokens instead of API reported tokens.`);
+            console.log(`⚠️ Using estimated tokens instead of API reported tokens.`);
         }
 
         // 璁板綍浣跨敤鏃ュ織

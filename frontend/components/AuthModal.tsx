@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
@@ -22,9 +22,27 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [captchaInput, setCaptchaInput] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [countdown, setCountdown] = useState(0);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { login, register } = useAuth();
   const { t } = useTranslation();
+
+  // Clear countdown timer on unmount to prevent memory leaks
+  React.useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    };
+  }, []);
+
+  // ESC key to close
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   // Load Captcha when switching to register
   React.useEffect(() => {
@@ -53,10 +71,11 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     try {
       await authService.sendEmailCode(email, captchaInput, captchaSessionId);
       setCountdown(60);
-      const timer = setInterval(() => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
-            clearInterval(timer);
+            if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
             return 0;
           }
           return prev - 1;
@@ -83,6 +102,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       } else {
         await register(email, password, emailCode);
       }
+      // Only close after confirmed success
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       onClose();
       setEmail('');
       setPassword('');
@@ -91,6 +112,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       setCountdown(0);
     } catch (err: any) {
       setError(err.message || t('auth.error_operation_failed', '操作失败,请重试'));
+      // On register failure, refresh captcha for next attempt
+      if (mode === 'register') refreshCaptcha();
     } finally {
       setIsLoading(false);
     }

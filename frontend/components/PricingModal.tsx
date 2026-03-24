@@ -1,4 +1,4 @@
-﻿
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { paymentService } from '../services/paymentService';
@@ -30,6 +30,18 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
   const [qrCodeData, setQrCodeData] = useState<string>('');
   const [currentOrderId, setCurrentOrderId] = useState<string>('');
   const [isMockOrder, setIsMockOrder] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [statusHint, setStatusHint] = useState('');
+
+  // ESC key to close (only on plans step)
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && step === 'plans') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, step, onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -39,6 +51,8 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
       setQrCodeData('');
       setCurrentOrderId('');
       setIsMockOrder(false);
+      setIsCheckingStatus(false);
+      setStatusHint('');
       setIsLoading(false);
 
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -48,27 +62,42 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
     }
   }, [isOpen]);
 
-  // Polling for payment status
+  // Polling for payment status (timeout after 10 minutes)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollCountRef = useRef(0);
+  const POLL_TIMEOUT_COUNT = 300; // 300 × 2s = 10 min
+
   useEffect(() => {
-    let interval: any;
     if (step === 'qrcode' && currentOrderId) {
-      interval = setInterval(async () => {
+      pollCountRef.current = 0;
+      intervalRef.current = setInterval(async () => {
+        pollCountRef.current += 1;
+        // Timeout after 10 minutes
+        if (pollCountRef.current >= POLL_TIMEOUT_COUNT) {
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          setStatusHint(t('pricing.poll_timeout', '支付检测已超时，如您已完成支付请点击上方按钮手动校验'));
+          return;
+        }
         try {
           const status = await paymentService.checkPaymentStatus(currentOrderId);
           if (status === 'PAID') {
+            if (intervalRef.current) clearInterval(intervalRef.current);
             setStep('success');
-            clearInterval(interval);
-            // Refresh user profile via context (preserves page state)
+            // Refresh user profile then auto-close
             setTimeout(async () => {
               await refreshUser();
-            }, 1500);
+              // Auto-close success screen after 2.5s
+              setTimeout(() => onClose(), 2500);
+            }, 500);
           }
         } catch (e) {
           console.error('Polling error', e);
         }
       }, 2000);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, [step, currentOrderId]);
 
   if (!isOpen) return null;
@@ -88,7 +117,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
       const checkout = await paymentService.createCheckoutSession(planType, method);
 
       if (!checkout.orderId || !checkout.qrCode) {
-        throw new Error(t('pricing.checkout_failed', '鍒涘缓鏀粯浼氳瘽澶辫触'));
+        throw new Error(t('pricing.checkout_failed', '创建支付会话失败'));
       }
 
       setCurrentOrderId(checkout.orderId);
@@ -96,26 +125,44 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
       setIsMockOrder(!!checkout.isMock);
       setStep('qrcode');
     } catch (e: any) {
-      setError(e?.message || t('pricing.checkout_failed', '鍒涘缓鏀粯浼氳瘽澶辫触'));
+      setError(e?.message || t('pricing.checkout_failed', '创建支付会话失败'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ... (pricingData and helpers) ...
+  const handleManualStatusCheck = async () => {
+    if (!currentOrderId) return;
+    setIsCheckingStatus(true);
+    setStatusHint('');
+    try {
+      const status = await paymentService.checkPaymentStatus(currentOrderId);
+      if (status === 'PAID') {
+        setStep('success');
+        setTimeout(async () => {
+          await refreshUser();
+          setTimeout(() => onClose(), 2500);
+        }, 500);
+      } else {
+        setStatusHint(t('pricing.pending_hint', '未检测到到账，请完成支付后再试'));
+      }
+    } catch {
+      setStatusHint(t('pricing.status_check_failed', '状态校验失败，请稍后重试'));
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
   // Determine display currency based on current 'paymentMethod' state (which defaults based on locale)
-  // But allow switching it implicitly? Or just stick to the detected one for Step 1?
-  // User can toggle region/currency via a small control if needed, but per request, main selector is gone.
-  // We'll use the 'paymentMethod' state to determine the viewing currency in Step 1.
   const isAlipay = paymentMethod === 'alipay';
   const currency = isAlipay ? 'CNY' : 'USD';
-  const symbol = isAlipay ? '楼' : '$';
+  const symbol = isAlipay ? '¥' : '$';
 
   const pricingData: Record<Tier, any> = {
     plus: {
       title: t('pricing.plus_title'),
-      monthly: { CNY: 19 },
-      yearly: { CNY: 198 },
+      monthly: { CNY: 29 },
+      yearly: { CNY: 298 },
       quota: t('pricing.plus_quota'),
       features: [
         t('pricing.plus_f1'),
@@ -126,8 +173,8 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
     },
     pro: {
       title: t('pricing.pro_title'),
-      monthly: { CNY: 29 },
-      yearly: { CNY: 298 },
+      monthly: { CNY: 59 },
+      yearly: { CNY: 598 },
       quota: t('pricing.pro_quota'),
       features: [
         t('pricing.pro_f1'),
@@ -172,9 +219,14 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
     return pricingData[tier][billingCycle].CNY;
   };
 
+  // Only allow backdrop click to close on the plans step
+  const handleBackdropClick = () => {
+    if (step === 'plans') onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={handleBackdropClick} />
 
       <div
         className="relative z-10 w-full max-w-4xl mx-4 bg-white rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden"
@@ -183,7 +235,14 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
 
         {/* ================= STEP 4: SUCCESS ================= */}
         {step === 'success' && (
-          <div className="flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in duration-500 h-full min-h-[400px]">
+          <div className="relative flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in duration-500 h-full min-h-[400px]">
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title={t('common.close', '关闭')}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
             <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 text-green-600 animate-bounce">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
             </div>
@@ -203,6 +262,13 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
               >
                 <span className="text-sm font-medium">{t('pricing.back_to_payment')}</span>
               </button>
+              <button
+                onClick={onClose}
+                className="ml-auto w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                title={t('common.close', '关闭')}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
             </div>
 
             <div className="flex-1 flex flex-col items-center justify-center text-center">
@@ -210,7 +276,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                 {paymentMethod === 'wechat' ? t('pricing.scan_wechat') : t('pricing.scan_alipay')}
               </h2>
               <p className="text-gray-500 mb-6">
-                {t('pricing.pay_amount')} <span className={`font-bold text-xl ${paymentMethod === 'wechat' ? 'text-green-600' : 'text-blue-600'}`}>楼{getPrice(selectedTier)}</span> {t('pricing.currency_unit')}
+                {t('pricing.pay_amount')} <span className={`font-bold text-xl ${paymentMethod === 'wechat' ? 'text-green-600' : 'text-blue-600'}`}>¥{getPrice(selectedTier)}</span> {t('pricing.currency_unit')}
               </p>
 
               <div className={`p-4 bg-gradient-to-br ${paymentMethod === 'wechat' ? 'from-green-50 to-white border-green-100' : 'from-blue-50 to-white border-blue-100'} border-2 rounded-3xl shadow-lg`}>
@@ -230,12 +296,28 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                 {isMockOrder && <p className="mt-2 text-xs text-amber-500">{t('pricing.mock_order_hint', '当前是测试模式订单')}</p>}
               </div>
 
+              {/* Auto-polling indicator */}
+              <div className="mt-4 flex items-center gap-1.5 text-xs text-gray-400">
+                <span className="inline-flex gap-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+                {t('pricing.auto_detecting', '自动检测支付结果中')}
+              </div>
+
               <button
-                onClick={onClose}
-                className={`mt-6 px-6 py-2 text-white rounded-full text-sm font-medium transition-colors ${paymentMethod === 'wechat' ? 'bg-green-500 hover:bg-green-600' : 'bg-blue-500 hover:bg-blue-600'}`}
+                onClick={handleManualStatusCheck}
+                disabled={isCheckingStatus}
+                className={`mt-4 px-6 py-2 text-white rounded-full text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${paymentMethod === 'wechat' ? 'bg-green-500 hover:bg-green-600' : 'bg-blue-500 hover:bg-blue-600'}`}
               >
-                {t('pricing.payment_completed_btn')}
+                {isCheckingStatus
+                  ? t('pricing.checking_payment', '正在校验支付状态...')
+                  : t('pricing.payment_completed_btn', '我已支付，立即校验')}
               </button>
+              {!!statusHint && (
+                <p className="mt-3 text-xs text-amber-600">{statusHint}</p>
+              )}
             </div>
           </div>
         )}
@@ -253,9 +335,16 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                 </div>
                 <span className="font-bold text-sm">{t('pricing.back_btn')}</span>
               </button>
-              <div className="flex-1 text-center pr-12">
+              <div className="flex-1 text-center">
                 <h2 className="text-xl font-bold text-gray-900">{t('pricing.confirm_payment_method')}</h2>
               </div>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0"
+                title={t('common.close', '关闭')}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
             </div>
 
             <div className="flex-1 flex flex-col justify-center max-w-2xl mx-auto w-full">
@@ -266,7 +355,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                   {billingCycle === 'monthly' ? t('pricing.monthly_plan') : t('pricing.yearly_plan')}
                 </p>
                 <div className="mt-4 text-4xl font-extrabold text-gray-900 tracking-tight">
-                  <span className="text-2xl text-gray-400 font-normal mr-1">楼</span>
+                  <span className="text-2xl text-gray-400 font-normal mr-1">¥</span>
                   {pricingData[selectedTier][billingCycle].CNY}
                 </div>
               </div>
@@ -347,7 +436,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
               <button
                 onClick={onClose}
                 className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
-                title={t('common.close', '鍏抽棴')}
+                title={t('common.close', '关闭')}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -448,7 +537,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                       {(() => {
                         const isCurrentPlan = user?.subscriptionStatus?.toLowerCase() === tier;
                         if (isCurrentPlan) {
-                          // Allow upgrade to yearly if viewing yearly tab 
+                          // Allow upgrade to yearly if viewing yearly tab
                           if (billingCycle === 'yearly') {
                             return (
                               <button
@@ -494,5 +583,3 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
     </div>
   );
 }
-
-

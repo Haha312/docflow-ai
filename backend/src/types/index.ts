@@ -102,7 +102,7 @@ export interface GenerateRequest {
 // 支付请求
 export interface CreateCheckoutRequest {
     planType: string;
-    paymentMethod?: 'stripe' | 'alipay' | 'wechat' | 'qrcode';
+    paymentMethod?: 'alipay' | 'wechat' | 'qrcode';
 }
 
 // JWT Payload

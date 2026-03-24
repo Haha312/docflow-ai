@@ -12,8 +12,10 @@ import { errorResponse } from './utils/response';
 dotenv.config();
 
 console.log('DocuFlow Backend Restarting...');
-console.log('DEBUG: GEMINI_OPENAI_BASE_URL =', process.env.GEMINI_OPENAI_BASE_URL);
-console.log('DEBUG: GOOGLE_API_KEY (First 5) =', process.env.GOOGLE_API_KEY?.substring(0, 5));
+if (process.env.NODE_ENV !== 'production') {
+    console.log('DEBUG: GEMINI_OPENAI_BASE_URL configured =', !!process.env.GEMINI_OPENAI_BASE_URL);
+    console.log('DEBUG: GOOGLE_API_KEY configured =', !!process.env.GOOGLE_API_KEY);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -41,9 +43,6 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Stripe webhook needs raw body for signature verification
-app.use('/api/webhook/stripe', express.raw({ type: 'application/json' }));
-app.use('/api/payment/webhook/stripe', express.raw({ type: 'application/json' }));
 // WeChat Pay callback posts XML body
 app.use('/api/webhook/wechat', express.text({ type: '*/*' }));
 app.use('/api/payment/webhook/wechat', express.text({ type: '*/*' }));

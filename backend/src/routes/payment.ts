@@ -1,5 +1,4 @@
 ﻿import { Router, Request, Response } from 'express';
-import Stripe from 'stripe';
 import AlipaySdk from 'alipay-sdk';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,16 +13,15 @@ import { getTierFromPlanType } from '../config/tierConfig';
 const router = Router();
 
 const PRICING: Record<string, { amountUSD: number; amountCNY: number; duration: number; title: string }> = {
-    plus_monthly: { amountUSD: 2.99, amountCNY: 19, duration: 30, title: 'Plus (Monthly)' },
-    plus_yearly: { amountUSD: 29.99, amountCNY: 198, duration: 365, title: 'Plus (Yearly)' },
-    pro_monthly: { amountUSD: 3.99, amountCNY: 29, duration: 30, title: 'Pro (Monthly)' },
-    pro_yearly: { amountUSD: 39.99, amountCNY: 298, duration: 365, title: 'Pro (Yearly)' },
+    plus_monthly: { amountUSD: 4.99, amountCNY: 29, duration: 30, title: 'Plus (Monthly)' },
+    plus_yearly: { amountUSD: 49.99, amountCNY: 298, duration: 365, title: 'Plus (Yearly)' },
+    pro_monthly: { amountUSD: 8.99, amountCNY: 59, duration: 30, title: 'Pro (Monthly)' },
+    pro_yearly: { amountUSD: 89.99, amountCNY: 598, duration: 365, title: 'Pro (Yearly)' },
     ultra_monthly: { amountUSD: 13.99, amountCNY: 99, duration: 30, title: 'Ultra (Monthly)' },
     ultra_yearly: { amountUSD: 139.99, amountCNY: 998, duration: 365, title: 'Ultra (Yearly)' }
 };
 
 const getBackendBaseUrl = () => process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
-const getFrontendUrl = () => process.env.FRONTEND_URL || 'http://localhost:5173';
 const randomNonceStr = () => crypto.randomBytes(16).toString('hex');
 
 const parseSimpleXml = (xml: string): Record<string, string> => {
@@ -71,23 +69,42 @@ const respondWechatXml = (res: Response, ok: boolean, msg = 'OK') => {
     res.send(xml);
 };
 
-async function applyPaidOrder(orderId: string, userId: string, planType: string): Promise<void> {
+async function applyPaidOrder(
+    orderId: string,
+    userId: string,
+    planType: string
+): Promise<void> {
     const existing = await prisma.order.findUnique({ where: { id: orderId } });
     if (!existing) return;
-    if (existing.status === 'PAID') return;
-
-    await prisma.order.update({ where: { id: orderId }, data: { status: 'PAID' } });
 
     const plan = PRICING[planType] || PRICING[existing.planType];
     if (!plan) return;
 
-    const endDate = new Date();
+    // Atomic update: only proceed if order is still PENDING (prevents duplicate processing)
+    const updated = await prisma.order.updateMany({
+        where: { id: orderId, status: 'PENDING' },
+        data: { status: 'PAID' }
+    });
+    if (updated.count === 0) return;
+
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { subscriptionEndDate: true }
+    });
+
+    // If the user is already active, extend from current expiry; otherwise start from now.
+    const now = new Date();
+    const baseDate =
+        user?.subscriptionEndDate && user.subscriptionEndDate > now
+            ? new Date(user.subscriptionEndDate)
+            : now;
+    const endDate = new Date(baseDate);
     endDate.setDate(endDate.getDate() + plan.duration);
 
     await prisma.user.update({
         where: { id: userId },
         data: {
-            subscriptionStatus: getTierFromPlanType(planType || existing.planType),
+            subscriptionStatus: getTierFromPlanType(planType),
             subscriptionEndDate: endDate
         }
     });
@@ -101,63 +118,18 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
             return;
         }
 
-        const { planType, paymentMethod = 'stripe' }: CreateCheckoutRequest = req.body;
+        const { planType, paymentMethod = 'alipay' }: CreateCheckoutRequest = req.body;
         if (!planType || !PRICING[planType]) {
             res.status(400).json(errorResponse('Invalid plan type', 400));
             return;
         }
 
-        if (!['stripe', 'alipay', 'wechat', 'qrcode'].includes(paymentMethod)) {
+        if (!['alipay', 'wechat', 'qrcode'].includes(paymentMethod)) {
             res.status(400).json(errorResponse('Invalid payment method', 400));
             return;
         }
 
         const plan = PRICING[planType];
-
-        if (paymentMethod === 'stripe') {
-            const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-            if (!stripeSecretKey) {
-                res.status(503).json(errorResponse('Stripe is not configured', 503));
-                return;
-            }
-
-            const stripe = new Stripe(stripeSecretKey);
-            const session = await stripe.checkout.sessions.create({
-                payment_method_types: ['card'],
-                line_items: [
-                    {
-                        price_data: {
-                            currency: 'usd',
-                            product_data: {
-                                name: `DocFlow AI - ${plan.title}`,
-                                description: 'Unlock premium AI formatting'
-                            },
-                            unit_amount: Math.round(plan.amountUSD * 100)
-                        },
-                        quantity: 1
-                    }
-                ],
-                mode: 'payment',
-                success_url: `${getFrontendUrl()}?payment=success`,
-                cancel_url: `${getFrontendUrl()}?payment=cancelled`,
-                customer_email: user.email,
-                metadata: { userId: user.id, planType, paymentMethod: 'stripe' }
-            });
-
-            await prisma.order.create({
-                data: {
-                    id: session.id,
-                    userId: user.id,
-                    amount: plan.amountUSD,
-                    currency: 'USD',
-                    planType,
-                    status: 'PENDING'
-                }
-            });
-
-            res.json(successResponse({ paymentMethod: 'stripe', sessionId: session.id, url: session.url }, 'Checkout created'));
-            return;
-        }
 
         if (paymentMethod === 'alipay') {
             const alipayAppId = process.env.ALIPAY_APP_ID;
@@ -203,7 +175,7 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
             }
 
             const alipaySdk = new AlipayCtor(sdkConfig);
-            const outTradeNo = `DOCUFLOW_${Date.now()}_${user.id.substring(0, 8)}`;
+            const outTradeNo = `DOCUFLOW_${Date.now()}_${user.id.substring(0, 8)}_${randomNonceStr().substring(0, 6)}`;
             const notifyUrl = process.env.ALIPAY_NOTIFY_URL || `${getBackendBaseUrl()}/api/payment/webhook/alipay`;
 
             const result = await alipaySdk.exec('alipay.trade.precreate', {
@@ -245,7 +217,7 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
                 return;
             }
 
-            const outTradeNo = `WX_${Date.now()}_${user.id.substring(0, 8)}`;
+            const outTradeNo = `WX_${Date.now()}_${user.id.substring(0, 8)}_${randomNonceStr().substring(0, 6)}`;
             const notifyUrl = process.env.WECHAT_NOTIFY_URL || `${getBackendBaseUrl()}/api/payment/webhook/wechat`;
             const params: Record<string, string | number> = {
                 appid: appId,
@@ -292,7 +264,7 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
         }
 
         // Legacy local QR fallback (kept for backward compatibility)
-        const outTradeNo = `QR_${Date.now()}_${user.id.substring(0, 8)}`;
+        const outTradeNo = `QR_${Date.now()}_${user.id.substring(0, 8)}_${randomNonceStr().substring(0, 6)}`;
         await prisma.order.create({
             data: {
                 id: outTradeNo,
@@ -316,55 +288,44 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
     }
 });
 
-router.post('/webhook/stripe', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const sig = req.headers['stripe-signature'];
-        const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-        const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-
-        if (!webhookSecret || !stripeSecretKey || !sig) {
-            res.status(400).json(errorResponse('Stripe webhook not configured correctly', 400));
-            return;
-        }
-
-        const stripe = new Stripe(stripeSecretKey);
-        let event: Stripe.Event;
-        try {
-            event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
-        } catch (err: any) {
-            res.status(400).json(errorResponse(`Invalid signature: ${err.message}`, 400));
-            return;
-        }
-
-        if (event.type === 'checkout.session.completed') {
-            const session = event.data.object as Stripe.Checkout.Session;
-            const userId = session.metadata?.userId;
-            const planType = session.metadata?.planType as string | undefined;
-            if (userId && planType) {
-                await applyPaidOrder(session.id, userId, planType);
-            }
-        }
-
-        res.json({ received: true });
-    } catch (error) {
-        console.error('Stripe webhook error:', error);
-        res.status(500).json(errorResponse('Webhook processing failed', 500));
-    }
-});
-
 router.all('/webhook/alipay', async (req: Request, res: Response): Promise<void> => {
     try {
         const alipayAppId = process.env.ALIPAY_APP_ID;
         const alipayPrivateKey = process.env.ALIPAY_PRIVATE_KEY;
         const alipayPublicKey = process.env.ALIPAY_PUBLIC_KEY;
 
-        if (!alipayAppId || !alipayPrivateKey || !alipayPublicKey) {
+        if (!alipayAppId || !alipayPrivateKey) {
+            res.status(503).send('fail');
+            return;
+        }
+
+        const certDir = path.join(process.cwd(), 'Alipay');
+        const alipayRootCertPath = path.join(certDir, 'alipayRootCert.crt');
+        const alipayPublicCertPath = path.join(certDir, 'alipayCertPublicKey_RSA2.crt');
+        const appCertFiles = fs.existsSync(certDir)
+            ? fs.readdirSync(certDir).filter((f) => f.startsWith('appCertPublicKey_') && f.endsWith('.crt'))
+            : [];
+        const appCertPath = appCertFiles.length > 0 ? path.join(certDir, appCertFiles[0]) : null;
+        const hasCertMode = !!(appCertPath && fs.existsSync(alipayRootCertPath) && fs.existsSync(alipayPublicCertPath));
+        const hasKeyMode = !!alipayPublicKey;
+
+        if (!hasCertMode && !hasKeyMode) {
             res.status(503).send('fail');
             return;
         }
 
         const AlipayCtor: any = (AlipaySdk as any).default || (AlipaySdk as any).AlipaySdk || (AlipaySdk as any);
-        const alipaySdk = new AlipayCtor({ appId: alipayAppId, privateKey: alipayPrivateKey, alipayPublicKey, signType: 'RSA2' });
+        const sdkConfig: Record<string, any> = { privateKey: alipayPrivateKey, signType: 'RSA2' };
+        if (hasCertMode && appCertPath) {
+            sdkConfig.appId = alipayAppId;
+            sdkConfig.alipayRootCertPath = alipayRootCertPath;
+            sdkConfig.alipayPublicCertPath = alipayPublicCertPath;
+            sdkConfig.appCertPath = appCertPath;
+        } else {
+            sdkConfig.appId = alipayAppId;
+            sdkConfig.alipayPublicKey = alipayPublicKey;
+        }
+        const alipaySdk = new AlipayCtor(sdkConfig);
 
         const params: any = req.method === 'POST' ? req.body : req.query;
         if (!alipaySdk.checkNotifySign(params)) {
@@ -446,6 +407,15 @@ router.post('/webhook/wechat', async (req: Request, res: Response): Promise<void
 
 router.post('/confirm-by-amount', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
     try {
+        const manualConfirmEnabled =
+            process.env.NODE_ENV !== 'production' &&
+            process.env.ENABLE_INSECURE_PAYMENT_CONFIRM === 'true';
+
+        if (!manualConfirmEnabled) {
+            res.status(410).json(errorResponse('Manual confirm endpoint is disabled', 410));
+            return;
+        }
+
         const user = req.user;
         if (!user) {
             res.status(401).json(errorResponse('Unauthorized', 401));
