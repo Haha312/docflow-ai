@@ -387,6 +387,7 @@
         "tab_content_font": "内容字体",
         "tab_content_size": "内容字号",
         "confirm_btn": "确认配置",
+        "reset_defaults": "恢复默认",
         "align_justify": "两端对齐",
         "align_left": "左对齐",
         "align_center": "居中对齐",

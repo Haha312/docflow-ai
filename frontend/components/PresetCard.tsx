@@ -16,6 +16,7 @@ export const PresetCard: React.FC<PresetCardProps> = ({ config, isSelected, onSe
   return (
     <div
       onClick={() => onSelect(config.id)}
+      title={t(descKey, config.description)}
       className={`relative p-3.5 rounded-xl cursor-pointer transition-all duration-200 border group select-none flex items-center gap-3
         ${isSelected
           ? 'bg-emerald-50 border-emerald-500 shadow-sm'

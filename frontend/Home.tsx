@@ -41,6 +41,7 @@ function Home() {
   const [selectedPreset, setSelectedPreset] = useState<DocPreset>(DocPreset.ACADEMIC);
   const [selectedModel, setSelectedModel] = useState<string>('gemini-pro');
   const [isModelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const [outputText, setOutputText] = useState<string>('');
   const [imageMap, setImageMap] = useState<Record<string, string>>({});
@@ -62,7 +63,7 @@ function Home() {
   });
 
   const [showPRD, setShowPRD] = useState(false);
-  const [viewMode, setViewMode] = useState<'split' | 'preview'>('split');
+  const [viewMode, setViewMode] = useState<'split' | 'preview'>('preview');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -294,6 +295,7 @@ function Home() {
         setAiState(prev => ({ ...prev, progressStep: t('home.rendering', '正在应用排版格式...') }));
         await new Promise(r => setTimeout(r, 300));
         setAiState({ isThinking: false, error: null, progressStep: t('home.done', '完成'), progress: 0 });
+        setViewMode('preview'); // 生成完成后自动切换到全宽预览模式
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
         await refreshUser();
@@ -503,19 +505,52 @@ function Home() {
 
           {/* Left Panel */}
           <div
-            className="w-full md:w-[var(--sidebar-width)] flex-shrink-0 flex flex-col gap-4 md:gap-6 relative"
-            style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+            className="hidden md:flex flex-col flex-shrink-0 relative"
+            style={{
+              width: sidebarCollapsed ? 48 : sidebarWidth,
+              minWidth: sidebarCollapsed ? 48 : undefined,
+              transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
+            }}
           >
-            {/* Invisible Sidebar Drag Handle */}
-            <div
-              className="hidden md:block absolute -right-2 md:-right-3 lg:-right-4 top-0 bottom-0 w-4 cursor-col-resize z-10 transition-colors"
-              onMouseDown={handleSidebarMouseDown}
-              title={t('home.drag_resize', '拖拽调整宽度')}
-            />
+            {sidebarCollapsed ? (
+              /* Collapsed strip */
+              <div className="flex-1 flex flex-col items-center pt-4 gap-5">
+                <button
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                  title="展开侧边栏"
+                >
+                  <svg className="w-3.5 h-3.5 text-gray-600 rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
+                </button>
+                <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">1</div>
+                <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">2</div>
+                <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">3</div>
+              </div>
+            ) : (
+              <>
+                {/* Drag Handle */}
+                <div
+                  className="absolute -right-2 md:-right-3 lg:-right-4 top-0 bottom-0 w-4 cursor-col-resize z-10"
+                  onMouseDown={handleSidebarMouseDown}
+                  title={t('home.drag_resize', '拖拽调整宽度')}
+                />
+
+                {/* Collapse button */}
+                <button
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="absolute right-2 top-2 p-1.5 text-gray-300 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors z-20"
+                  title="收起侧边栏"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M15 18l-6-6 6-6" />
+                  </svg>
+                </button>
 
             {/* Upload Section */}
-            <div className="bg-white border border-gray-200 rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-4">
+            <div className={`bg-white border border-gray-200 rounded-xl p-4 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+              <div className="flex items-center gap-2 mb-3">
                 <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">1</div>
                 <h2 className="text-sm font-semibold text-gray-900">{t('home.upload_doc', '上传文档')}</h2>
               </div>
@@ -523,20 +558,20 @@ function Home() {
               {!inputText ? (
                 <FileDropzone onFileLoaded={handleFileLoaded} userTier={user?.subscriptionStatus} />
               ) : (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 bg-white border border-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 bg-white border border-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                         <polyline points="14 2 14 8 20 8"></polyline>
                       </svg>
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{inputFileName}</p>
-                      <p className="text-xs text-gray-500">{getTextCount(inputText).toLocaleString()} {t('home.chars', '字')}</p>
+                      <p className="text-sm font-medium text-gray-900 truncate" title={inputFileName}>{inputFileName}</p>
+                      <p className="text-xs text-gray-400">{getTextCount(inputText).toLocaleString()} {t('home.chars', '字')}</p>
                     </div>
                   </div>
-                  <button onClick={handleClear} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                  <button onClick={handleClear} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M18 6L6 18M6 6l12 12" />
                     </svg>
@@ -546,7 +581,7 @@ function Home() {
             </div>
 
             {/* Preset Section */}
-            <div className="bg-white border border-gray-200 rounded-xl p-5 flex-1 flex flex-col min-h-0">
+            <div className={`bg-white border border-gray-200 rounded-xl p-5 flex-1 flex flex-col min-h-0 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">2</div>
@@ -578,130 +613,152 @@ function Home() {
               </div>
             </div>
 
-            {/* Model Selector */}
-            <div className="space-y-2" ref={modelDropdownRef}>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{t('home.model', '生成模型')}</p>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => !aiState.isThinking && setModelDropdownOpen(v => !v)}
-                  disabled={aiState.isThinking}
-                  className="w-full flex items-center justify-between px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
-                >
-                  <span className="font-medium text-gray-800">
-                    {MODEL_OPTIONS.find(m => m.key === selectedModel)?.name ?? selectedModel}
-                  </span>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-gray-400">
-                      {MODEL_OPTIONS.find(m => m.key === selectedModel)?.desc}
+            {/* Step 3: Generate */}
+            <div className={`bg-white border border-gray-200 rounded-xl p-5 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-60' : 'opacity-100'}`}>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">3</div>
+                <h2 className="text-sm font-semibold text-gray-900">{t('home.start_generate', '开始生成')}</h2>
+              </div>
+
+              {/* Model Selector */}
+              <div className="mb-3" ref={modelDropdownRef}>
+                <p className="text-xs text-gray-400 mb-1.5">{t('home.model', '生成模型')}</p>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => !aiState.isThinking && setModelDropdownOpen(v => !v)}
+                    disabled={aiState.isThinking}
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                  >
+                    <span className="font-medium text-gray-800">
+                      {MODEL_OPTIONS.find(m => m.key === selectedModel)?.name ?? selectedModel}
                     </span>
-                    <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isModelDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M6 9l6 6 6-6" />
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-gray-400">
+                        {MODEL_OPTIONS.find(m => m.key === selectedModel)?.desc}
+                      </span>
+                      <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isModelDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M6 9l6 6 6-6" />
+                      </svg>
+                    </div>
+                  </button>
+                  {isModelDropdownOpen && (
+                    <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+                      {MODEL_OPTIONS.map(opt => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => { setSelectedModel(opt.key); setModelDropdownOpen(false); }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors text-left ${selectedModel === opt.key ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+                        >
+                          <span className={`font-medium ${selectedModel === opt.key ? 'text-gray-900' : 'text-gray-700'}`}>
+                            {opt.name}
+                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-xs text-gray-400">{opt.desc}</span>
+                            {selectedModel === opt.key && (
+                              <svg className="w-3.5 h-3.5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M20 6L9 17l-5-5" />
+                              </svg>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div>
+                {aiState.isThinking ? (
+                  <button
+                    onClick={handleStop}
+                    className="w-full py-3 bg-white border-2 border-red-200 text-red-600 rounded-xl font-medium text-sm flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"
+                  >
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
+                    {t('home.stop_generation', '停止生成')}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleProcess}
+                    disabled={!inputText}
+                    className={`w-full py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-all ${!inputText
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-gray-900 text-white hover:bg-gray-800 shadow-sm'
+                      }`}
+                  >
+                    {t('home.start_process', '开始智能重排')}
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M5 12h14M12 5l7 7-7 7" />
                     </svg>
+                  </button>
+                )}
+
+                {aiState.isThinking && (
+                  <div className="mt-3 flex items-center justify-center gap-2 text-xs text-gray-500">
+                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>{aiState.progressStep}</span>
                   </div>
-                </button>
-                {isModelDropdownOpen && (
-                  <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
-                    {MODEL_OPTIONS.map(opt => (
-                      <button
-                        key={opt.key}
-                        type="button"
-                        onClick={() => { setSelectedModel(opt.key); setModelDropdownOpen(false); }}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors text-left ${selectedModel === opt.key ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-                      >
-                        <span className={`font-medium ${selectedModel === opt.key ? 'text-gray-900' : 'text-gray-700'}`}>
-                          {opt.name}
-                        </span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs text-gray-400">{opt.desc}</span>
-                          {selectedModel === opt.key && (
-                            <svg className="w-3.5 h-3.5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <path d="M20 6L9 17l-5-5" />
-                            </svg>
-                          )}
-                        </div>
-                      </button>
-                    ))}
+                )}
+
+                {aiState.error && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg">
+                    <p className="text-xs text-red-600">{aiState.error}</p>
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Action Button */}
-            <div>
-              {aiState.isThinking ? (
-                <button
-                  onClick={handleStop}
-                  className="w-full py-3.5 bg-white border-2 border-red-200 text-red-600 rounded-xl font-medium text-sm flex items-center justify-center gap-2 hover:bg-red-50 transition-colors"
-                >
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                  </span>
-                  {t('home.stop_generation', '停止生成')}
-                </button>
-              ) : (
-                <button
-                  onClick={handleProcess}
-                  disabled={!inputText}
-                  className={`w-full py-3.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-all ${!inputText
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-gray-900 text-white hover:bg-gray-800'
-                    }`}
-                >
-                  {t('home.start_process', '开始智能重排')}
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M5 12h14M12 5l7 7-7 7" />
-                  </svg>
-                </button>
-              )}
-
-              {aiState.isThinking && (
-                <div className="mt-3 flex items-center justify-center gap-2 text-xs text-gray-500">
-                  <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span>{aiState.progressStep}</span>
-                </div>
-              )}
-
-              {aiState.error && (
-                <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg">
-                  <p className="text-xs text-red-600">{aiState.error}</p>
-                </div>
-              )}
-            </div>
+              </>
+            )}
           </div>
 
           {/* Right Panel - Preview */}
           <div className="flex-1 flex flex-col min-w-0 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(0,0,0,0.02)]">
             {/* Toolbar */}
             <div className="h-12 px-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
-                <button
-                  onClick={() => setViewMode('split')}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'split' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'
-                    }`}
-                >
-                  {t('home.split_view', '对比')}
-                </button>
-                <button
-                  onClick={() => setViewMode('preview')}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'preview' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'
-                    }`}
-                >
-                  {t('home.preview_view', '预览')}
-                </button>
+              <div className="flex items-center gap-3">
+                {/* Expand sidebar button — only when collapsed */}
+                {sidebarCollapsed && (
+                  <button
+                    onClick={() => setSidebarCollapsed(false)}
+                    className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    title="展开侧边栏"
+                  >
+                    <svg className="w-4 h-4 rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M15 18l-6-6 6-6" />
+                    </svg>
+                  </button>
+                )}
+                <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setViewMode('preview')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'preview' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}
+                  >
+                    {t('home.preview_view', '结果预览')}
+                  </button>
+                  <button
+                    onClick={() => setViewMode('split')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'split' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}
+                  >
+                    {t('home.split_view', '原文对比')}
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center gap-2">
                 {outputText && !aiState.isThinking && (
                   <button
                     onClick={handleDownload}
-                    className="flex items-center gap-1.5 bg-gray-900 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-gray-800 transition-colors"
+                    className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors shadow-sm"
                   >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                       <polyline points="7 10 12 15 17 10" />
                       <line x1="12" y1="15" x2="12" y2="3" />
@@ -758,7 +815,7 @@ function Home() {
                 <style>{generatePreviewStyles()}</style>
 
                 <div
-                  className="flex-1 overflow-auto p-8 bg-white"
+                  className={`flex-1 overflow-auto ${viewMode === 'preview' ? 'bg-[#e8e8e8] p-6' : 'bg-white p-8'}`}
                   ref={previewContainerRef}
                   onScroll={handlePreviewScroll}
                 >
@@ -770,10 +827,25 @@ function Home() {
                           <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-500 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
                         </div>
                       )}
-                      <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
-                      {/* 生成中光标 */}
-                      {aiState.isThinking && (
-                        <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
+                      {viewMode === 'preview' ? (
+                        /* A4 纸张模式 */
+                        <div
+                          className="mx-auto bg-white shadow-[0_2px_12px_rgba(0,0,0,0.15)] mb-6"
+                          style={{ maxWidth: '794px', width: '100%', minHeight: '1123px', padding: '80px 90px' }}
+                        >
+                          <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
+                          {aiState.isThinking && (
+                            <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
+                          )}
+                        </div>
+                      ) : (
+                        /* 对比模式：全宽无纸张效果 */
+                        <>
+                          <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
+                          {aiState.isThinking && (
+                            <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
+                          )}
+                        </>
                       )}
                     </>
                   ) : aiState.isThinking ? (
@@ -827,6 +899,7 @@ function Home() {
         config={activeStyle}
         onUpdate={handleStyleUpdate}
         presetTitle={t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}
+        defaultConfig={activePresetConfig.styleConfig}
       />
       <ProductRequirements isOpen={showPRD} onClose={() => setShowPRD(false)} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />

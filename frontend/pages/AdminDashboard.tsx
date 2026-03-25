@@ -142,6 +142,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const [editingUser, setEditingUser] = useState<UserData | null>(null);
     const [editStatus, setEditStatus] = useState<string>('FREE');
     const [editDays, setEditDays] = useState<number>(0);
+    const [editSaveResult, setEditSaveResult] = useState<'success' | 'error' | null>(null);
+    const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         if (!isLoading) {
@@ -263,11 +265,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                 })
             });
             if (res.ok) {
-                setEditingUser(null);
+                setEditSaveResult('success');
                 fetchUsers();
+                setTimeout(() => {
+                    setEditingUser(null);
+                    setEditSaveResult(null);
+                }, 1200);
+            } else {
+                setEditSaveResult('error');
             }
         } catch (err) {
             console.error(err);
+            setEditSaveResult('error');
         }
     };
 
@@ -300,8 +309,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     }
 
     const configItems = [
-        { key: 'GEMINI_OPENAI_BASE_URL', label: 'API Base URL' },
-        { key: 'GOOGLE_API_KEY', label: 'Google API Key' }
+        { key: 'GEMINI_OPENAI_BASE_URL', label: 'Gemini API Base URL' },
+        { key: 'GOOGLE_API_KEY', label: 'Google / Gemini API Key' },
+        { key: 'DEEPSEEK_API_KEY', label: 'DeepSeek API Key' },
+        { key: 'DOUBAO_API_KEY', label: 'Doubao (Ark) API Key' },
+        { key: 'DOUBAO_ENDPOINT_ID', label: 'Doubao Endpoint ID' },
+        { key: 'DASHSCOPE_API_KEY', label: 'Qwen (DashScope) API Key' },
     ];
 
     const periodTotalTokens = stats?.dailyHistory.reduce((a, b) => a + b.tokens, 0) || 0;
@@ -667,23 +680,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
                             <form onSubmit={handleConfigSave} className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-6">
                                 <div className="space-y-5">
-                                    {configItems.map(({ key, label }) => (
-                                        <div key={key}>
-                                            <label className="block text-xs font-medium text-white/50 mb-2">{label}</label>
-                                            <input
-                                                type="text"
-                                                value={configs[key] || ''}
-                                                onChange={e => setConfigs({ ...configs, [key]: e.target.value })}
-                                                placeholder={`Enter ${label}...`}
-                                                className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-white/20 transition-colors font-mono"
-                                            />
-                                        </div>
-                                    ))}
+                                    {configItems.map(({ key, label }) => {
+                                        const isKeyField = key.includes('KEY') || key.includes('SECRET') || key.includes('PASS') || key.includes('TOKEN') || key.includes('ID');
+                                        const isVisible = visibleKeys.has(key);
+                                        return (
+                                            <div key={key}>
+                                                <label className="block text-xs font-medium text-white/50 mb-2">{label}</label>
+                                                <div className="relative">
+                                                    <input
+                                                        type={isKeyField && !isVisible ? 'password' : 'text'}
+                                                        value={configs[key] || ''}
+                                                        onChange={e => setConfigs({ ...configs, [key]: e.target.value })}
+                                                        placeholder={`Enter ${label}...`}
+                                                        className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-4 py-3 pr-10 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-white/20 transition-colors font-mono"
+                                                    />
+                                                    {isKeyField && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const next = new Set(visibleKeys);
+                                                                if (next.has(key)) next.delete(key); else next.add(key);
+                                                                setVisibleKeys(next);
+                                                            }}
+                                                            className="absolute inset-y-0 right-0 px-3 text-white/30 hover:text-white/70 transition-colors"
+                                                        >
+                                                            {isVisible ? (
+                                                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                                            ) : (
+                                                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                                            )}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
 
                                 <div className="mt-8 pt-5 border-t border-white/[0.06] flex items-center justify-between">
                                     {statusMsg && (
-                                        <span className={`text-sm ${statusMsg === '已保存' ? 'text-green-400' : 'text-red-400'}`}>{statusMsg}</span>
+                                        <span className={`text-sm ${statusMsg === t('admin.saved') ? 'text-green-400' : 'text-red-400'}`}>{statusMsg}</span>
                                     )}
                                     <button
                                         type="submit"
@@ -703,7 +739,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                     <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl p-6 relative">
                         <button onClick={() => setEditingUser(null)} className="absolute top-4 right-4 text-white/40 hover:text-white">
-                            <XAxis width={20} height={20} /> {/* Cheap generic X using recharts or just text */}X
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
                         </button>
                         <h3 className="text-lg font-bold text-white mb-1">{t('admin.edit_user')}</h3>
                         <p className="text-sm text-white/40 mb-6">{editingUser.email}</p>
@@ -738,9 +776,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                             )}
                         </div>
 
-                        <div className="flex gap-3 justify-end">
-                            <button onClick={() => setEditingUser(null)} className="px-4 py-2 text-sm text-white/60 hover:text-white">{t('admin.cancel')}</button>
-                            <button onClick={saveUserEdit} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">{t('admin.confirm_edit')}</button>
+                        <div className="flex items-center justify-end gap-3">
+                            {editSaveResult === 'success' && (
+                                <span className="text-sm text-green-400">{t('admin.saved')}</span>
+                            )}
+                            {editSaveResult === 'error' && (
+                                <span className="text-sm text-red-400">{t('admin.save_error')}</span>
+                            )}
+                            <button onClick={() => { setEditingUser(null); setEditSaveResult(null); }} className="px-4 py-2 text-sm text-white/60 hover:text-white">{t('admin.cancel')}</button>
+                            <button onClick={saveUserEdit} disabled={editSaveResult === 'success'} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg">{t('admin.confirm_edit')}</button>
                         </div>
                     </div>
                 </div>

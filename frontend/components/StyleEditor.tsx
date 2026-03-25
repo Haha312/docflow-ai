@@ -11,9 +11,10 @@ interface Props {
     config: StyleConfig;
     onUpdate: (newConfig: StyleConfig) => void;
     presetTitle: string;
+    defaultConfig?: StyleConfig;
 }
 
-export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate, presetTitle }) => {
+export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate, presetTitle, defaultConfig }) => {
     const { t } = useTranslation();
     if (!isOpen) return null;
 
@@ -168,7 +169,7 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity p-6">
-            <div className="bg-white w-[1000px] h-[85vh] rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="bg-white w-full max-w-[1000px] h-[85vh] rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
                 {/* Header */}
                 <div className="px-8 py-5 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/80 backdrop-blur shrink-0">
                     <div>
@@ -431,7 +432,15 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                 </div>
 
                 {/* Footer */}
-                <div className="p-5 border-t border-zinc-100 bg-white shrink-0 flex justify-end">
+                <div className="p-5 border-t border-zinc-100 bg-white shrink-0 flex justify-between items-center">
+                    {defaultConfig ? (
+                        <button
+                            onClick={() => onUpdate({ ...defaultConfig })}
+                            className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded-xl hover:border-zinc-300 transition-all"
+                        >
+                            {t('styles.reset_defaults', '恢复默认')}
+                        </button>
+                    ) : <div />}
                     <button
                         onClick={onClose}
                         className="px-8 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-bold hover:bg-zinc-800 transition-all shadow-lg shadow-zinc-200/50 hover:shadow-xl hover:shadow-zinc-200/50 transform hover:-translate-y-0.5 active:translate-y-0"

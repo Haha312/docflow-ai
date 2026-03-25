@@ -385,6 +385,7 @@
         "tab_content_font": "Content Font",
         "tab_content_size": "Content Size",
         "confirm_btn": "Save Config",
+        "reset_defaults": "Reset to Defaults",
         "align_justify": "Justify",
         "align_left": "Left",
         "align_center": "Center",

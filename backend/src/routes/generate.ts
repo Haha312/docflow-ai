@@ -58,7 +58,8 @@ async function* callOpenAICompatible(
     userContent: string,
     modelName: string,
     maxTokens?: number,
-    useProxy?: boolean
+    useProxy?: boolean,
+    includeUsage?: boolean
 ): AsyncGenerator<{ content: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }> {
     console.log('DEBUG: callOpenAICompatible start', { baseUrl, modelName, apiKeyLength: apiKey?.length, maxTokens, useProxy });
 
@@ -78,7 +79,7 @@ async function* callOpenAICompatible(
                 { role: 'user', content: userContent }
             ],
             stream: true,
-            stream_options: { include_usage: true },
+            ...(includeUsage ? { stream_options: { include_usage: true } } : {}),
             temperature: 0.1,
             max_tokens: maxTokens
         });
@@ -245,20 +246,20 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
        6. **IMAGES & FIGURES (CRITICAL)**:
          - **MANDATORY**: Generate a FIGURE CAPTION for EVERY image based on context.
          - Position: **IMMEDIATELY BELOW** the image.
-         - Format: \`<div class="figure-caption">鍥?{N} {Description}</div>\`
-         - Example: 
+         - Format: \`<div class="figure-caption">图{N} {Description}</div>\`
+         - Example:
            \`__IMG_0__\`
-           \`<div class="figure-caption">鍥?1 绯荤粺鏋舵瀯绀烘剰鍥?/div>\`
+           \`<div class="figure-caption">图1 系统架构示意图</div>\`
 
        7. **TABLES (CRITICAL)**:
           - **MANDATORY**: Generate a TABLE TITLE for EVERY table.
           - Position: **IMMEDIATELY ABOVE** the table.
-          - Format: \`<div class="table-caption">琛?{N} {Description}</div>\`
+          - Format: \`<div class="table-caption">表{N} {Description}</div>\`
           - Example: \`<div class="table-caption">琛?1 浠锋牸鏂规瀵规瘮</div>\n<table>...</table>\`
           - **NO TEXT-INDENT in table cells**: Do NOT use text-indent in \`<td>\` or \`<th>\` content.
 
       8. **CAPTION STYLE**:
-         - Use generic counters (鍥?1, 鍥?2... 琛?1, 琛?2...) unless specific numbering is required.
+         - Use generic counters (图1, 图2... 表1, 表2...) unless specific numbering is required.
          - Center align captions.
 
       9. **TOC HANDLING**:
@@ -275,17 +276,17 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         if (styleConfig && styleConfig.figureNumbering === 'chapter-relative') {
             figureInstruction = `
           - **FIGURE CAPTIONS (CHAPTER-RELATIVE)**:
-            - You MUST rename figure captions to follow "鍥綶Chapter]-[Sequence]" format.
+            - You MUST rename figure captions to follow "图[Chapter]-[Sequence]" format.
             - Detect the current Chapter (H1) number (e.g. "1", "2", "3").
             - Reset figure sequence at each new Chapter.
-            - Example: In Chapter 1, use "鍥?1-1", "鍥?1-2". In Chapter 2, use "鍥?2-1".
-            - Format: \`<div class="figure-caption">鍥?{Chapter}-{Sequence} {Description}</div>\`
+            - Example: In Chapter 1, use "图1-1", "图1-2". In Chapter 2, use "图2-1".
+            - Format: \`<div class="figure-caption">图{Chapter}-{Sequence} {Description}</div>\`
             `;
         } else {
             figureInstruction = `
           - **FIGURE CAPTIONS (SEQUENTIAL)**:
-            - Use continuous numbering across the document "鍥綶Sequence]".
-            - Format: \`<div class="figure-caption">鍥?{Sequence} {Description}</div>\`
+            - Use continuous numbering across the document "图[Sequence]".
+            - Format: \`<div class="figure-caption">图{Sequence} {Description}</div>\`
             `;
         }
 
@@ -294,17 +295,17 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         if (styleConfig && styleConfig.tableNumbering === 'chapter-relative') {
             tableInstruction = `
           - **TABLE CAPTIONS (CHAPTER-RELATIVE)**:
-            - You MUST rename table captions to follow "琛╗Chapter]-[Sequence]" format.
+            - You MUST rename table captions to follow "表[Chapter]-[Sequence]" format.
             - Detect the current Chapter (H1) number.
             - Reset table sequence at each new Chapter.
-            - Example: "琛?1-1", "琛?2-1".
-            - Format: \`<div class="table-caption">琛?{Chapter}-{Sequence} {Description}</div>\`
+            - Example: "表1-1", "表2-1".
+            - Format: \`<div class="table-caption">表{Chapter}-{Sequence} {Description}</div>\`
             `;
         } else {
             tableInstruction = `
           - **TABLE CAPTIONS (SEQUENTIAL)**:
             - Use continuous numbering across the document.
-            - Format: \`<div class="table-caption">琛?{Sequence} {Description}</div>\`
+            - Format: \`<div class="table-caption">表{Sequence} {Description}</div>\`
             `;
         }
 
@@ -326,12 +327,31 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // 2. 璇箟鍒囧垎
         // ULTRA 鐢ㄦ埛锛氬崟娆″叏鏂囧鐞嗭紝纭繚绔犺妭椤哄簭鍜岀紪鍙峰畬鍏ㄦ纭紙SSE ping 淇濇椿杩炴帴锛?
         // 鏅€氱敤鎴凤細鎸?12000 chars 鍒囧垎
+        // 模型配置 — 在 chunk 循环外解析，所有 chunk 共用
+        const modelCfg     = requestedModelKey ? getModelConfig(requestedModelKey, dbConfig) : null;
+        const useKey       = modelCfg?.apiKey  || geminiApiKey!;
+        const useBase      = modelCfg?.baseUrl || (dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '');
+        const currentModel = modelCfg?.modelId || PRIMARY_MODEL;
+        const useProxy     = modelCfg ? (modelCfg.needsProxy ?? false) : true;
+        // Gemini 需要 usage 统计；国内模型不需要且部分不支持该字段
+        const includeUsage = useProxy;
+
+        // 按模型输出 token 上限动态调整输入 chunk 大小，防止输出被截断
+        const chunkMaxChars: Record<string, number> = {
+            'gemini-flash': 12000,
+            'gemini-pro':   16000,
+            'doubao':        3500,
+            'deepseek':      7000,
+            'qwen-max':      7000,
+        };
+        const safeChunkSize = (requestedModelKey && chunkMaxChars[requestedModelKey]) || 12000;
+
         let chunks: string[] = [];
         if (userTier === 'ULTRA') {
             console.log('馃殌 ULTRA Mode: Single-pass full document processing');
             chunks = [contentWithoutImages];
         } else {
-            chunks = splitContentBySemantics(contentWithoutImages);
+            chunks = splitContentBySemantics(contentWithoutImages, safeChunkSize);
         }
         console.log(`馃З Document split into ${chunks.length} chunk(s)`);
 
@@ -352,11 +372,6 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // 3. 寰幆澶勭悊 Chunks
         for (let i = 0; i < chunks.length; i++) {
             const chunkContent = chunks[i];
-            const modelCfg     = requestedModelKey ? getModelConfig(requestedModelKey, dbConfig) : null;
-            const useKey       = modelCfg?.apiKey  || geminiApiKey!;
-            const useBase      = modelCfg?.baseUrl || (dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '');
-            const currentModel = modelCfg?.modelId || PRIMARY_MODEL;
-            const useProxy     = modelCfg ? (modelCfg.needsProxy ?? false) : true; // default true for Gemini fallback
             console.log(`Processing Chunk ${i + 1}/${chunks.length} (${chunkContent.length} chars) 馃 Model: ${currentModel}`);
 
             // 鍔ㄦ€佹瀯寤?System Prompt
@@ -401,7 +416,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                     if (geminiOpenAIBaseUrl) {
                         // 浣跨敤 OpenAI Compatible Endpoint (濡?hiapi.online)
                         const maxTokens = modelCfg?.maxOutputTokens ?? (userTier === 'ULTRA' ? 32000 : 16000);
-                        for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, userContent, currentModel, maxTokens, useProxy)) {
+                        for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, userContent, currentModel, maxTokens, useProxy, includeUsage)) {
                             if (result.content) {
                                 chunkOutput += result.content;
                                 // 鐪熉锋祦寮忚緭鍑猴細鐩存帴鎶?delta 鎺ㄧ粰鍓嶇

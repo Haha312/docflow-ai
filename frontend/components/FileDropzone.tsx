@@ -112,12 +112,12 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`
-        relative border-2 border-dashed rounded-2xl p-4 text-center transition-all duration-300 ease-out group overflow-hidden
+        relative border border-dashed rounded-xl p-3 text-center transition-all duration-200 ease-out group overflow-hidden
         ${isDragOver
-          ? 'border-blue-500 bg-blue-50/50 scale-[1.01] shadow-xl shadow-blue-100/50'
-          : 'border-slate-200 bg-slate-50/50 hover:border-blue-400 hover:bg-white hover:shadow-lg hover:shadow-blue-50/50'
+          ? 'border-blue-400 bg-blue-50/40 shadow-sm'
+          : 'border-gray-200 bg-gray-50/40 hover:border-gray-300 hover:bg-gray-50'
         }
-        ${isLoading ? 'cursor-wait bg-slate-50 border-slate-200' : ''}
+        ${isLoading ? 'cursor-wait' : ''}
       `}
     >
       <input
@@ -129,28 +129,28 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
       />
 
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center gap-4 py-2 animate-in fade-in zoom-in duration-300">
-          <div className="relative w-14 h-14">
-            <svg className="animate-spin absolute inset-0 w-full h-full text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <div className="flex flex-col items-center justify-center gap-2 py-1 animate-in fade-in zoom-in duration-300">
+          <div className="relative w-8 h-8">
+            <svg className="animate-spin absolute inset-0 w-full h-full text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
           </div>
           <div>
-            <h3 className="text-slate-800 font-bold text-lg">{t('home.parsing_file', '正在解析文件...')}</h3>
-            <p className="text-slate-500 text-sm mt-1">{t('home.extracting_word', '深度提取 Word 结构与公式')}</p>
+            <h3 className="text-gray-700 font-semibold text-sm">{t('home.parsing_file', '正在解析文件...')}</h3>
+            <p className="text-gray-400 text-xs mt-0.5">{t('home.extracting_word', '深度提取 Word 结构与公式')}</p>
           </div>
         </div>
       ) : (
-        <div className="pointer-events-none flex flex-col items-center gap-3 transition-transform duration-300 group-hover:-translate-y-1">
-          <div className={`p-3 rounded-xl transition-all duration-300 ${isDragOver ? 'bg-blue-100 text-blue-600 scale-110' : 'bg-white text-slate-400 shadow-sm border border-slate-100 group-hover:text-blue-500 group-hover:border-blue-100 group-hover:shadow-blue-100'}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+        <div className="pointer-events-none flex flex-col items-center gap-2">
+          <div className={`p-2 rounded-lg transition-all duration-200 ${isDragOver ? 'bg-blue-100 text-blue-500' : 'bg-white text-gray-400 shadow-sm border border-gray-100'}`}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
           </div>
-          <div className="space-y-1">
-            <h3 className={`text-base font-bold transition-colors ${isDragOver ? 'text-blue-700' : 'text-slate-700'}`}>{t('home.drag_file_here', '拖拽文件至此')}</h3>
-            <p className="text-sm text-slate-500 font-medium">{t('home.supports_formats', { max_size: MAX_FILE_SIZE_MB >= 1024 ? `${MAX_FILE_SIZE_MB / 1024}GB` : `${MAX_FILE_SIZE_MB}MB`, defaultValue: `支持 .docx, .txt, .md (最大 ${MAX_FILE_SIZE_MB >= 1024 ? `${MAX_FILE_SIZE_MB / 1024}GB` : `${MAX_FILE_SIZE_MB}MB`})` })}</p>
+          <div className="space-y-0.5">
+            <h3 className={`text-sm font-semibold transition-colors ${isDragOver ? 'text-blue-600' : 'text-gray-700'}`}>{t('home.drag_file_here', '拖拽文件至此')}</h3>
+            <p className="text-xs text-gray-400">{t('home.supports_formats', { max_size: MAX_FILE_SIZE_MB >= 1024 ? `${MAX_FILE_SIZE_MB / 1024}GB` : `${MAX_FILE_SIZE_MB}MB`, defaultValue: `支持 .docx, .txt, .md (最大 ${MAX_FILE_SIZE_MB >= 1024 ? `${MAX_FILE_SIZE_MB / 1024}GB` : `${MAX_FILE_SIZE_MB}MB`})` })}</p>
           </div>
-          <span className="bg-white border border-slate-200 text-slate-600 px-5 py-2 rounded-lg text-sm font-bold shadow-sm tracking-wide group-hover:border-blue-200 group-hover:text-blue-600 group-hover:shadow-blue-100 transition-all">
+          <span className="bg-white border border-gray-200 text-gray-500 px-4 py-1.5 rounded-lg text-xs font-semibold shadow-sm tracking-wide transition-all">
             {t('home.browse_files', '浏览文件')}
           </span>
         </div>

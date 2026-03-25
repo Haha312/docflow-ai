@@ -16,7 +16,14 @@
       "Bash(./node_modules/.bin/tsc --noEmit)",
       "Bash(npx --no tsc --noEmit)",
       "Bash(echo \"Exit: $?\")",
-      "Bash(node -e \"const ts = require\\(''typescript''\\); const program = ts.createProgram\\([''components/PricingModal.tsx'', ''components/AuthModal.tsx''], {jsx: 1, strict: false, noEmit: true}\\); const diags = ts.getPreEmitDiagnostics\\(program\\); diags.forEach\\(d => console.log\\(ts.flattenDiagnosticMessageText\\(d.messageText, ''\\\\n''\\)\\)\\);\")"
+      "Bash(node -e \"const ts = require\\(''typescript''\\); const program = ts.createProgram\\([''components/PricingModal.tsx'', ''components/AuthModal.tsx''], {jsx: 1, strict: false, noEmit: true}\\); const diags = ts.getPreEmitDiagnostics\\(program\\); diags.forEach\\(d => console.log\\(ts.flattenDiagnosticMessageText\\(d.messageText, ''\\\\n''\\)\\)\\);\")",
+      "Bash(powershell -NoProfile -Command \"$lines = Get-Content ''D:/docuflow-ai/backend/src/routes/generate.ts'' -Encoding UTF8; Write-Host $lines[374]\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const l=fs.readFileSync\\(''backend/src/routes/generate.ts'',''utf8''\\).split\\(''\\\\n''\\);console.log\\(JSON.stringify\\(l[374]\\)\\);\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const l=fs.readFileSync\\(''backend/src/routes/generate.ts'',''utf8''\\).split\\(''\\\\n''\\);console.log\\(l[374]\\);\")",
+      "Bash(dir D:docuflow-aibackendsrcroutes)",
+      "Bash(findstr /n \"saved save_error save_failed confirm_edit reset_defaults styles\" \"D:\\\\docuflow-ai\\\\frontend\\\\locales\\\\zh.json\")",
+      "Bash(Select-String -Path \"D:\\\\docuflow-ai\\\\frontend\\\\locales\\\\zh.json\" -Pattern \"saved|save_error|confirm_edit|reset_defaults|styles\")",
+      "Bash(powershell -Command \"Select-String -Path ''D:\\\\docuflow-ai\\\\frontend\\\\locales\\\\zh.json'' -Pattern ''saved|save_error|confirm_edit|reset_defaults|styles'' | Select-Object -First 20\")"
     ]
   }
 }
