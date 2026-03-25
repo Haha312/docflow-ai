@@ -24,6 +24,14 @@ const getTextCount = (html: string) => {
   return html.replace(/<[^>]+>/g, '').replace(/\s/g, '').length;
 };
 
+const MODEL_OPTIONS = [
+  { key: 'gemini-flash', name: 'Gemini Flash',  desc: '快速' },
+  { key: 'gemini-pro',   name: 'Gemini 3 Pro',  desc: '高质量' },
+  { key: 'doubao',       name: '豆包 Doubao',    desc: 'ByteDance' },
+  { key: 'deepseek',     name: 'DeepSeek V3',   desc: '深度求索' },
+  { key: 'qwen-max',     name: 'Qwen Max',       desc: '通义千问' },
+] as const;
+
 function Home() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -31,6 +39,9 @@ function Home() {
   const [inputText, setInputText] = useState<string>('');
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
   const [selectedPreset, setSelectedPreset] = useState<DocPreset>(DocPreset.ACADEMIC);
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-pro');
+  const [isModelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
   const [outputText, setOutputText] = useState<string>('');
   const [imageMap, setImageMap] = useState<Record<string, string>>({});
   const [showToast, setShowToast] = useState(false);
@@ -81,6 +92,16 @@ function Home() {
     setOutputText('');
     setAiState(prev => ({ ...prev, error: null, progress: 0 }));
   };
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setModelDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     // 只在生成期间自动滚动，生成完成后用户可以自由滚动查看内容
@@ -215,7 +236,8 @@ function Home() {
           content: inputText,
           preset: selectedPreset,
           fileName: inputFileName,
-          styleConfig: activeStyle
+          styleConfig: activeStyle,
+          model: selectedModel,
         },
         (partialText, progressData, newImageMap) => {
           if (abortControllerRef.current === null) return;
@@ -553,6 +575,55 @@ function Home() {
                     />
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* Model Selector */}
+            <div className="space-y-2" ref={modelDropdownRef}>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{t('home.model', '生成模型')}</p>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => !aiState.isThinking && setModelDropdownOpen(v => !v)}
+                  disabled={aiState.isThinking}
+                  className="w-full flex items-center justify-between px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                >
+                  <span className="font-medium text-gray-800">
+                    {MODEL_OPTIONS.find(m => m.key === selectedModel)?.name ?? selectedModel}
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-gray-400">
+                      {MODEL_OPTIONS.find(m => m.key === selectedModel)?.desc}
+                    </span>
+                    <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isModelDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </div>
+                </button>
+                {isModelDropdownOpen && (
+                  <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+                    {MODEL_OPTIONS.map(opt => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => { setSelectedModel(opt.key); setModelDropdownOpen(false); }}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors text-left ${selectedModel === opt.key ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+                      >
+                        <span className={`font-medium ${selectedModel === opt.key ? 'text-gray-900' : 'text-gray-700'}`}>
+                          {opt.name}
+                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs text-gray-400">{opt.desc}</span>
+                          {selectedModel === opt.key && (
+                            <svg className="w-3.5 h-3.5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <path d="M20 6L9 17l-5-5" />
+                            </svg>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 

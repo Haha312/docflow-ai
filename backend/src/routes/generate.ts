@@ -27,6 +27,21 @@ import { splitContentBySemantics } from '../utils/chunking';
 
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3-pro-preview';
 const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 50));
+
+interface ModelConfig { apiKey: string; baseUrl: string; modelId: string; needsProxy?: boolean; maxOutputTokens?: number; }
+
+function getModelConfig(modelKey: string, dbConfig: Record<string, string>): ModelConfig | null {
+    const geminiKey  = dbConfig['GOOGLE_API_KEY']        || process.env.GOOGLE_API_KEY        || '';
+    const geminiBase = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '';
+    const registry: Record<string, ModelConfig> = {
+        'gemini-flash': { apiKey: geminiKey,  baseUrl: geminiBase, modelId: 'gemini-2.0-flash',                          needsProxy: true,  maxOutputTokens: 16000 },
+        'gemini-pro':   { apiKey: geminiKey,  baseUrl: geminiBase, modelId: process.env.GEMINI_MODEL || 'gemini-3-pro-preview', needsProxy: true,  maxOutputTokens: 32000 },
+        'doubao':       { apiKey: process.env.DOUBAO_API_KEY   || '', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',        modelId: process.env.DOUBAO_ENDPOINT_ID || '', needsProxy: false, maxOutputTokens: 4096 },
+        'deepseek':     { apiKey: process.env.DEEPSEEK_API_KEY || '', baseUrl: 'https://api.deepseek.com/v1',                     modelId: 'deepseek-chat',                      needsProxy: false, maxOutputTokens: 8192 },
+        'qwen-max':     { apiKey: process.env.DASHSCOPE_API_KEY || '', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', modelId: 'qwen-max',                        needsProxy: false, maxOutputTokens: 8192 },
+    };
+    return registry[modelKey] ?? null;
+}
 let activeGenerations = 0;
 
 const tryAcquireGenerationSlot = (): boolean => {
@@ -42,15 +57,19 @@ async function* callOpenAICompatible(
     systemPrompt: string,
     userContent: string,
     modelName: string,
-    maxTokens?: number
+    maxTokens?: number,
+    useProxy?: boolean
 ): AsyncGenerator<{ content: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }> {
-    console.log('DEBUG: callOpenAICompatible start', { baseUrl, modelName, apiKeyLength: apiKey?.length, maxTokens });
+    console.log('DEBUG: callOpenAICompatible start', { baseUrl, modelName, apiKeyLength: apiKey?.length, maxTokens, useProxy });
 
     try {
-        const client = new OpenAI({
-            apiKey: apiKey,
-            baseURL: baseUrl
-        });
+        const clientOptions: ConstructorParameters<typeof OpenAI>[0] = { apiKey, baseURL: baseUrl };
+        if (useProxy) {
+            const proxyUrl = process.env.HTTPS_PROXY || 'http://127.0.0.1:10809';
+            const dispatcher = new ProxyAgent(proxyUrl);
+            clientOptions.fetch = ((url: any, init: any) => undiciFetch(url, { ...init, dispatcher })) as any;
+        }
+        const client = new OpenAI(clientOptions);
 
         const stream = await client.chat.completions.create({
             model: modelName,
@@ -119,7 +138,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             // SystemConfig table might not exist
         }
 
-        const { content, preset, fileName, styleConfig }: GenerateRequest = req.body;
+        const { content, preset, fileName, styleConfig, model: requestedModelKey }: GenerateRequest = req.body;
 
         if (!content || !preset || !fileName || !styleConfig) {
             res.status(400).json(errorResponse('缂哄皯蹇呰鍙傛暟', 400));
@@ -333,7 +352,11 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // 3. 寰幆澶勭悊 Chunks
         for (let i = 0; i < chunks.length; i++) {
             const chunkContent = chunks[i];
-            const currentModel = PRIMARY_MODEL;
+            const modelCfg     = requestedModelKey ? getModelConfig(requestedModelKey, dbConfig) : null;
+            const useKey       = modelCfg?.apiKey  || geminiApiKey!;
+            const useBase      = modelCfg?.baseUrl || (dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '');
+            const currentModel = modelCfg?.modelId || PRIMARY_MODEL;
+            const useProxy     = modelCfg ? (modelCfg.needsProxy ?? false) : true; // default true for Gemini fallback
             console.log(`Processing Chunk ${i + 1}/${chunks.length} (${chunkContent.length} chars) 馃 Model: ${currentModel}`);
 
             // 鍔ㄦ€佹瀯寤?System Prompt
@@ -377,8 +400,8 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 try {
                     if (geminiOpenAIBaseUrl) {
                         // 浣跨敤 OpenAI Compatible Endpoint (濡?hiapi.online)
-                        const maxTokens = userTier === 'ULTRA' ? 32000 : 16000;
-                        for await (const result of callOpenAICompatible(geminiApiKey!, geminiOpenAIBaseUrl, currentSystemPrompt, userContent, currentModel, maxTokens)) {
+                        const maxTokens = modelCfg?.maxOutputTokens ?? (userTier === 'ULTRA' ? 32000 : 16000);
+                        for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, userContent, currentModel, maxTokens, useProxy)) {
                             if (result.content) {
                                 chunkOutput += result.content;
                                 // 鐪熉锋祦寮忚緭鍑猴細鐩存帴鎶?delta 鎺ㄧ粰鍓嶇
@@ -490,6 +513,21 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         console.error('AI API Error:', aiError);
 
         let errorMessage = 'AI service is temporarily unavailable. Please try again later.';
+        // Clear, model-aware error messages (overrides legacy garbled messages below)
+        const isApiKeyError = aiError.status === 401 || aiError.status === 403
+            || String(aiError.message).includes('API key')
+            || String(aiError.message).includes('Incorrect API key')
+            || String(aiError.message).includes('invalid_api_key');
+        if (isApiKeyError) {
+            const label = requestedModelKey ?? 'AI';
+            errorMessage = `[${label}] API Key invalid or not authorized. Please verify the key in backend .env`;
+            if (!res.writableEnded) { res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`); res.end(); }
+            return;
+        } else if (String(aiError.message).includes('Connection') || String(aiError.message).includes('ECONNREFUSED') || String(aiError.message).includes('ETIMEDOUT')) {
+            errorMessage = `Cannot reach ${requestedModelKey ?? 'AI'} API. Check network / proxy settings.`;
+            if (!res.writableEnded) { res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`); res.end(); }
+            return;
+        }
 
         if (aiError.message?.includes('API key') || aiError.message?.includes('403')) {
             errorMessage = '[GEMINI] API Key 鏃犳晥鎴栨湭鍚敤锛岃妫€鏌ュ悗绔?.env 閰嶇疆';

@@ -10,6 +10,7 @@ export interface GenerateDocumentRequest {
     preset: DocPreset;
     fileName: string;
     styleConfig: StyleConfig;
+    model?: string;
 }
 
 /**

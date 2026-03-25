@@ -97,6 +97,7 @@ export interface GenerateRequest {
     preset: DocPreset;
     fileName: string;
     styleConfig: StyleConfig;
+    model?: string;
 }
 
 // 支付请求
