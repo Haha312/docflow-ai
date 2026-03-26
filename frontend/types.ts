@@ -126,6 +126,7 @@ export interface ProcessedDocument {
 export interface AIState {
   isThinking: boolean;
   error: string | null;
+  stopMessage: string | null;
   progressStep: string;
   progress: number;
 }

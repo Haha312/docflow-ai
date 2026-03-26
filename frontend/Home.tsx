@@ -25,11 +25,11 @@ const getTextCount = (html: string) => {
 };
 
 const MODEL_OPTIONS = [
-  { key: 'gemini-flash', name: 'Gemini Flash',  desc: '快速' },
-  { key: 'gemini-pro',   name: 'Gemini 3 Pro',  desc: '高质量' },
-  { key: 'doubao',       name: '豆包 Doubao',    desc: 'ByteDance' },
-  { key: 'deepseek',     name: 'DeepSeek V3',   desc: '深度求索' },
-  { key: 'qwen-max',     name: 'Qwen Max',       desc: '通义千问' },
+  { key: 'gemini-flash', name: 'Gemini Flash',  descKey: 'home.model_fast' },
+  { key: 'gemini-pro',   name: 'Gemini 3 Pro',  descKey: 'home.model_quality' },
+  { key: 'doubao',       name: '豆包 Doubao',    descKey: 'home.model_bytedance' },
+  { key: 'deepseek',     name: 'DeepSeek V3',   descKey: 'home.model_deepseek' },
+  { key: 'qwen-max',     name: 'Qwen Max',       descKey: 'home.model_qwen' },
 ] as const;
 
 function Home() {
@@ -39,7 +39,9 @@ function Home() {
   const [inputText, setInputText] = useState<string>('');
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
   const [selectedPreset, setSelectedPreset] = useState<DocPreset>(DocPreset.ACADEMIC);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-pro');
+  const [selectedModel, setSelectedModel] = useState<string>(
+    () => localStorage.getItem('docuflow_selected_model') ?? 'gemini-pro'
+  );
   const [isModelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
@@ -58,9 +60,11 @@ function Home() {
   const [aiState, setAiState] = useState<AIState>({
     isThinking: false,
     error: null,
+    stopMessage: null,
     progressStep: '',
     progress: 0
   });
+  const [isCopied, setIsCopied] = useState(false);
 
   const [showPRD, setShowPRD] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'preview'>('preview');
@@ -105,6 +109,11 @@ function Home() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Persist model selection across page refreshes
+  useEffect(() => {
+    localStorage.setItem('docuflow_selected_model', selectedModel);
+  }, [selectedModel]);
+
   useEffect(() => {
     // 只在生成期间自动滚动，生成完成后用户可以自由滚动查看内容
     if (shouldAutoScroll && aiState.isThinking && previewContainerRef.current) {
@@ -136,6 +145,19 @@ function Home() {
       setAiState({ isThinking: false, error: null, progressStep: '', progress: 0 });
     }
   };
+
+  // Ctrl/Cmd+Enter keyboard shortcut to start generation (metaKey = Cmd on Mac, ctrlKey = Ctrl on Windows/Linux)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (inputText && !aiState.isThinking) {
+          handleProcess();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [inputText, aiState.isThinking]);
 
   // --- Resizing Handlers ---
   const handleSidebarMouseDown = (e: React.MouseEvent) => {
@@ -200,8 +222,9 @@ function Home() {
       setAiState(prev => ({
         ...prev,
         isThinking: false,
-        error: t('home.stopped_manually', "已手动停止生成"),
-        progressStep: t('home.stopped_manually', "已停止"),
+        error: null,
+        stopMessage: t('home.stopped_manually', "已手动停止生成"),
+        progressStep: '',
         progress: 0
       }));
     }
@@ -219,7 +242,7 @@ function Home() {
       return;
     }
 
-    setAiState({ isThinking: true, error: null, progressStep: t('home.analyzing', '正在分析文档结构...'), progress: 0 });
+    setAiState({ isThinking: true, error: null, stopMessage: null, progressStep: t('home.analyzing', '正在分析文档结构...'), progress: 0 });
     setOutputText('');
     setImageMap({});
     setShouldAutoScroll(true); // 每次新生成重置自动滚动
@@ -295,7 +318,7 @@ function Home() {
         // Brief pause for React to finish rendering, then trigger KaTeX (runs when isThinking=false)
         setAiState(prev => ({ ...prev, progressStep: t('home.rendering', '正在应用排版格式...') }));
         await new Promise(r => setTimeout(r, 300));
-        setAiState({ isThinking: false, error: null, progressStep: t('home.done', '完成'), progress: 0 });
+        setAiState({ isThinking: false, error: null, stopMessage: null, progressStep: t('home.done', '完成'), progress: 0 });
         setViewMode('preview'); // 生成完成后自动切换到全宽预览模式
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
@@ -306,16 +329,16 @@ function Home() {
 
     } catch (err: any) {
       if (err.message === 'QUOTA_EXCEEDED') {
-        setAiState({ isThinking: false, error: t('home.quota_exceeded', "免费额度已用尽，升级 Pro 享受无限生成"), progressStep: '', progress: 0 });
+        setAiState({ isThinking: false, error: t('home.quota_exceeded', "免费额度已用尽，升级 Pro 享受更多生成次数"), stopMessage: null, progressStep: '', progress: 0 });
         setTimeout(() => setShowPricingModal(true), 1000);
       } else if (err.message === 'LOGIN_REQUIRED') {
-        setAiState({ isThinking: false, error: t('home.login_required', "登录已失效,请重新登录"), progressStep: '', progress: 0 });
+        setAiState({ isThinking: false, error: t('home.login_required', "登录已失效,请重新登录"), stopMessage: null, progressStep: '', progress: 0 });
         setTimeout(() => setShowAuthModal(true), 1000);
       } else if (err.message === 'ABORT_ERR' || err.name === 'AbortError') {
-        setAiState({ isThinking: false, error: t('home.stopped_manually', "已手动停止生成"), progressStep: '', progress: 0 });
+        setAiState({ isThinking: false, error: null, stopMessage: t('home.stopped_manually', "已手动停止生成"), progressStep: '', progress: 0 });
       } else {
         console.error("Processing error:", err);
-        setAiState({ isThinking: false, error: err.message || t('home.processing_failed', "文档处理失败,请重试。"), progressStep: '', progress: 0 });
+        setAiState({ isThinking: false, error: err.message || t('home.processing_failed', "文档处理失败,请重试。"), stopMessage: null, progressStep: '', progress: 0 });
       }
     } finally {
       if (abortControllerRef.current === controller) {
@@ -329,7 +352,12 @@ function Home() {
     try {
       // Restore __IMG_N__ placeholders before export (same as renderedContent step 2,
       // but WITHOUT KaTeX — KaTeX HTML would break docxGenerator)
+      // Also strip any FORMULA_DATA marker that was appended during file parsing
       let docxReadyHtml = outputText.replace(/```html/gi, '').replace(/```/g, '');
+      const formulaMarkerIdx = docxReadyHtml.indexOf('<!-- FORMULA_DATA -->');
+      if (formulaMarkerIdx !== -1) {
+        docxReadyHtml = docxReadyHtml.substring(0, formulaMarkerIdx);
+      }
       if (Object.keys(imageMap).length > 0) {
         docxReadyHtml = docxReadyHtml.replace(/__IMG_\d+__/g, (match) => imageMap[match] || match);
       }
@@ -346,6 +374,18 @@ function Home() {
     } catch (e) {
       console.error("Export failed", e);
       alert(t('home.export_failed', "导出失败，请重试"));
+    }
+  };
+
+  const handleCopyOutput = async () => {
+    if (!outputText) return;
+    try {
+      const plainText = outputText.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+      await navigator.clipboard.writeText(plainText);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (e) {
+      console.error('Copy failed', e);
     }
   };
 
@@ -530,15 +570,22 @@ function Home() {
                 <button
                   onClick={() => setSidebarCollapsed(false)}
                   className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
-                  title="展开侧边栏"
+                  title={t('home.expand_sidebar', '展开侧边栏')}
                 >
                   <svg className="w-3.5 h-3.5 text-gray-600 rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M15 18l-6-6 6-6" />
                   </svg>
                 </button>
-                <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">1</div>
-                <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">2</div>
-                <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">3</div>
+                {[t('home.upload_doc', '上传'), t('home.select_preset', '模板'), t('home.start_generate', '生成')].map((label, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSidebarCollapsed(false)}
+                    className="w-6 h-6 bg-gray-900 hover:bg-gray-700 text-white rounded-md flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
+                    title={label}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
               </div>
             ) : (
               <>
@@ -564,7 +611,7 @@ function Home() {
             <div className="flex flex-col gap-4">
 
             {/* Upload Section */}
-            <div className={`bg-white border border-gray-200 rounded-xl p-4 flex-shrink-0 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+            <div className={`bg-white border border-gray-200 rounded-xl p-4 flex-shrink-0 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`} title={aiState.isThinking ? t('home.wait_for_generation', '生成完成后可操作') : undefined}>
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">1</div>
                 <h2 className="text-sm font-semibold text-gray-900">{t('home.upload_doc', '上传文档')}</h2>
@@ -596,7 +643,7 @@ function Home() {
             </div>
 
             {/* Preset Section */}
-            <div className={`bg-white border border-gray-200 rounded-xl p-4 flex-shrink-0 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+            <div className={`bg-white border border-gray-200 rounded-xl p-4 flex-shrink-0 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`} title={aiState.isThinking ? t('home.wait_for_generation', '生成完成后可操作') : undefined}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">2</div>
@@ -650,7 +697,7 @@ function Home() {
                     </span>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs text-gray-400">
-                        {MODEL_OPTIONS.find(m => m.key === selectedModel)?.desc}
+                        {t(MODEL_OPTIONS.find(m => m.key === selectedModel)?.descKey ?? '')}
                       </span>
                       <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isModelDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M6 9l6 6 6-6" />
@@ -670,7 +717,7 @@ function Home() {
                             {opt.name}
                           </span>
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs text-gray-400">{opt.desc}</span>
+                            <span className="text-xs text-gray-400">{t(opt.descKey)}</span>
                             {selectedModel === opt.key && (
                               <svg className="w-3.5 h-3.5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                                 <path d="M20 6L9 17l-5-5" />
@@ -698,19 +745,26 @@ function Home() {
                     {t('home.stop_generation', '停止生成')}
                   </button>
                 ) : (
-                  <button
-                    onClick={handleProcess}
-                    disabled={!inputText}
-                    className={`w-full py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-all ${!inputText
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-gray-900 text-white hover:bg-gray-800 shadow-sm'
-                      }`}
-                  >
-                    {t('home.start_process', '开始智能重排')}
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M5 12h14M12 5l7 7-7 7" />
-                    </svg>
-                  </button>
+                  <>
+                    <button
+                      onClick={handleProcess}
+                      disabled={!inputText}
+                      className={`w-full py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-all ${!inputText
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-gray-900 text-white hover:bg-gray-800 shadow-sm'
+                        }`}
+                    >
+                      {t('home.start_process', '开始智能重排')}
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                    {inputText && (
+                      <p className="text-center text-[10px] text-gray-300 mt-1.5">
+                        {typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌘' : 'Ctrl'}+Enter
+                      </p>
+                    )}
+                  </>
                 )}
 
                 {aiState.isThinking && (
@@ -726,6 +780,16 @@ function Home() {
                 {aiState.error && (
                   <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg">
                     <p className="text-xs text-red-600">{aiState.error}</p>
+                  </div>
+                )}
+                {aiState.stopMessage && !aiState.error && (
+                  <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg flex items-center gap-2">
+                    <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <p className="text-xs text-gray-500">{aiState.stopMessage}</p>
                   </div>
                 )}
               </div>
@@ -771,17 +835,41 @@ function Home() {
 
               <div className="flex items-center gap-2">
                 {outputText && !aiState.isThinking && (
-                  <button
-                    onClick={() => { handleDownload(); setDownloadHighlight(false); }}
-                    className={`flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all shadow-sm ${downloadHighlight ? 'ring-2 ring-offset-2 ring-green-400 scale-105' : 'ring-0 scale-100'}`}
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    {t('home.download_docx', '下载 .docx')}
-                  </button>
+                  <>
+                    <button
+                      onClick={handleCopyOutput}
+                      className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-white border border-gray-200 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-all"
+                      title={t('home.copy_output', '复制内容')}
+                    >
+                      {isCopied ? (
+                        <>
+                          <svg className="w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                          <span className="text-green-600 font-medium">{t('home.copied', '已复制 ✓')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                          </svg>
+                          <span>{t('home.copy_output', '复制内容')}</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => { handleDownload(); setDownloadHighlight(false); }}
+                      className={`flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all shadow-sm ${downloadHighlight ? 'ring-2 ring-offset-2 ring-green-400 scale-105' : 'ring-0 scale-100'}`}
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                      {t('home.download_docx', '下载 .docx')}
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -823,7 +911,12 @@ function Home() {
                 style={{ width: viewMode === 'split' && inputText ? `${100 - splitRatio}%` : '100%' }}
               >
                 <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">{t('home.result_text', '结果')}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">{t('home.result_text', '结果')}</span>
+                    {outputText && !aiState.isThinking && (
+                      <span className="text-xs text-gray-400">{getTextCount(outputText).toLocaleString()} {t('home.chars', '字')}</span>
+                    )}
+                  </div>
                   {selectedPreset && (
                     <span className="text-xs text-gray-500">{t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}</span>
                   )}
@@ -882,13 +975,19 @@ function Home() {
                         <p className="text-sm font-medium text-gray-700">{aiState.progressStep || t('home.processing_doc', '正在处理文档...')}</p>
                         <p className="mt-1 text-xs text-gray-400">{t('home.model_thinking', '模型思考中，请稍候')}</p>
                       </div>
-                      {aiState.progress > 0 && (
+                      {aiState.progress > 0 ? (
+                        <div className="flex flex-col items-center gap-1.5">
+                          <span className="text-xs text-gray-400 font-mono tabular-nums">{aiState.progress}%</span>
+                          <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${aiState.progress >= 100 ? 'bg-green-500' : 'bg-gray-400'}`}
+                              style={{ width: `${aiState.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : (
                         <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden relative">
-                          {aiState.progress >= 100 ? (
-                            <div className="h-full w-full bg-green-500 rounded-full transition-all duration-500" />
-                          ) : (
-                            <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-400 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
-                          )}
+                          <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-400 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
                         </div>
                       )}
                     </div>
@@ -916,6 +1015,7 @@ function Home() {
         config={activeStyle}
         onUpdate={handleStyleUpdate}
         presetTitle={t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}
+        presetId={selectedPreset}
         defaultConfig={activePresetConfig.styleConfig}
       />
       <ProductRequirements isOpen={showPRD} onClose={() => setShowPRD(false)} />

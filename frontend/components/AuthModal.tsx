@@ -19,6 +19,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   // Registration States
   const [captchaImage, setCaptchaImage] = useState('');
   const [captchaSessionId, setCaptchaSessionId] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   const [captchaInput, setCaptchaInput] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [countdown, setCountdown] = useState(0);
@@ -52,12 +53,15 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   }, [isOpen, mode]);
 
   const refreshCaptcha = async () => {
+    setCaptchaLoading(true);
     try {
       const data = await authService.getCaptcha();
       setCaptchaImage(data.image);
       setCaptchaSessionId(data.sessionId);
     } catch (e) {
       console.error('Failed to load captcha', e);
+    } finally {
+      setCaptchaLoading(false);
     }
   };
 
@@ -122,6 +126,10 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const switchMode = () => {
     setMode(mode === 'login' ? 'register' : 'login');
     setError('');
+    setEmail('');
+    setPassword('');
+    setCaptchaInput('');
+    setEmailCode('');
   };
 
   return (
@@ -218,11 +226,19 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                       className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                     />
                     <div
-                      className="h-[46px] w-[100px] bg-gray-100 rounded-xl overflow-hidden cursor-pointer border border-gray-200"
+                      className="h-[46px] w-[100px] bg-gray-100 rounded-xl overflow-hidden cursor-pointer border border-gray-200 flex items-center justify-center"
                       onClick={refreshCaptcha}
-                      dangerouslySetInnerHTML={{ __html: captchaImage }}
                       title={t('auth.click_to_refresh', '点击刷新')}
-                    />
+                    >
+                      {captchaLoading ? (
+                        <svg className="animate-spin w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <div dangerouslySetInnerHTML={{ __html: captchaImage }} className="w-full h-full" />
+                      )}
+                    </div>
                   </div>
                 </div>
 

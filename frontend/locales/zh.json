@@ -37,6 +37,8 @@
         "help": "帮助",
         "switch_lang": "English",
         "remaining": "剩余: {{count}} 次",
+        "remaining_of": "剩余: {{count}} / {{total}} 次",
+        "quota_unlimited": "不限次数",
         "doc_style": "文档排版"
     },
     "home": {
@@ -48,7 +50,7 @@
         "estimated_time": " (预计剩余 {{seconds}} 秒)",
         "generation_complete": "排版生成完毕",
         "done": "完成",
-        "quota_exceeded": "免费额度已用尽，升级 Pro 享受无限生成",
+        "quota_exceeded": "免费额度已用尽，升级 Pro 享受更多生成次数",
         "login_required": "登录已失效,请重新登录",
         "processing_failed": "文档处理失败,请重试。",
         "export_failed": "导出失败，请重试",
@@ -90,7 +92,17 @@
         "drag_file_here": "拖拽文件至此",
         "supports_formats": "支持 .docx, .txt, .md (最大 {{max_size}})",
         "browse_files": "浏览文件",
-        "select_preset_step": "选择模板"
+        "select_preset_step": "选择模板",
+        "reading_text": "正在读取文件内容",
+        "copy_output": "复制内容",
+        "copied": "已复制 ✓",
+        "keyboard_hint": "Ctrl+Enter 快速生成",
+        "wait_for_generation": "生成完成后可操作",
+        "model_fast": "快速",
+        "model_quality": "高质量",
+        "model_bytedance": "字节跳动",
+        "model_deepseek": "深度求索",
+        "model_qwen": "通义千问"
     },
     "pricing": {
         "success_title": "支付成功！",
@@ -301,6 +313,7 @@
         "times": "次",
         "valid_until": "有效期至",
         "logout": "退出登录",
+        "logout_confirm": "确认退出",
         "fetch_doc_failed": "无法获取文档历史",
         "doc_empty": "文档内容为空",
         "download_failed": "下载失败，请稍后重试",

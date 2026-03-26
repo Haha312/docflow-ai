@@ -116,6 +116,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
     let geminiApiKey: string | undefined;
     let fullRestoredText = '';
     let generationSlotAcquired = false;
+    let requestedModelKey: string | undefined;
 
     try {
         const user = req.user;
@@ -139,7 +140,8 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             // SystemConfig table might not exist
         }
 
-        const { content, preset, fileName, styleConfig, model: requestedModelKey }: GenerateRequest = req.body;
+        const { content, preset, fileName, styleConfig, model }: GenerateRequest = req.body;
+        requestedModelKey = model;
 
         if (!content || !preset || !fileName || !styleConfig) {
             res.status(400).json(errorResponse('缂哄皯蹇呰鍙傛暟', 400));

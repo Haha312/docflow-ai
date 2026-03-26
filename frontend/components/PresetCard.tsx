@@ -16,7 +16,6 @@ export const PresetCard: React.FC<PresetCardProps> = ({ config, isSelected, onSe
   return (
     <div
       onClick={() => onSelect(config.id)}
-      title={t(descKey, config.description)}
       className={`relative p-2.5 rounded-xl cursor-pointer transition-all duration-200 border group select-none flex items-center gap-2.5
         ${isSelected
           ? 'bg-emerald-50 border-emerald-500 shadow-sm'
@@ -41,9 +40,11 @@ export const PresetCard: React.FC<PresetCardProps> = ({ config, isSelected, onSe
         dangerouslySetInnerHTML={{ __html: config.icon }}
       />
 
-      <h3 className={`font-medium text-xs truncate ${isSelected ? 'text-emerald-900 font-semibold' : 'text-gray-700'}`}>
-        {t(titleKey, config.title)}
-      </h3>
+      <div className="min-w-0 flex-1" title={t(descKey, config.description)}>
+        <h3 className={`font-medium text-xs truncate ${isSelected ? 'text-emerald-900 font-semibold' : 'text-gray-700'}`}>
+          {t(titleKey, config.title)}
+        </h3>
+      </div>
     </div>
   );
 }

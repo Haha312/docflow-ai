@@ -37,6 +37,8 @@
         "help": "Help",
         "switch_lang": "中文",
         "remaining": "Remaining: {{count}}",
+        "remaining_of": "Remaining: {{count}} / {{total}}",
+        "quota_unlimited": "Unlimited",
         "doc_style": "Style Options"
     },
     "home": {
@@ -48,7 +50,7 @@
         "estimated_time": " (Est. remaining {{seconds}}s)",
         "generation_complete": "Layout generation complete",
         "done": "Done",
-        "quota_exceeded": "Daily quota exceeded, upgrade to Pro for unlimited generation",
+        "quota_exceeded": "Free quota exceeded. Upgrade to Pro for more generations per month.",
         "login_required": "Login expired, please log in again",
         "processing_failed": "Document processing failed, please try again.",
         "export_failed": "Export failed, please try again",
@@ -90,7 +92,17 @@
         "drag_file_here": "Drag file here",
         "supports_formats": "Supports .docx, .txt, .md (Max {{max_size}})",
         "browse_files": "Browse Files",
-        "select_preset_step": "Select Preset"
+        "select_preset_step": "Select Preset",
+        "reading_text": "Reading file content",
+        "copy_output": "Copy",
+        "copied": "Copied ✓",
+        "keyboard_hint": "Ctrl+Enter to generate",
+        "wait_for_generation": "Available after generation completes",
+        "model_fast": "Fast",
+        "model_quality": "High Quality",
+        "model_bytedance": "ByteDance",
+        "model_deepseek": "DeepSeek",
+        "model_qwen": "Qwen"
     },
     "pricing": {
         "success_title": "Payment Successful!",
@@ -299,6 +311,7 @@
         "times": "times",
         "valid_until": "Valid Until",
         "logout": "Log Out",
+        "logout_confirm": "Confirm Logout",
         "fetch_doc_failed": "Failed to fetch document history",
         "doc_empty": "Document is empty",
         "download_failed": "Download failed, please try again",

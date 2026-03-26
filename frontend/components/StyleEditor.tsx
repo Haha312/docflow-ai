@@ -11,15 +11,17 @@ interface Props {
     config: StyleConfig;
     onUpdate: (newConfig: StyleConfig) => void;
     presetTitle: string;
+    presetId?: string;
     defaultConfig?: StyleConfig;
 }
 
-export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate, presetTitle, defaultConfig }) => {
+export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate, presetTitle, presetId, defaultConfig }) => {
     const { t } = useTranslation();
     if (!isOpen) return null;
 
     // Determine if we are editing the Journal preset to show extra fields
-    const isJournal = presetTitle.includes("学术期刊") || presetTitle.includes("Journal");
+    // Use presetId (enum value) for reliable detection regardless of display language
+    const isJournal = presetId === 'ACADEMIC_JOURNAL' || presetTitle.includes("学术期刊") || presetTitle.includes("Journal");
 
     const handleChange = (key: keyof StyleConfig, value: string | boolean) => {
         onUpdate({ ...config, [key]: value });
@@ -433,14 +435,14 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
 
                 {/* Footer */}
                 <div className="p-5 border-t border-zinc-100 bg-white shrink-0 flex justify-between items-center">
-                    {defaultConfig ? (
-                        <button
-                            onClick={() => onUpdate({ ...defaultConfig })}
-                            className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-800 border border-zinc-200 rounded-xl hover:border-zinc-300 transition-all"
-                        >
-                            {t('styles.reset_defaults', '恢复默认')}
-                        </button>
-                    ) : <div />}
+                    <button
+                        onClick={() => defaultConfig && onUpdate({ ...defaultConfig })}
+                        disabled={!defaultConfig}
+                        className="px-4 py-2 text-sm border rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed text-zinc-500 hover:text-zinc-800 border-zinc-200 hover:border-zinc-300"
+                        title={!defaultConfig ? t('styles.no_default', '当前预设无默认配置') : undefined}
+                    >
+                        {t('styles.reset_defaults', '恢复默认')}
+                    </button>
                     <button
                         onClick={onClose}
                         className="px-8 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-bold hover:bg-zinc-800 transition-all shadow-lg shadow-zinc-200/50 hover:shadow-xl hover:shadow-zinc-200/50 transform hover:-translate-y-0.5 active:translate-y-0"

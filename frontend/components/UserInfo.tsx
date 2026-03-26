@@ -47,6 +47,10 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin
   }
 
   const isPro = user.subscriptionStatus !== 'FREE';
+  const isUltra = user.subscriptionStatus === 'ULTRA';
+  const tierQuotaTotal = user.subscriptionStatus === 'ULTRA' ? 1000 :
+    user.subscriptionStatus === 'PRO' ? 200 :
+      user.subscriptionStatus === 'PLUS' ? 50 : 3;
   const tierLabel = user.subscriptionStatus === 'ULTRA' ? 'Ultra' :
     user.subscriptionStatus === 'PRO' ? 'Pro' :
       user.subscriptionStatus === 'PLUS' ? 'Plus' : 'Free';
@@ -65,7 +69,7 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin
         className="group flex items-center gap-3 pl-1 pr-3 py-1 bg-white hover:bg-gray-50 border border-transparent hover:border-gray-200 rounded-full transition-all duration-200 hover:shadow-sm"
       >
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-black flex items-center justify-center text-white font-medium text-sm shadow-md ring-2 ring-white ring-offset-1 ring-offset-gray-50 group-hover:scale-105 transition-transform duration-200">
-          {user.email.charAt(0).toUpperCase()}
+          {(user.email.charAt(0) || '?').toUpperCase()}
         </div>
         <div className="hidden sm:flex flex-col items-start gap-0.5">
           <span className="text-xs font-semibold text-gray-700 max-w-[100px] truncate leading-none">
@@ -91,7 +95,11 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin
               <span className={`text-sm font-bold ${getTierColor(user.subscriptionStatus)}`}>
                 {tierLabel}
               </span>
-              {!isPro && (
+              {isUltra ? (
+                <span className="text-xs text-gray-400">{t('nav.quota_unlimited', '不限次数')}</span>
+              ) : isPro ? (
+                <span className="text-xs text-gray-400">{t('nav.remaining_of', { count: remainingQuota, total: tierQuotaTotal })}</span>
+              ) : (
                 <span className="text-xs text-gray-400">{t('nav.remaining', { count: remainingQuota })}</span>
               )}
             </div>

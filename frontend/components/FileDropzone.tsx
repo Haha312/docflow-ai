@@ -24,6 +24,7 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingFileType, setLoadingFileType] = useState<'docx' | 'text'>('text');
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -41,6 +42,7 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
   const processFile = async (file: File) => {
     setError(null);
     setIsLoading(true);
+    setLoadingFileType(file.name.endsWith('.docx') ? 'docx' : 'text');
 
     // 文件大小检查
     if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -60,14 +62,20 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
         let finalContent = result.value;
 
         // 2. Advanced: Extract raw XML text to capture Native Word Formulas (OMML)
+        // Append formula data as a hidden marker so the AI backend can process them.
+        // The marker <!-- FORMULA_DATA --> is stripped before docx export in handleDownload.
         try {
           const rawContext = await extractRawTextWithFormulas(arrayBuffer);
-          // 公式提取成功但不追加任何提示文字到内容中（避免被导出到 Word）
-          console.log('Formula extraction:', rawContext?.includes("$$") ? 'found formulas' : 'no formulas');
+          const hasFormulas = rawContext?.includes("$$");
+          console.log('Formula extraction:', hasFormulas ? 'found formulas' : 'no formulas');
+          if (hasFormulas && rawContext) {
+            finalContent += `\n<!-- FORMULA_DATA -->\n${rawContext}`;
+          }
         } catch (xmlErr) {
           console.warn("Failed to extract raw XML context", xmlErr);
         }
 
+        setError(null);
         onFileLoaded(finalContent, file.name);
 
       } else if (file.type === "application/vnd.ms-word" || file.name.endsWith('.doc')) {
@@ -79,6 +87,7 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
           reader.onerror = () => reject(new Error(t('home.read_failed', "文件读取失败")));
           reader.readAsText(file);
         });
+        setError(null);
         onFileLoaded(textContent, file.name);
       }
     } catch (e: any) {
@@ -112,7 +121,7 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`
-        relative border border-dashed rounded-xl p-3 text-center transition-all duration-200 ease-out group overflow-hidden
+        relative border border-dashed rounded-xl p-3 text-center transition-all duration-200 ease-out group
         ${isDragOver
           ? 'border-blue-400 bg-blue-50/40 shadow-sm'
           : 'border-gray-200 bg-gray-50/40 hover:border-gray-300 hover:bg-gray-50'
@@ -138,7 +147,11 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
           </div>
           <div>
             <h3 className="text-gray-700 font-semibold text-sm">{t('home.parsing_file', '正在解析文件...')}</h3>
-            <p className="text-gray-400 text-xs mt-0.5">{t('home.extracting_word', '深度提取 Word 结构与公式')}</p>
+            <p className="text-gray-400 text-xs mt-0.5">
+              {loadingFileType === 'docx'
+                ? t('home.extracting_word', '深度提取 Word 结构与公式')
+                : t('home.reading_text', '正在读取文件内容')}
+            </p>
           </div>
         </div>
       ) : (
@@ -157,7 +170,7 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
       )}
 
       {error && (
-        <div className="absolute bottom-4 left-0 right-0 mx-auto w-max max-w-[90%] bg-red-50 text-red-600 border border-red-100 text-xs px-4 py-2 rounded-full animate-in slide-in-from-bottom-2 fade-in z-20">
+        <div className="mt-2 bg-red-50 text-red-600 border border-red-100 text-xs px-3 py-2 rounded-lg text-center">
           {error}
         </div>
       )}

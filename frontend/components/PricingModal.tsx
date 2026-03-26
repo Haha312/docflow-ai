@@ -85,7 +85,11 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
             setStep('success');
             // Refresh user profile then auto-close
             setTimeout(async () => {
-              await refreshUser();
+              try {
+                await refreshUser();
+              } catch (e) {
+                console.error('refreshUser failed after payment', e);
+              }
               // Auto-close success screen after 2.5s
               setTimeout(() => onClose(), 2500);
             }, 500);
@@ -140,11 +144,15 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
       if (status === 'PAID') {
         setStep('success');
         setTimeout(async () => {
-          await refreshUser();
+          try {
+            await refreshUser();
+          } catch (e) {
+            console.error('refreshUser failed after manual check', e);
+          }
           setTimeout(() => onClose(), 2500);
         }, 500);
       } else {
-        setStatusHint(t('pricing.pending_hint', '未检测到到账，请完成支付后再试'));
+        setStatusHint(t('pricing.pending_hint', '未检测到账，请完成支付后再试'));
       }
     } catch {
       setStatusHint(t('pricing.status_check_failed', '状态校验失败，请稍后重试'));
