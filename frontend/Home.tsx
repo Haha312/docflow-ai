@@ -64,6 +64,7 @@ function Home() {
 
   const [showPRD, setShowPRD] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'preview'>('preview');
+  const [downloadHighlight, setDownloadHighlight] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -72,9 +73,9 @@ function Home() {
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
-  // Buffer for batching SSE text updates — flush via requestAnimationFrame (max 60fps)
+  // Buffer for batching SSE text updates — flush every ~80ms (matches ChatGPT/Claude streaming cadence)
   const textBufferRef = useRef<string>('');
-  const rafIdRef = useRef<number | null>(null);
+  const rafIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Layout Resizing States
   const [sidebarWidth, setSidebarWidth] = useState(360); // Default 360px
@@ -224,7 +225,7 @@ function Home() {
     setShouldAutoScroll(true); // 每次新生成重置自动滚动
     textBufferRef.current = '';
     if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
+      clearTimeout(rafIdRef.current);
       rafIdRef.current = null;
     }
 
@@ -268,14 +269,14 @@ function Home() {
               progressStep: `${displayStatus}${remaining}`
             }));
           }
-          // Buffer incoming text; RAF-batched display at up to 60fps (no char-by-char typewriter)
+          // Buffer incoming text; flush to DOM every 80ms (reduces DOM thrashing on long docs)
           if (partialText !== textBufferRef.current) {
             textBufferRef.current = partialText;
             if (rafIdRef.current === null) {
-              rafIdRef.current = requestAnimationFrame(() => {
+              rafIdRef.current = setTimeout(() => {
                 setOutputText(textBufferRef.current);
                 rafIdRef.current = null;
-              });
+              }, 80);
             }
           }
         },
@@ -285,9 +286,9 @@ function Home() {
       // Generation complete
       if (abortControllerRef.current !== null) {
         setAiState(prev => ({ ...prev, progress: 100, progressStep: t('home.generation_complete', '排版生成完毕') }));
-        // Flush: cancel any pending RAF and show final text
+        // Flush: cancel any pending timer and show final text
         if (rafIdRef.current !== null) {
-          cancelAnimationFrame(rafIdRef.current);
+          clearTimeout(rafIdRef.current);
           rafIdRef.current = null;
         }
         setOutputText(textBufferRef.current);
@@ -298,6 +299,8 @@ function Home() {
         setViewMode('preview'); // 生成完成后自动切换到全宽预览模式
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
+        setDownloadHighlight(true);
+        setTimeout(() => setDownloadHighlight(false), 2500);
         await refreshUser();
       }
 
@@ -397,10 +400,19 @@ function Home() {
       return cleaned ? `${open}${cleaned}${close}` : '';
     });
 
-    // 4. Skip KaTeX during active streaming — too expensive per-token, run once after done
-    if (aiState.isThinking) return processedText;
+    // 4. During streaming: style complete formula blocks as code placeholders (no KaTeX yet — too expensive per frame)
+    if (aiState.isThinking) {
+      return processedText.replace(/(\$\$[\s\S]*?\$\$|\$[^\$\n]+\$)/g, (match) => {
+        const isDisplay = match.startsWith('$$');
+        const tex = (isDisplay ? match.slice(2, -2) : match.slice(1, -1)).trim();
+        if (isDisplay) {
+          return `<div style="font-family:ui-monospace,monospace;text-align:center;margin:0.75em auto;padding:8px 16px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;color:#495057;font-size:0.875em;">${tex}</div>`;
+        }
+        return `<code style="font-family:ui-monospace,monospace;background:#f1f3f5;padding:1px 5px;border-radius:3px;font-size:0.875em;color:#495057;">${tex}</code>`;
+      });
+    }
 
-    // 4. Match Display Math ($$...$$) OR Inline Math ($...$)
+    // 5. After streaming: render with KaTeX — Match Display Math ($$...$$) OR Inline Math ($...$)
     return processedText.replace(/(\$\$[\s\S]*?\$\$|\$([^\$\n]+)\$)/g, (match) => {
       try {
         const isDisplay = match.startsWith('$$');
@@ -548,8 +560,11 @@ function Home() {
                   </svg>
                 </button>
 
+            {/* Three steps wrapper */}
+            <div className="flex flex-col gap-4">
+
             {/* Upload Section */}
-            <div className={`bg-white border border-gray-200 rounded-xl p-4 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+            <div className={`bg-white border border-gray-200 rounded-xl p-4 flex-shrink-0 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">1</div>
                 <h2 className="text-sm font-semibold text-gray-900">{t('home.upload_doc', '上传文档')}</h2>
@@ -581,8 +596,8 @@ function Home() {
             </div>
 
             {/* Preset Section */}
-            <div className={`bg-white border border-gray-200 rounded-xl p-5 flex-1 flex flex-col min-h-0 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-              <div className="flex items-center justify-between mb-4">
+            <div className={`bg-white border border-gray-200 rounded-xl p-4 flex-shrink-0 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">2</div>
                   <h2 className="text-sm font-semibold text-gray-900">{t('home.select_preset', '选择模板')}</h2>
@@ -599,7 +614,7 @@ function Home() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto -mx-1 px-1">
+              <div className="-mx-1 px-1">
                 <div className="grid grid-cols-2 gap-2">
                   {PRESETS.map(preset => (
                     <PresetCard
@@ -614,8 +629,8 @@ function Home() {
             </div>
 
             {/* Step 3: Generate */}
-            <div className={`bg-white border border-gray-200 rounded-xl p-5 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-60' : 'opacity-100'}`}>
-              <div className="flex items-center gap-2 mb-4">
+            <div className={`bg-white border border-gray-200 rounded-xl p-4 flex-shrink-0 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-60' : 'opacity-100'}`}>
+              <div className="flex items-center gap-2 mb-3">
                 <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">3</div>
                 <h2 className="text-sm font-semibold text-gray-900">{t('home.start_generate', '开始生成')}</h2>
               </div>
@@ -715,6 +730,8 @@ function Home() {
                 )}
               </div>
             </div>
+
+            </div>{/* end scrollable wrapper */}
               </>
             )}
           </div>
@@ -755,8 +772,8 @@ function Home() {
               <div className="flex items-center gap-2">
                 {outputText && !aiState.isThinking && (
                   <button
-                    onClick={handleDownload}
-                    className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors shadow-sm"
+                    onClick={() => { handleDownload(); setDownloadHighlight(false); }}
+                    className={`flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all shadow-sm ${downloadHighlight ? 'ring-2 ring-offset-2 ring-green-400 scale-105' : 'ring-0 scale-100'}`}
                   >
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -815,7 +832,7 @@ function Home() {
                 <style>{generatePreviewStyles()}</style>
 
                 <div
-                  className={`flex-1 overflow-auto ${viewMode === 'preview' ? 'bg-[#e8e8e8] p-6' : 'bg-white p-8'}`}
+                  className={`flex-1 overflow-auto ${viewMode === 'preview' ? 'bg-[#f0f0f0] p-6' : 'bg-white p-8'}`}
                   ref={previewContainerRef}
                   onScroll={handlePreviewScroll}
                 >
@@ -830,8 +847,8 @@ function Home() {
                       {viewMode === 'preview' ? (
                         /* A4 纸张模式 */
                         <div
-                          className="mx-auto bg-white shadow-[0_2px_12px_rgba(0,0,0,0.15)] mb-6"
-                          style={{ maxWidth: '794px', width: '100%', minHeight: '1123px', padding: '80px 90px' }}
+                          className="mx-auto bg-white border border-gray-200 mb-6"
+                          style={{ maxWidth: '794px', width: '100%', padding: '80px 90px' }}
                         >
                           <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
                           {aiState.isThinking && (

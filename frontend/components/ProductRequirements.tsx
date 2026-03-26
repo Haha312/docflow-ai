@@ -36,13 +36,26 @@ export const ProductRequirements: React.FC<Props> = ({ isOpen, onClose }) => {
         {/* Content */}
         <div className="overflow-y-auto p-8 space-y-8 bg-gray-50">
 
+          {/* Quick Start */}
           <section>
-            <h3 className="text-sm font-semibold text-gray-900 mb-4">{t('help.section_quick_start', '快速开始')}</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">{t('help.section_quick_start', '三步完成排版')}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
-                { step: '1', title: t('help.qs_1_title', '上传文档'), desc: t('help.qs_1_desc', '支持 .docx, .txt, .md 格式') },
-                { step: '2', title: t('help.qs_2_title', '选择模板'), desc: t('help.qs_2_desc', '报告、期刊、公文等预设') },
-                { step: '3', title: t('help.qs_3_title', '一键生成'), desc: t('help.qs_3_desc', 'AI 自动识别结构并排版') }
+                {
+                  step: '1',
+                  title: t('help.qs_1_title', '上传文档'),
+                  desc: t('help.qs_1_desc', '支持 .docx、.txt、.md，单文件最大 100MB')
+                },
+                {
+                  step: '2',
+                  title: t('help.qs_2_title', '选择模板'),
+                  desc: t('help.qs_2_desc', '5 种专业预设（论文、期刊、公文等），支持完全自定义')
+                },
+                {
+                  step: '3',
+                  title: t('help.qs_3_title', '开始生成'),
+                  desc: t('help.qs_3_desc', '选择 AI 模型，点击「开始智能重排」，生成完成后预览并下载')
+                }
               ].map(item => (
                 <div key={item.step} className="bg-white p-4 rounded-xl border border-gray-200">
                   <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold mb-3">
@@ -55,14 +68,31 @@ export const ProductRequirements: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
           </section>
 
+          {/* Core Features */}
           <section>
             <h3 className="text-sm font-semibold text-gray-900 mb-4">{t('help.section_core_features', '核心功能')}</h3>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { icon: '⚡', title: t('help.cf_1_title', 'AI 结构化识别'), desc: t('help.cf_1_desc', '自动识别标题、段落、列表，重构文档骨架') },
-                { icon: '📄', title: t('help.cf_2_title', '多格式导出'), desc: t('help.cf_2_desc', '一键下载标准 .docx Word 文档') },
-                { icon: '🎨', title: t('help.cf_3_title', '自定义参数'), desc: t('help.cf_3_desc', '自由调整字体、字号、行距等排版参数') },
-                { icon: '🔒', title: t('help.cf_4_title', '安全处理'), desc: t('help.cf_4_desc', '加密传输，处理后不永久保留数据') }
+                {
+                  icon: '⚡',
+                  title: t('help.cf_1_title', 'AI 结构识别'),
+                  desc: t('help.cf_1_desc', '自动识别标题层级、段落、列表、图表与数学公式，精准重构文档骨架')
+                },
+                {
+                  icon: '🔍',
+                  title: t('help.cf_2_title', '预览与原文对比'),
+                  desc: t('help.cf_2_desc', '生成后自动切换预览模式，点击「原文对比」可并排核对原文与结果')
+                },
+                {
+                  icon: '🎨',
+                  title: t('help.cf_3_title', '自定义排版样式'),
+                  desc: t('help.cf_3_desc', '点击模板右上角「自定义」，调整字体、字号、行距、缩进等 20+ 参数')
+                },
+                {
+                  icon: '📄',
+                  title: t('help.cf_4_title', '.docx 一键导出'),
+                  desc: t('help.cf_4_desc', '生成完成后点击右上角「下载 .docx」，导出标准 Word 文档，可直接编辑')
+                }
               ].map(item => (
                 <div key={item.title} className="bg-white p-4 rounded-xl border border-gray-200">
                   <div className="flex items-center gap-2 mb-2">
@@ -75,19 +105,32 @@ export const ProductRequirements: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
           </section>
 
+          {/* FAQ */}
           <section>
             <h3 className="text-sm font-semibold text-gray-900 mb-4">{t('help.section_faq', '常见问题')}</h3>
             <div className="space-y-3">
               <div className="bg-white p-4 rounded-xl border border-gray-200">
-                <h4 className="font-medium text-gray-900 text-sm">{t('help.faq_1_title', '如何获得更多额度？')}</h4>
+                <h4 className="font-medium text-gray-900 text-sm">{t('help.faq_1_title', '如何获得更多生成额度？')}</h4>
                 <p className="text-xs text-gray-500 mt-1">
-                  {t('help.faq_1_desc', '免费用户每日享有一定额度。点击右上角头像升级套餐解锁更多额度和高级模型。')}
+                  {t('help.faq_1_desc', '注册即享初始免费额度。额度用尽后，点击右上角头像选择「升级套餐」，解锁 Plus / Pro / Ultra 更多次数与高级模型。')}
                 </p>
               </div>
               <div className="bg-white p-4 rounded-xl border border-gray-200">
-                <h4 className="font-medium text-gray-900 text-sm">{t('help.faq_2_title', '支持哪些文档类型？')}</h4>
+                <h4 className="font-medium text-gray-900 text-sm">{t('help.faq_2_title', '支持哪些文档格式和大小？')}</h4>
                 <p className="text-xs text-gray-500 mt-1">
-                  {t('help.faq_2_desc', '目前支持 .docx (Word)、.txt (纯文本)、.md (Markdown) 格式，最大 200MB。')}
+                  {t('help.faq_2_desc', '支持 .docx（Word）、.txt（纯文本）、.md（Markdown）格式，单文件最大 100MB。暂不支持旧版 .doc 格式，请另存为 .docx 后上传。')}
+                </p>
+              </div>
+              <div className="bg-white p-4 rounded-xl border border-gray-200">
+                <h4 className="font-medium text-gray-900 text-sm">{t('help.faq_3_title', '文档中的数学公式会保留吗？')}</h4>
+                <p className="text-xs text-gray-500 mt-1">
+                  {t('help.faq_3_desc', '支持 LaTeX 格式的数学公式（$...$ 行内，$$...$$ 独立块）。上传 .docx 时会自动提取 Word 公式并转换为 LaTeX，排版后在导出的 Word 中正常显示。')}
+                </p>
+              </div>
+              <div className="bg-white p-4 rounded-xl border border-gray-200">
+                <h4 className="font-medium text-gray-900 text-sm">{t('help.faq_4_title', '生成结果不满意怎么办？')}</h4>
+                <p className="text-xs text-gray-500 mt-1">
+                  {t('help.faq_4_desc', '可以点击「自定义」调整字体、行距等排版参数后重新生成；也可以先下载 .docx，在 Word 中手动微调。建议对长文档使用高质量模型（Gemini Pro）以获得最佳结构识别效果。')}
                 </p>
               </div>
             </div>
@@ -99,7 +142,7 @@ export const ProductRequirements: React.FC<Props> = ({ isOpen, onClose }) => {
             onClick={onClose}
             className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors"
           >
-            {t('help.get_started', '开始使用')}
+            {t('help.get_started', '知道了，开始使用')}
           </button>
         </div>
       </div>
