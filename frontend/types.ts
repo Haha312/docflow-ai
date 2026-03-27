@@ -103,6 +103,9 @@ export interface StyleConfig {
 
   // Layout
   columns?: number; // 分栏数量
+
+  // TOC Generation
+  generateToc?: boolean; // 导出 DOCX 时是否自动生成目录页
 }
 
 export interface PresetConfig {

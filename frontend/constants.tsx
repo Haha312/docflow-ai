@@ -121,7 +121,8 @@ export const PRESETS: PresetConfig[] = [
       tableCaptionAlign: 'center',
       tableCaptionFont: '"SimHei", sans-serif', // 黑体
       tableCaptionSize: '10.5pt', // 五号
-      columns: 1
+      columns: 1,
+      generateToc: true
     }
   },
   {
@@ -205,6 +206,7 @@ export const PRESETS: PresetConfig[] = [
       tableFont: '"SimSun", serif',
       tableSize: '9pt', // 表内：小5号
       tableCaptionAlign: 'center',
+      generateToc: true,
       tableCaptionFont: '"SimHei", sans-serif', // 表题：黑体
       tableCaptionSize: '9pt', // 小5号
 
@@ -331,7 +333,8 @@ export const PRESETS: PresetConfig[] = [
       tableCaptionAlign: 'center',
       tableCaptionFont: '"SimHei", sans-serif',
       tableCaptionSize: '14pt', // 四号
-      columns: 1
+      columns: 1,
+      generateToc: true
     }
   },
   {

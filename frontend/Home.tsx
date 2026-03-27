@@ -76,6 +76,12 @@ function Home() {
   const { isAuthenticated, user, refreshUser } = useAuth();
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+
+  // TOC sidebar states
+  const [tocItems, setTocItems] = useState<{ id: string; level: number; text: string }[]>([]);
+  const [tocCollapsed, setTocCollapsed] = useState(false);
+  const prevTocCountRef = useRef(0);
+  const [newTocIds, setNewTocIds] = useState<Set<string>>(new Set());
   const abortControllerRef = useRef<AbortController | null>(null);
   // Buffer for batching SSE text updates — flush every ~80ms (matches ChatGPT/Claude streaming cadence)
   const textBufferRef = useRef<string>('');
@@ -361,6 +367,13 @@ function Home() {
       if (Object.keys(imageMap).length > 0) {
         docxReadyHtml = docxReadyHtml.replace(/__IMG_\d+__/g, (match) => imageMap[match] || match);
       }
+      // Inject TOC placeholder if generateToc is enabled and no existing TOC placeholder
+      if (activeStyle.generateToc && !docxReadyHtml.includes('toc-placeholder') && !docxReadyHtml.includes('TOC_PLACEHOLDER')) {
+        docxReadyHtml = docxReadyHtml.replace(
+          /(<h1(?![^>]*doc-title)[^>]*>)/i,
+          '<h1 class="toc-placeholder">目录</h1>\n$1'
+        );
+      }
       const blob = await generateDocx(docxReadyHtml, activeStyle);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -440,6 +453,13 @@ function Home() {
       return cleaned ? `${open}${cleaned}${close}` : '';
     });
 
+    // 3.5 Inject heading IDs for TOC navigation anchors
+    let headingCounter = 0;
+    processedText = processedText.replace(/<(h[1-6])(\s[^>]*)?>/gi, (_m: string, tag: string, attrs: string = '') => {
+      if (/\bid=/.test(attrs)) return `<${tag}${attrs}>`;
+      return `<${tag} id="toc-h-${headingCounter++}"${attrs}>`;
+    });
+
     // 4. During streaming: style complete formula blocks as code placeholders (no KaTeX yet — too expensive per frame)
     if (aiState.isThinking) {
       return processedText.replace(/(\$\$[\s\S]*?\$\$|\$[^\$\n]+\$)/g, (match) => {
@@ -472,6 +492,32 @@ function Home() {
       }
     });
   }, [outputText, imageMap, aiState.isThinking]);
+
+  // Extract TOC items from rendered content (real-time update during streaming)
+  useEffect(() => {
+    if (!renderedContent) { setTocItems([]); prevTocCountRef.current = 0; return; }
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(renderedContent, 'text/html');
+    const headings = Array.from(doc.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+    const items = headings
+      .filter(h => !h.classList.contains('doc-title') && h.textContent?.trim())
+      .map((h, i) => ({ id: h.id || `toc-h-${i}`, level: parseInt(h.tagName[1]), text: h.textContent!.trim() }));
+
+    // Detect newly added headings and trigger fade-in animation
+    const prevCount = prevTocCountRef.current;
+    if (items.length > prevCount) {
+      const ids = new Set(items.slice(prevCount).map(i => i.id));
+      setNewTocIds(ids);
+      setTimeout(() => setNewTocIds(new Set()), 700);
+    }
+    prevTocCountRef.current = items.length;
+    setTocItems(items);
+  }, [renderedContent]);
+
+  const scrollToHeading = (id: string) => {
+    const el = document.getElementById(id);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const generatePreviewStyles = () => {
     const s = activeStyle;
@@ -509,6 +555,10 @@ function Home() {
       #preview-content .table-caption, #preview-content caption { text-align: ${s.tableCaptionAlign}; font-family: ${getPreviewFontStack(s.tableCaptionFont)}; font-size: ${s.tableCaptionSize}; font-weight: 600; margin-bottom: 8px; display: block; }
       #preview-content .figure-caption { text-align: ${s.figureAlign || 'center'}; font-family: ${getPreviewFontStack(s.figureFont || s.fontFamily)}; font-size: ${s.figureSize || '9pt'}; font-weight: 600; margin-top: 12px; margin-bottom: 24px; }
       .katex { font-size: 1.1em; }
+      @keyframes tocFadeIn {
+        from { opacity: 0; transform: translateX(-6px); }
+        to   { opacity: 1; transform: translateX(0); }
+      }
     `;
   };
 
@@ -924,84 +974,126 @@ function Home() {
 
                 <style>{generatePreviewStyles()}</style>
 
-                <div
-                  className={`flex-1 overflow-auto ${viewMode === 'preview' ? 'bg-[#f0f0f0] p-6' : 'bg-white p-8'}`}
-                  ref={previewContainerRef}
-                  onScroll={handlePreviewScroll}
-                >
-                  {outputText ? (
-                    <>
-                      {/* 生成中顶部流动进度条 */}
-                      {aiState.isThinking && (
-                        <div className="h-[2px] bg-gray-100 relative overflow-hidden flex-shrink-0">
-                          <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-500 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
-                        </div>
-                      )}
-                      {viewMode === 'preview' ? (
-                        /* A4 纸张模式 */
-                        <div
-                          className="mx-auto bg-white border border-gray-200 mb-6"
-                          style={{ maxWidth: '794px', width: '100%', padding: '80px 90px' }}
+                {/* TOC sidebar + preview content wrapper */}
+                <div className="flex flex-1 min-h-0 overflow-hidden">
+                  {/* TOC sidebar: only show when there is output content */}
+                  {outputText && tocItems.length > 0 && (
+                    <div
+                      className="flex-shrink-0 border-r border-gray-100 flex flex-col overflow-hidden transition-all duration-300"
+                      style={{ width: tocCollapsed ? 32 : 200 }}
+                    >
+                      {/* Collapse toggle */}
+                      <div className="flex items-center justify-between px-2 py-2 border-b border-gray-100 bg-gray-50/50">
+                        {!tocCollapsed && <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">{t('home.toc', '目录')}</span>}
+                        <button
+                          onClick={() => setTocCollapsed(c => !c)}
+                          className="p-1 text-gray-300 hover:text-gray-600 rounded ml-auto transition-colors"
+                          title={tocCollapsed ? t('home.expand_toc', '展开目录') : t('home.collapse_toc', '收起目录')}
                         >
-                          <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
-                          {aiState.isThinking && (
-                            <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
-                          )}
-                        </div>
-                      ) : (
-                        /* 对比模式：全宽无纸张效果 */
-                        <>
-                          <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
-                          {aiState.isThinking && (
-                            <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
-                          )}
-                        </>
-                      )}
-                    </>
-                  ) : aiState.isThinking ? (
-                    /* 等待开始：极简状态区 */
-                    <div className="h-full flex flex-col items-center justify-center gap-6">
-                      {/* 三点足跡动画 */}
-                      <div className="flex gap-1.5">
-                        {[0, 1, 2].map(i => (
-                          <div
-                            key={i}
-                            className="w-2 h-2 rounded-full bg-gray-300"
-                            style={{ animation: `bounce 1.4s ease-in-out ${i * 0.16}s infinite` }}
-                          />
-                        ))}
+                          <svg className={`w-3 h-3 transition-transform ${tocCollapsed ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M15 18l-6-6 6-6" />
+                          </svg>
+                        </button>
                       </div>
-                      <div className="text-center">
-                        <p className="text-sm font-medium text-gray-700">{aiState.progressStep || t('home.processing_doc', '正在处理文档...')}</p>
-                        <p className="mt-1 text-xs text-gray-400">{t('home.model_thinking', '模型思考中，请稍候')}</p>
-                      </div>
-                      {aiState.progress > 0 ? (
-                        <div className="flex flex-col items-center gap-1.5">
-                          <span className="text-xs text-gray-400 font-mono tabular-nums">{aiState.progress}%</span>
-                          <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all duration-500 ${aiState.progress >= 100 ? 'bg-green-500' : 'bg-gray-400'}`}
-                              style={{ width: `${aiState.progress}%` }}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden relative">
-                          <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-400 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
+                      {/* TOC entries */}
+                      {!tocCollapsed && (
+                        <div className="flex-1 overflow-y-auto py-2 custom-scrollbar">
+                          {tocItems.map(item => (
+                            <button
+                              key={item.id}
+                              onClick={() => scrollToHeading(item.id)}
+                              className={`w-full text-left px-3 py-1 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded truncate transition-all ${newTocIds.has(item.id) ? 'animate-[tocFadeIn_0.4s_ease]' : ''}`}
+                              style={{ paddingLeft: `${8 + (item.level - 1) * 10}px`, fontWeight: item.level === 1 ? 600 : 400 }}
+                              title={item.text}
+                            >
+                              {item.text}
+                            </button>
+                          ))}
                         </div>
                       )}
-                    </div>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-gray-300">
-                      <svg className="w-12 h-12 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
-                        <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
-                        <line x1="8" y1="6" x2="16" y2="6"></line>
-                        <line x1="8" y1="10" x2="16" y2="10"></line>
-                        <line x1="8" y1="14" x2="12" y2="14"></line>
-                      </svg>
-                      <p className="text-sm text-gray-400">{t('home.upload_to_start', '上传文档开始排版')}</p>
                     </div>
                   )}
+
+                  {/* Preview container (original) */}
+                  <div
+                    className={`flex-1 overflow-auto ${viewMode === 'preview' ? 'bg-[#f0f0f0] p-6' : 'bg-white p-8'}`}
+                    ref={previewContainerRef}
+                    onScroll={handlePreviewScroll}
+                  >
+                    {outputText ? (
+                      <>
+                        {/* 生成中顶部流动进度条 */}
+                        {aiState.isThinking && (
+                          <div className="h-[2px] bg-gray-100 relative overflow-hidden flex-shrink-0">
+                            <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-500 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
+                          </div>
+                        )}
+                        {viewMode === 'preview' ? (
+                          /* A4 纸张模式 */
+                          <div
+                            className="mx-auto bg-white border border-gray-200 mb-6"
+                            style={{ maxWidth: '794px', width: '100%', padding: '80px 90px' }}
+                          >
+                            <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
+                            {aiState.isThinking && (
+                              <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
+                            )}
+                          </div>
+                        ) : (
+                          /* 对比模式：全宽无纸张效果 */
+                          <>
+                            <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
+                            {aiState.isThinking && (
+                              <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
+                            )}
+                          </>
+                        )}
+                      </>
+                    ) : aiState.isThinking ? (
+                      /* 等待开始：极简状态区 */
+                      <div className="h-full flex flex-col items-center justify-center gap-6">
+                        {/* 三点足跡动画 */}
+                        <div className="flex gap-1.5">
+                          {[0, 1, 2].map(i => (
+                            <div
+                              key={i}
+                              className="w-2 h-2 rounded-full bg-gray-300"
+                              style={{ animation: `bounce 1.4s ease-in-out ${i * 0.16}s infinite` }}
+                            />
+                          ))}
+                        </div>
+                        <div className="text-center">
+                          <p className="text-sm font-medium text-gray-700">{aiState.progressStep || t('home.processing_doc', '正在处理文档...')}</p>
+                          <p className="mt-1 text-xs text-gray-400">{t('home.model_thinking', '模型思考中，请稍候')}</p>
+                        </div>
+                        {aiState.progress > 0 ? (
+                          <div className="flex flex-col items-center gap-1.5">
+                            <span className="text-xs text-gray-400 font-mono tabular-nums">{aiState.progress}%</span>
+                            <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${aiState.progress >= 100 ? 'bg-green-500' : 'bg-gray-400'}`}
+                                style={{ width: `${aiState.progress}%` }}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden relative">
+                            <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-400 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-gray-300">
+                        <svg className="w-12 h-12 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                          <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+                          <line x1="8" y1="6" x2="16" y2="6"></line>
+                          <line x1="8" y1="10" x2="16" y2="10"></line>
+                          <line x1="8" y1="14" x2="12" y2="14"></line>
+                        </svg>
+                        <p className="text-sm text-gray-400">{t('home.upload_to_start', '上传文档开始排版')}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
