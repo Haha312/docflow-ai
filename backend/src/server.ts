@@ -25,6 +25,7 @@ const rawOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
     .map((o) => o.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 const allowedOrigins = new Set(rawOrigins);
+console.log('DEBUG: Allowed CORS Origins:', Array.from(allowedOrigins));
 
 const corsOptions = {
     origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
@@ -101,3 +102,5 @@ if (!process.env.VERCEL) {
         console.log('================================\n');
     });
 }
+
+

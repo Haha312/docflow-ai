@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FileDropzone } from './components/FileDropzone';
@@ -82,6 +82,11 @@ function Home() {
   const [tocCollapsed, setTocCollapsed] = useState(false);
   const prevTocCountRef = useRef(0);
   const [newTocIds, setNewTocIds] = useState<Set<string>>(new Set());
+
+  // Rich editor states
+  const previewContentRef = useRef<HTMLDivElement>(null);
+  const [isContentEdited, setIsContentEdited] = useState(false);
+
   const abortControllerRef = useRef<AbortController | null>(null);
   // Buffer for batching SSE text updates — flush every ~80ms (matches ChatGPT/Claude streaming cadence)
   const textBufferRef = useRef<string>('');
@@ -356,16 +361,24 @@ function Home() {
   const handleDownload = async () => {
     if (!outputText) return;
     try {
-      // Restore __IMG_N__ placeholders before export (same as renderedContent step 2,
-      // but WITHOUT KaTeX — KaTeX HTML would break docxGenerator)
-      // Also strip any FORMULA_DATA marker that was appended during file parsing
-      let docxReadyHtml = outputText.replace(/```html/gi, '').replace(/```/g, '');
-      const formulaMarkerIdx = docxReadyHtml.indexOf('<!-- FORMULA_DATA -->');
-      if (formulaMarkerIdx !== -1) {
-        docxReadyHtml = docxReadyHtml.substring(0, formulaMarkerIdx);
+      // If user has edited content, read directly from the DOM
+      let docxReadyHtml: string;
+      if (isContentEdited && previewContentRef.current) {
+        docxReadyHtml = previewContentRef.current.innerHTML;
+      } else {
+        // Restore __IMG_N__ placeholders before export (same as renderedContent step 2,
+        // but WITHOUT KaTeX — KaTeX HTML would break docxGenerator)
+        // Also strip any FORMULA_DATA marker that was appended during file parsing
+        docxReadyHtml = outputText.replace(/```html/gi, '').replace(/```/g, '');
       }
-      if (Object.keys(imageMap).length > 0) {
-        docxReadyHtml = docxReadyHtml.replace(/__IMG_\d+__/g, (match) => imageMap[match] || match);
+      if (!isContentEdited) {
+        const formulaMarkerIdx = docxReadyHtml.indexOf('<!-- FORMULA_DATA -->');
+        if (formulaMarkerIdx !== -1) {
+          docxReadyHtml = docxReadyHtml.substring(0, formulaMarkerIdx);
+        }
+        if (Object.keys(imageMap).length > 0) {
+          docxReadyHtml = docxReadyHtml.replace(/__IMG_\d+__/g, (match) => imageMap[match] || match);
+        }
       }
       // Inject TOC placeholder if generateToc is enabled and no existing TOC placeholder
       if (activeStyle.generateToc && !docxReadyHtml.includes('toc-placeholder') && !docxReadyHtml.includes('TOC_PLACEHOLDER')) {
@@ -393,7 +406,9 @@ function Home() {
   const handleCopyOutput = async () => {
     if (!outputText) return;
     try {
-      const plainText = outputText.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+      const plainText = isContentEdited && previewContentRef.current
+        ? previewContentRef.current.innerText.trim()
+        : outputText.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
       await navigator.clipboard.writeText(plainText);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
@@ -401,6 +416,36 @@ function Home() {
       console.error('Copy failed', e);
     }
   };
+
+  // Rich editor: update TOC from DOM after user edits
+  const updateTocFromDom = useCallback(() => {
+    if (!previewContentRef.current) return;
+    const headings = Array.from(previewContentRef.current.querySelectorAll('h1,h2,h3,h4,h5,h6')) as HTMLElement[];
+    const items = headings
+      .filter(h => !h.classList.contains('doc-title') && h.textContent?.trim())
+      .map((h, i) => ({ id: h.id || `toc-h-${i}`, level: parseInt(h.tagName[1]), text: h.textContent!.trim() }));
+    setTocItems(items);
+  }, []);
+
+  const handleContentEdit = useCallback(() => {
+    if (!isContentEdited) setIsContentEdited(true);
+    updateTocFromDom();
+  }, [isContentEdited, updateTocFromDom]);
+
+  // handleResetContent is defined after renderedContent useMemo
+  const handleResetContentRef = useRef<() => void>();
+
+  const execFormat = useCallback((command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    previewContentRef.current?.focus();
+    handleContentEdit();
+  }, [handleContentEdit]);
+
+  const execHeading = useCallback((level: string) => {
+    document.execCommand('formatBlock', false, level === 'p' ? 'p' : `h${level}`);
+    previewContentRef.current?.focus();
+    handleContentEdit();
+  }, [handleContentEdit]);
 
   const handleStyleUpdate = (newConfig: StyleConfig) => {
     setCurrentStyles(prev => ({
@@ -513,6 +558,25 @@ function Home() {
     prevTocCountRef.current = items.length;
     setTocItems(items);
   }, [renderedContent]);
+
+  // Assign reset content handler
+  useEffect(() => {
+    handleResetContentRef.current = () => {
+      if (!previewContentRef.current || !renderedContent) return;
+      previewContentRef.current.innerHTML = renderedContent;
+      setIsContentEdited(false);
+      updateTocFromDom();
+    };
+  }, [renderedContent, updateTocFromDom]);
+
+  // Synchronize dynamic renderedContent to preview-content safely without dangerouslySetInnerHTML wipeouts
+  useEffect(() => {
+    if (!isContentEdited && previewContentRef.current) {
+      if (previewContentRef.current.innerHTML !== renderedContent) {
+        previewContentRef.current.innerHTML = renderedContent;
+      }
+    }
+  }, [renderedContent, isContentEdited, viewMode]);
 
   const scrollToHeading = (id: string) => {
     const el = document.getElementById(id);
@@ -966,10 +1030,64 @@ function Home() {
                     {outputText && !aiState.isThinking && (
                       <span className="text-xs text-gray-400">{getTextCount(outputText).toLocaleString()} {t('home.chars', '字')}</span>
                     )}
+                    {/* Rich editor toolbar movable to left block */}
+                    {outputText && !aiState.isThinking && viewMode === 'preview' && (
+                      <>
+                        <div className="w-px h-4 bg-gray-200 mx-2" />
+                        <div className="flex items-center gap-1" onMouseDown={(e) => { if ((e.target as HTMLElement).tagName !== 'SELECT') e.preventDefault(); }}>
+                          <button onClick={() => execFormat('bold')} className="w-7 h-7 flex items-center justify-center rounded text-xs font-bold text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-colors" title={t('home.bold', '加粗')}>
+                            B
+                          </button>
+                          <button onClick={() => execFormat('italic')} className="w-7 h-7 flex items-center justify-center rounded text-xs italic text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-colors" title={t('home.italic', '斜体')}>
+                            I
+                          </button>
+                          <button onClick={() => execFormat('underline')} className="w-7 h-7 flex items-center justify-center rounded text-xs underline text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-colors" title={t('home.underline', '下划线')}>
+                            U
+                          </button>
+                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                          <select
+                            onChange={(e) => execHeading(e.target.value)}
+                            defaultValue=""
+                            className="text-xs px-1.5 py-1 bg-white border border-gray-200 rounded text-gray-500 hover:border-gray-300 outline-none cursor-pointer"
+                            title={t('home.heading_level', '标题级别')}
+                          >
+                            <option value="" disabled>{t('home.heading', '标题')}</option>
+                            <option value="1">H1</option>
+                            <option value="2">H2</option>
+                            <option value="3">H3</option>
+                            <option value="4">H4</option>
+                            <option value="5">H5</option>
+                            <option value="6">H6</option>
+                            <option value="p">{t('home.normal_text', '正文')}</option>
+                          </select>
+                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                          <button onClick={() => execFormat('undo')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.undo', '撤销')}>
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 10h10a5 5 0 0 1 0 10H9" /><path d="M3 10l4-4" /><path d="M3 10l4 4" /></svg>
+                          </button>
+                          <button onClick={() => execFormat('redo')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.redo', '重做')}>
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10H11a5 5 0 0 0 0 10h4" /><path d="M21 10l-4-4" /><path d="M21 10l-4 4" /></svg>
+                          </button>
+                          {isContentEdited && (
+                            <>
+                              <div className="w-px h-4 bg-gray-200 mx-1" />
+                              <button onClick={() => handleResetContentRef.current?.()} className="px-2 py-1 text-xs text-amber-600 hover:bg-amber-50 rounded transition-colors" title={t('home.reset_content', '还原为 AI 原始内容')}>
+                                {t('home.reset', '还原')}
+                              </button>
+                              <span className="text-xs text-emerald-500 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                {t('home.edited', '已编辑')}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
-                  {selectedPreset && (
-                    <span className="text-xs text-gray-500">{t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {selectedPreset && (
+                      <span className="text-xs text-gray-500">{t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}</span>
+                    )}
+                  </div>
                 </div>
 
                 <style>{generatePreviewStyles()}</style>
@@ -977,7 +1095,7 @@ function Home() {
                 {/* TOC sidebar + preview content wrapper */}
                 <div className="flex flex-1 min-h-0 overflow-hidden">
                   {/* TOC sidebar: only show when there is output content */}
-                  {outputText && tocItems.length > 0 && (
+                  {outputText && tocItems.length > 0 && viewMode === 'preview' && (
                     <div
                       className="flex-shrink-0 border-r border-gray-100 flex flex-col overflow-hidden transition-all duration-300"
                       style={{ width: tocCollapsed ? 32 : 200 }}
@@ -1034,7 +1152,14 @@ function Home() {
                             className="mx-auto bg-white border border-gray-200 mb-6"
                             style={{ maxWidth: '794px', width: '100%', padding: '80px 90px' }}
                           >
-                            <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
+                            <div
+                              id="preview-content"
+                              ref={previewContentRef}
+                              contentEditable={!aiState.isThinking}
+                              suppressContentEditableWarning
+                              onInput={handleContentEdit}
+                              className="outline-none"
+                            />
                             {aiState.isThinking && (
                               <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
                             )}
@@ -1042,7 +1167,14 @@ function Home() {
                         ) : (
                           /* 对比模式：全宽无纸张效果 */
                           <>
-                            <div id="preview-content" dangerouslySetInnerHTML={{ __html: renderedContent }} />
+                            <div
+                              id="preview-content"
+                              ref={!viewMode || viewMode !== 'preview' ? previewContentRef : undefined}
+                              contentEditable={!aiState.isThinking}
+                              suppressContentEditableWarning
+                              onInput={handleContentEdit}
+                              className="outline-none"
+                            />
                             {aiState.isThinking && (
                               <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
                             )}
