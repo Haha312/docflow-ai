@@ -633,7 +633,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
     };
 
     interface TableContext { inTable: boolean; inHeader: boolean; }
-    const createBodyParagraph = (contentNodes: Node[], context: TableContext): Paragraph => {
+    const createBodyParagraph = (contentNodes: Node[], context: TableContext, customAlign?: string): Paragraph => {
         let font = makeFont(bodyFont);
         let size = getHalfPtSize(styleConfig.baseSize);
         let bold = false;
@@ -641,17 +641,23 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         const tempContainer = document.createElement('div');
         contentNodes.forEach(n => tempContainer.appendChild(n.cloneNode(true)));
         const runs = getRichTextRuns(tempContainer, font, size, "000000");
+
+        let alignVal = mapAlignment(styleConfig.bodyAlign);
+        if (customAlign === 'center') alignVal = AlignmentType.CENTER;
+        else if (customAlign === 'right') alignVal = AlignmentType.RIGHT;
+        else if (customAlign === 'left') alignVal = AlignmentType.LEFT;
+        else if (customAlign === 'justify') alignVal = AlignmentType.JUSTIFIED;
+
         return new Paragraph({
-            alignment: mapAlignment(styleConfig.bodyAlign),
+            alignment: alignVal,
             spacing: context.inTable ? { before: 50, after: 50 } : { before: spacingBeforeBody, after: spacingAfterBody, line: lineValue, lineRule: lineRule },
             indent: context.inTable ? { firstLine: 0, left: 0, hanging: 0 } : bodyIndent,
             children: runs
         });
     };
 
-    const processNodes = (nodeList: NodeList, listContext?: { type: 'ul' | 'ol' }, tableContext: TableContext = { inTable: false, inHeader: false }): (Paragraph | Table)[] => {
+    const processNodes = (nodeList: NodeList, listContext?: { type: 'ul' | 'ol', counter?: { value: number } }, tableContext: TableContext = { inTable: false, inHeader: false }, blockAlign?: string): (Paragraph | Table)[] => {
         const elements: (Paragraph | Table)[] = [];
-        let olCounter = 1;
         let inlineBuffer: Node[] = [];
         const flushInlineBuffer = () => {
             if (inlineBuffer.length > 0) {
@@ -661,19 +667,19 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     return false;
                 });
                 if (hasContent) {
-                    let paragraph = createBodyParagraph(inlineBuffer, tableContext);
+                    let paragraph = createBodyParagraph(inlineBuffer, tableContext, blockAlign);
                     if (listContext) {
                         if (listContext.type === 'ol') {
-                            // 禁用自动添加序号功能，因为 AI 已经生成了序号
-                            // const first = inlineBuffer[0];
-                            // if (first.nodeType === Node.TEXT_NODE && first.textContent && !/^(\d)/.test(first.textContent.trim())) {
-                            //    first.textContent = `${olCounter}. ${first.textContent}`; olCounter++;
-                            // }
+                            const first = inlineBuffer[0];
+                            if (first.nodeType === Node.TEXT_NODE && first.textContent && !/^(\d+|[a-zA-Z])[\.\u3001]/.test(first.textContent.trim())) {
+                                first.textContent = `${listContext.counter?.value || 1}. ${first.textContent}`; 
+                            }
+                            if (listContext.counter) listContext.counter.value++;
                         } else {
                             const first = inlineBuffer[0];
                             if (first.nodeType === Node.TEXT_NODE && first.textContent) { first.textContent = `• ${first.textContent}`; }
                         }
-                        paragraph = createBodyParagraph(inlineBuffer, tableContext);
+                        paragraph = createBodyParagraph(inlineBuffer, tableContext, blockAlign);
                     }
                     elements.push(paragraph);
                 }
@@ -690,6 +696,13 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             const text = el.innerText || "";
             const className = el.className || "";
 
+            let currentAlign = blockAlign;
+            if (el.style && el.style.textAlign) {
+                currentAlign = el.style.textAlign;
+            } else if (el.getAttribute('align')) {
+                currentAlign = el.getAttribute('align') || undefined;
+            }
+
             if (tagName === 'TABLE') {
                 const rowsArr: TableRow[] = [];
                 const trs = Array.from(el.querySelectorAll('tr'));
@@ -700,7 +713,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 trs.forEach(tr => {
                     const cells: TableCell[] = [];
                     tr.querySelectorAll('td, th').forEach(td => {
-                        const cellChildren = processNodes(td.childNodes, undefined, { inTable: true, inHeader: td.tagName === 'TH' }) as (Paragraph | Table)[];
+                        const cellChildren = processNodes(td.childNodes, undefined, { inTable: true, inHeader: td.tagName === 'TH' }, currentAlign) as (Paragraph | Table)[];
                         if (cellChildren.length === 0) cellChildren.push(createBodyParagraph([], { inTable: true, inHeader: td.tagName === 'TH' }));
                         const rowspan = parseInt(td.getAttribute('rowspan') || '1');
                         const colspan = parseInt(td.getAttribute('colspan') || '1');
@@ -805,7 +818,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             // ===== 封面处理 =====
             // 封面由section生成逻辑处理,这里只处理内容不添加分页
             if (className.includes('cover-page')) {
-                elements.push(...processNodes(el.childNodes, undefined, tableContext));
+                elements.push(...processNodes(el.childNodes, undefined, tableContext, currentAlign));
                 return;
             }
 
@@ -820,7 +833,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             if (className.includes('doc-title-en')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 240 }, children: [new TextRun({ text: text, font: makeFont(englishTitleFont), color: primaryColor, bold: true, size: getHalfPtSize(styleConfig.englishTitleSize || '14pt') })] })); return; }
             if (className.includes('author-info')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 100 }, children: [new TextRun({ text: text, font: makeFont(authorFont), size: getHalfPtSize(styleConfig.authorSize || '16pt'), color: "000000" })] })); return; }
             if (className.includes('affiliation')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 50, after: 200 }, children: [new TextRun({ text: text, font: makeFont(affiliationFont), size: getHalfPtSize(styleConfig.affiliationSize || '9pt'), color: "000000" })] })); return; }
-            if (className.includes('abstract-cn') || className.includes('abstract-en')) { elements.push(...processNodes(el.childNodes, undefined, tableContext)); return; }
+            if (className.includes('abstract-cn') || className.includes('abstract-en')) { elements.push(...processNodes(el.childNodes, undefined, tableContext, currentAlign)); return; }
             if (className.includes('table-caption') || tagName === 'CAPTION' || (tagName === 'P' && text.startsWith(i18n.t('generator.table', '表')) && text.length < 40 && !tableContext.inTable)) { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: true, color: "000000" })] })); return; }
 
             if (tagName === 'H1') elements.push(createHeading(text, 1));
@@ -829,11 +842,11 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             else if (tagName === 'H4') elements.push(createHeading(text, 4));
             else if (tagName === 'H5') elements.push(createHeading(text, 5));
             else if (tagName === 'H6') elements.push(createHeading(text, 6));
-            else if (tagName === 'P' || tagName === 'DIV' || tagName === 'BLOCKQUOTE') elements.push(...processNodes(el.childNodes, listContext, tableContext));
-            else if (tagName === 'UL') elements.push(...processNodes(el.childNodes, { type: 'ul' }, tableContext));
-            else if (tagName === 'OL') elements.push(...processNodes(el.childNodes, { type: 'ol' }, tableContext));
-            else if (tagName === 'LI') elements.push(...processNodes(el.childNodes, listContext, tableContext));
-            else if (['SECTION', 'ARTICLE', 'MAIN', 'TD', 'TH'].includes(tagName)) elements.push(...processNodes(el.childNodes, listContext, tableContext));
+            else if (tagName === 'P' || tagName === 'DIV' || tagName === 'BLOCKQUOTE') elements.push(...processNodes(el.childNodes, listContext, tableContext, currentAlign));
+            else if (tagName === 'UL') elements.push(...processNodes(el.childNodes, { type: 'ul' }, tableContext, currentAlign));
+            else if (tagName === 'OL') elements.push(...processNodes(el.childNodes, { type: 'ol', counter: { value: 1 } }, tableContext, currentAlign));
+            else if (tagName === 'LI') elements.push(...processNodes(el.childNodes, listContext, tableContext, currentAlign));
+            else if (['SECTION', 'ARTICLE', 'MAIN', 'TD', 'TH'].includes(tagName)) elements.push(...processNodes(el.childNodes, listContext, tableContext, currentAlign));
         });
         flushInlineBuffer();
         return elements;

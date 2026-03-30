@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FileDropzone } from './components/FileDropzone';
@@ -31,6 +31,11 @@ const MODEL_OPTIONS = [
   { key: 'deepseek',     name: 'DeepSeek V3',   descKey: 'home.model_deepseek' },
   { key: 'qwen-max',     name: 'Qwen Max',       descKey: 'home.model_qwen' },
 ] as const;
+
+// A4 page dimensions at 96 dpi (297mm × 96 / 25.4 ≈ 1122px)
+const A4_HEIGHT_PX = 1122;
+// Top + bottom padding of the paper div (each side = 80px)
+const A4_PADDING_PX = 160;
 
 function Home() {
   const { t, i18n } = useTranslation();
@@ -86,6 +91,9 @@ function Home() {
   // Rich editor states
   const previewContentRef = useRef<HTMLDivElement>(null);
   const [isContentEdited, setIsContentEdited] = useState(false);
+
+  // Live page count — measured from real DOM scroll height each time content updates
+  const [contentPageCount, setContentPageCount] = useState(1);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   // Buffer for batching SSE text updates — flush every ~80ms (matches ChatGPT/Claude streaming cadence)
@@ -153,6 +161,7 @@ function Home() {
       setInputText('');
       setInputFileName('document.txt');
       setOutputText('');
+      setContentPageCount(1);
       setAiState({ isThinking: false, error: null, progressStep: '', progress: 0 });
     }
   };
@@ -364,7 +373,17 @@ function Home() {
       // If user has edited content, read directly from the DOM
       let docxReadyHtml: string;
       if (isContentEdited && previewContentRef.current) {
-        docxReadyHtml = previewContentRef.current.innerHTML;
+        // Strip KaTeX-rendered spans — docxGenerator cannot handle KaTeX HTML.
+        // Replace each .katex element with the raw TeX source stored in the <annotation> tag.
+        const tmp = document.createElement('div');
+        tmp.innerHTML = previewContentRef.current.innerHTML;
+        tmp.querySelectorAll('span.katex').forEach(katexEl => {
+          const annotation = katexEl.querySelector('annotation[encoding="application/x-tex"]');
+          const tex = annotation?.textContent?.trim() ?? '';
+          const isDisplay = katexEl.closest('.katex-display') !== null;
+          katexEl.replaceWith(document.createTextNode(isDisplay ? `$$${tex}$$` : `$${tex}$`));
+        });
+        docxReadyHtml = tmp.innerHTML;
       } else {
         // Restore __IMG_N__ placeholders before export (same as renderedContent step 2,
         // but WITHOUT KaTeX — KaTeX HTML would break docxGenerator)
@@ -423,7 +442,11 @@ function Home() {
     const headings = Array.from(previewContentRef.current.querySelectorAll('h1,h2,h3,h4,h5,h6')) as HTMLElement[];
     const items = headings
       .filter(h => !h.classList.contains('doc-title') && h.textContent?.trim())
-      .map((h, i) => ({ id: h.id || `toc-h-${i}`, level: parseInt(h.tagName[1]), text: h.textContent!.trim() }));
+      .map((h, i) => {
+        // Ensure every heading has an id so scrollToHeading works after user edits
+        if (!h.id) h.id = `toc-h-edit-${i}`;
+        return { id: h.id, level: parseInt(h.tagName[1]), text: h.textContent!.trim() };
+      });
     setTocItems(items);
   }, []);
 
@@ -538,26 +561,7 @@ function Home() {
     });
   }, [outputText, imageMap, aiState.isThinking]);
 
-  // Extract TOC items from rendered content (real-time update during streaming)
-  useEffect(() => {
-    if (!renderedContent) { setTocItems([]); prevTocCountRef.current = 0; return; }
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(renderedContent, 'text/html');
-    const headings = Array.from(doc.querySelectorAll('h1,h2,h3,h4,h5,h6'));
-    const items = headings
-      .filter(h => !h.classList.contains('doc-title') && h.textContent?.trim())
-      .map((h, i) => ({ id: h.id || `toc-h-${i}`, level: parseInt(h.tagName[1]), text: h.textContent!.trim() }));
-
-    // Detect newly added headings and trigger fade-in animation
-    const prevCount = prevTocCountRef.current;
-    if (items.length > prevCount) {
-      const ids = new Set(items.slice(prevCount).map(i => i.id));
-      setNewTocIds(ids);
-      setTimeout(() => setNewTocIds(new Set()), 700);
-    }
-    prevTocCountRef.current = items.length;
-    setTocItems(items);
-  }, [renderedContent]);
+  // TOC extraction is now done inside useLayoutEffect below — no DOMParser, no debounce.
 
   // Assign reset content handler
   useEffect(() => {
@@ -569,19 +573,65 @@ function Home() {
     };
   }, [renderedContent, updateTocFromDom]);
 
-  // Synchronize dynamic renderedContent to preview-content safely without dangerouslySetInnerHTML wipeouts
-  useEffect(() => {
-    if (!isContentEdited && previewContentRef.current) {
-      if (previewContentRef.current.innerHTML !== renderedContent) {
-        previewContentRef.current.innerHTML = renderedContent;
-      }
+  // Track isContentEdited in a ref so the innerHTML effect doesn't re-run on edit state change.
+  // This prevents React from ever touching the DOM of the contentEditable during user editing.
+  const isContentEditedRef = useRef(false);
+  useEffect(() => { isContentEditedRef.current = isContentEdited; }, [isContentEdited]);
+
+  // Single useLayoutEffect handles three jobs in one synchronous pass (before browser paint):
+  //   1. Write innerHTML imperatively — bypasses React reconciliation on contentEditable
+  //   2. Extract TOC directly from the rendered DOM — no DOMParser re-parse, no debounce
+  //   3. Measure real content height for live page count
+  // This eliminates the old 300ms TOC debounce + separate DOMParser pass, keeping content
+  // and TOC perfectly in sync with each streaming chunk.
+  useLayoutEffect(() => {
+    const el = previewContentRef.current;
+    if (!el) return;
+
+    // 1. Update innerHTML only when not in user-edit mode
+    if (!isContentEditedRef.current) {
+      el.innerHTML = renderedContent;
     }
-  }, [renderedContent, isContentEdited, viewMode]);
+
+    // 2. Handle cleared content
+    if (!renderedContent) {
+      setTocItems([]);
+      prevTocCountRef.current = 0;
+      setContentPageCount(1);
+      return;
+    }
+
+    // 3. Extract TOC from already-rendered DOM nodes — O(headings), not O(html string length)
+    const headings = Array.from(el.querySelectorAll('h1,h2,h3,h4,h5,h6')) as HTMLElement[];
+    const items = headings
+      .filter(h => !h.classList.contains('doc-title') && h.textContent?.trim())
+      .map((h, i) => {
+        if (!h.id) h.id = `toc-h-${i}`; // write ID back so scrollToHeading can find it
+        return { id: h.id, level: parseInt(h.tagName[1]), text: h.textContent!.trim() };
+      });
+
+    // Fade-in animation for newly appeared headings
+    const prevCount = prevTocCountRef.current;
+    if (items.length > prevCount) {
+      const ids = new Set(items.slice(prevCount).map(item => item.id));
+      setNewTocIds(ids);
+      setTimeout(() => setNewTocIds(new Set()), 700);
+    }
+    prevTocCountRef.current = items.length;
+    setTocItems(items);
+
+    // 4. Real page count from actual scroll height
+    const totalH = el.scrollHeight + A4_PADDING_PX;
+    setContentPageCount(Math.max(1, Math.ceil(totalH / A4_HEIGHT_PX)));
+  }, [renderedContent, viewMode]); // viewMode dep: re-init when switching preview ↔ split
 
   const scrollToHeading = (id: string) => {
     const el = document.getElementById(id);
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  // Detect if the current output contains math formulas (for streaming hint)
+  const hasFormulas = useMemo(() => /\$[\s\S]+?\$/.test(outputText), [outputText]);
 
   const generatePreviewStyles = () => {
     const s = activeStyle;
@@ -1061,6 +1111,27 @@ function Home() {
                             <option value="p">{t('home.normal_text', '正文')}</option>
                           </select>
                           <div className="w-px h-4 bg-gray-200 mx-1" />
+                          <button onClick={() => execFormat('justifyLeft')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.align_left', '左对齐')}>
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18 M3 12h12 M3 18h18" strokeLinecap="round"/></svg>
+                          </button>
+                          <button onClick={() => execFormat('justifyCenter')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.align_center', '居中对齐')}>
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18 M6 12h12 M3 18h18" strokeLinecap="round"/></svg>
+                          </button>
+                          <button onClick={() => execFormat('justifyRight')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.align_right', '右对齐')}>
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18 M9 12h12 M3 18h18" strokeLinecap="round"/></svg>
+                          </button>
+                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                          <button onClick={() => execFormat('insertUnorderedList')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.bullet_list', '无序列表')}>
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </button>
+                          <button onClick={() => execFormat('insertOrderedList')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.numbered_list', '有序列表')}>
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 6h11 M10 12h11 M10 18h11 M4 6h1v4 M4 10h2 M4 14h2 M4 18h2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </button>
+                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                          <button onClick={() => execFormat('removeFormat')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.clear_format', '清除格式')}>
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h14v3 M9 20h6 M12 4v16 M17 15l4 4 M21 15l-4 4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </button>
+                          <div className="w-px h-4 bg-gray-200 mx-1" />
                           <button onClick={() => execFormat('undo')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.undo', '撤销')}>
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 10h10a5 5 0 0 1 0 10H9" /><path d="M3 10l4-4" /><path d="M3 10l4 4" /></svg>
                           </button>
@@ -1148,22 +1219,46 @@ function Home() {
                         )}
                         {viewMode === 'preview' ? (
                           /* A4 纸张模式 */
-                          <div
-                            className="mx-auto bg-white border border-gray-200 mb-6"
-                            style={{ maxWidth: '794px', width: '100%', padding: '80px 90px' }}
-                          >
+                          <>
                             <div
-                              id="preview-content"
-                              ref={previewContentRef}
-                              contentEditable={!aiState.isThinking}
-                              suppressContentEditableWarning
-                              onInput={handleContentEdit}
-                              className="outline-none"
-                            />
-                            {aiState.isThinking && (
-                              <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
+                              className="mx-auto bg-white border border-gray-200 mb-6"
+                              style={{ maxWidth: '794px', width: '100%', padding: '80px 90px' }}
+                            >
+                              <div
+                                id="preview-content"
+                                ref={previewContentRef}
+                                contentEditable={!aiState.isThinking}
+                                suppressContentEditableWarning
+                                onInput={handleContentEdit}
+                                className="outline-none"
+                              />
+                              {aiState.isThinking && (
+                                <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
+                              )}
+                              {/* Page number footer */}
+                              {outputText && (
+                                <div className="mt-16 pt-4 border-t border-gray-100 flex items-center justify-between select-none pointer-events-none">
+                                  <span className="text-xs text-gray-300 tracking-wide">DocFlow AI</span>
+                                  <span className="text-xs text-gray-300 tabular-nums">
+                                    {aiState.isThinking
+                                      ? t('home.page_count_streaming', '已生成约 {{n}} 页', { n: contentPageCount })
+                                      : t('home.page_count_total', '共 {{n}} 页', { n: contentPageCount })}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            {/* Formula rendering hint — sticky at bottom during streaming */}
+                            {aiState.isThinking && hasFormulas && (
+                              <div style={{ position: 'sticky', bottom: 0 }} className="flex justify-center pb-3 pointer-events-none select-none">
+                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 border border-amber-100 rounded-full shadow-sm backdrop-blur-sm" style={{ animation: 'fadeInUp 0.4s ease' }}>
+                                  <svg className="w-3 h-3 text-amber-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                                  </svg>
+                                  <span className="text-xs text-gray-400">{t('home.formula_rendering_hint', '公式将在生成完成后自动渲染')}</span>
+                                </div>
+                              </div>
                             )}
-                          </div>
+                          </>
                         ) : (
                           /* 对比模式：全宽无纸张效果 */
                           <>
@@ -1177,6 +1272,16 @@ function Home() {
                             />
                             {aiState.isThinking && (
                               <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
+                            )}
+                            {aiState.isThinking && hasFormulas && (
+                              <div style={{ position: 'sticky', bottom: 0 }} className="flex justify-center pb-3 pointer-events-none select-none">
+                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 border border-amber-100 rounded-full shadow-sm backdrop-blur-sm" style={{ animation: 'fadeInUp 0.4s ease' }}>
+                                  <svg className="w-3 h-3 text-amber-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                                  </svg>
+                                  <span className="text-xs text-gray-400">{t('home.formula_rendering_hint', '公式将在生成完成后自动渲染')}</span>
+                                </div>
+                              </div>
                             )}
                           </>
                         )}

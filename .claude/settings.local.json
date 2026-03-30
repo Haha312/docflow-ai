@@ -25,7 +25,10 @@
       "Bash(Select-String -Path \"D:\\\\docuflow-ai\\\\frontend\\\\locales\\\\zh.json\" -Pattern \"saved|save_error|confirm_edit|reset_defaults|styles\")",
       "Bash(powershell -Command \"Select-String -Path ''D:\\\\docuflow-ai\\\\frontend\\\\locales\\\\zh.json'' -Pattern ''saved|save_error|confirm_edit|reset_defaults|styles'' | Select-Object -First 20\")",
       "Bash(powershell -Command \"Select-String -Path ''D:\\\\docuflow-ai\\\\frontend\\\\constants.tsx'' -Pattern ''id: DocPreset'' | Measure-Object | Select-Object -ExpandProperty Count\")",
-      "Bash(powershell -Command \"Select-String -Path ''D:\\\\docuflow-ai\\\\frontend\\\\Home.tsx'' -Pattern ''help'' -CaseSensitive:$false | Select-Object LineNumber, Line | Format-Table -AutoSize\")"
+      "Bash(powershell -Command \"Select-String -Path ''D:\\\\docuflow-ai\\\\frontend\\\\Home.tsx'' -Pattern ''help'' -CaseSensitive:$false | Select-Object LineNumber, Line | Format-Table -AutoSize\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(node node_modules/typescript/bin/tsc --noEmit)",
+      "Bash(node \"D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\typescript\\\\bin\\\\tsc\" --noEmit --project \"D:\\\\docuflow-ai\\\\frontend\\\\tsconfig.json\")"
     ]
   }
 }

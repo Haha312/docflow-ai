@@ -217,6 +217,20 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                     </div>
                                 </div>
 
+                                {/* 生成目录开关 */}
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('styles.generate_toc', '导出时生成目录')}</span>
+                                    <button
+                                        onClick={() => handleChange('generateToc', !config.generateToc)}
+                                        className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${config.generateToc ? 'bg-indigo-600' : 'bg-zinc-200'}`}
+                                        role="switch"
+                                        aria-checked={!!config.generateToc}
+                                        title={t('styles.generate_toc_desc', '下载 .docx 时自动在正文前插入目录页')}
+                                    >
+                                        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${config.generateToc ? 'translate-x-4' : 'translate-x-0'}`} />
+                                    </button>
+                                </div>
+
                                 <div className="grid grid-cols-4 gap-6">
                                     {renderSelect(t('styles.align_h1'), config.h1Align, (v) => handleChange('h1Align', v), ALIGNMENT_OPTIONS)}
                                     {renderSelect(t('styles.align_h2'), config.h2Align, (v) => handleChange('h2Align', v), ALIGNMENT_OPTIONS)}
