@@ -402,7 +402,7 @@ function Home() {
       // Inject TOC placeholder if generateToc is enabled and no existing TOC placeholder
       if (activeStyle.generateToc && !docxReadyHtml.includes('toc-placeholder') && !docxReadyHtml.includes('TOC_PLACEHOLDER')) {
         docxReadyHtml = docxReadyHtml.replace(
-          /(<h1(?![^>]*doc-title)[^>]*>)/i,
+          /(<h[1-6](?![^>]*doc-title)[^>]*>)/i,
           '<h1 class="toc-placeholder">目录</h1>\n$1'
         );
       }
@@ -1229,6 +1229,7 @@ function Home() {
                                 ref={previewContentRef}
                                 contentEditable={!aiState.isThinking}
                                 suppressContentEditableWarning
+                                spellCheck={false}
                                 onInput={handleContentEdit}
                                 className="outline-none"
                               />
@@ -1267,6 +1268,7 @@ function Home() {
                               ref={!viewMode || viewMode !== 'preview' ? previewContentRef : undefined}
                               contentEditable={!aiState.isThinking}
                               suppressContentEditableWarning
+                              spellCheck={false}
                               onInput={handleContentEdit}
                               className="outline-none"
                             />

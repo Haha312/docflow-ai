@@ -905,8 +905,9 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 return;
             }
 
-            // 检测正文开始 (第一个非封面非目录的H1)
-            if (currentSection !== 'body' && el.tagName === 'H1' && !className.includes('doc-title') && !className.includes('toc-placeholder')) {
+            // 检测正文开始 (第一个非封面非目录的标题 h1-h6)
+            const isHeading = /^H[1-6]$/i.test(el.tagName);
+            if (currentSection !== 'body' && isHeading && !className.includes('doc-title') && !className.includes('toc-placeholder')) {
                 currentSection = 'body';
             }
         }
@@ -946,7 +947,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             tocElements.push(new Paragraph({
                 alignment: AlignmentType.CENTER,
                 spacing: { before: 480, after: 480 },
-                children: [new TextRun({ text: i18n.t('generator.toc_title', "目  录"), font: makeFont(headingFont), bold: true, size: 44 })]
+                children: [new TextRun({ text: i18n.t('generator.toc_title', "目  录"), font: makeFont("SimHei"), bold: true, size: 44 })]
             }));
             // 添加 Word 原生目录
             tocElements.push(new TableOfContents(i18n.t('generator.toc', "目录"), {
@@ -1072,10 +1073,13 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     quickFormat: true,
                     run: {
                         font: {
+                            name: "SimSun",
                             ascii: "SimSun",
                             eastAsia: "SimSun",
-                            hAnsi: "SimSun"
+                            hAnsi: "SimSun",
+                            cs: "SimSun"
                         },
+                        bold: false,
                         size: 24, // 小四 (12pt)
                     },
                     paragraph: {
@@ -1096,10 +1100,13 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     quickFormat: true,
                     run: {
                         font: {
+                            name: "SimSun",
                             ascii: "SimSun",
                             eastAsia: "SimSun",
-                            hAnsi: "SimSun"
+                            hAnsi: "SimSun",
+                            cs: "SimSun"
                         },
+                        bold: false,
                         size: 24, // 小四
                     },
                     paragraph: {
@@ -1120,10 +1127,13 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     quickFormat: true,
                     run: {
                         font: {
+                            name: "SimSun",
                             ascii: "SimSun",
                             eastAsia: "SimSun",
-                            hAnsi: "SimSun"
+                            hAnsi: "SimSun",
+                            cs: "SimSun"
                         },
+                        bold: false,
                         size: 24, // 小四
                     },
                     paragraph: {
