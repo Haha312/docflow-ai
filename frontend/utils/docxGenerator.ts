@@ -1,7 +1,48 @@
 
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LineRuleType, Table, TableRow, TableCell, BorderStyle, WidthType, SectionType, Footer, PageNumber, Math as DocxMath, MathRun, MathSuperScript, MathSubScript, MathFraction, MathRadical, ImageRun, TableOfContents, PageBreak, NumberFormat } from "docx";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LineRuleType, Table, TableRow, TableCell, BorderStyle, WidthType, SectionType, Footer, PageNumber, Math as DocxMath, MathRun, MathSuperScript, MathSubScript, MathFraction, MathRadical, ImageRun, TableOfContents, PageBreak, NumberFormat, XmlComponent } from "docx";
 import { StyleConfig, Alignment } from "../types";
 import i18n from '../i18n';
+
+// --- Custom OMML Elements ---
+class GenericXmlComponent extends XmlComponent {
+    constructor(rootKey: string) {
+        super(rootKey);
+    }
+    public addRawAttr(val: string) {
+        // @ts-ignore: Access protected root
+        this.root.push({ _attr: { "m:val": val } });
+        return this;
+    }
+}
+
+class CustomMathDelimiter extends XmlComponent {
+    constructor(innerChildren: any[], leftChar = "(", rightChar = ")") {
+        super("m:d");
+        const dPr = new GenericXmlComponent("m:dPr");
+        if (leftChar) dPr.addChildElement(new GenericXmlComponent("m:begChr").addRawAttr(leftChar));
+        else dPr.addChildElement(new GenericXmlComponent("m:begChr").addRawAttr(""));
+        if (rightChar) dPr.addChildElement(new GenericXmlComponent("m:endChr").addRawAttr(rightChar));
+        else dPr.addChildElement(new GenericXmlComponent("m:endChr").addRawAttr(""));
+        
+        dPr.addChildElement(new GenericXmlComponent("m:grow").addRawAttr("1"));
+        this.addChildElement(dPr);
+
+        const eOuter = new GenericXmlComponent("m:e");
+        innerChildren.forEach(c => eOuter.addChildElement(c));
+        this.addChildElement(eOuter);
+    }
+}
+
+class CustomMathEqArr extends XmlComponent {
+    constructor(rowsConfig: any[][]) {
+        super("m:eqArr");
+        rowsConfig.forEach(rowChildren => {
+            const eRow = new GenericXmlComponent("m:e");
+            rowChildren.forEach(child => eRow.addChildElement(child));
+            this.addChildElement(eRow);
+        });
+    }
+}
 
 // --- Helpers ---
 
@@ -75,24 +116,28 @@ const getIndentConfig = (indentStr: string, fontSizePt: number) => {
         const val = parseFloat(emMatch[1]);
         return {
             firstLine: Math.round(val * fontSizePt * 20),
-            firstLineChars: Math.round(val * 100)
+            firstLineChars: Math.round(val * 100),
+            left: 0,
+            right: 0
         };
     }
 
     if (ptMatch) {
         const val = parseFloat(ptMatch[1]);
-        return { firstLine: Math.round(val * 20) };
+        return { firstLine: Math.round(val * 20), left: 0, right: 0 };
     }
 
     if (indentStr.includes(i18n.t('generator.chars', '字符')) || indentStr.includes('chars') || indentStr.includes('ch')) {
         const val = parseFloat(indentStr) || 2;
         return {
             firstLine: Math.round(val * fontSizePt * 20),
-            firstLineChars: Math.round(val * 100)
+            firstLineChars: Math.round(val * 100),
+            left: 0,
+            right: 0
         };
     }
 
-    return { firstLine: 480, firstLineChars: 200 };
+    return { firstLine: 480, firstLineChars: 200, left: 0, right: 0 };
 }
 
 const isInlineNode = (node: Node): boolean => {
@@ -324,10 +369,8 @@ const parseLatexToMathNodes = (latex: string): any[] => {
                         i = rightDelimStart + 1;
                     }
 
-                    // Fallback: Use MathRun for delimiters since MathDelimiter is unavailable
-                    children.push(new MathRun(mapDelimiterChar(delimChar)));
-                    children.push(...parseLatexToMathNodes(body));
-                    children.push(new MathRun(mapDelimiterChar(endDelimChar)));
+                    // Use native OMML delimiter instead of fallback linear MathRuns
+                    children.push(new CustomMathDelimiter(parseLatexToMathNodes(body), mapDelimiterChar(delimChar), mapDelimiterChar(endDelimChar)));
                 }
             } else if (cmd === 'begin') {
                 const env = getGroupContent();
@@ -340,19 +383,21 @@ const parseLatexToMathNodes = (latex: string): any[] => {
                     let body = cleanLatex.substring(startBody, endBodyIdx);
                     i = endBodyIdx + endTag.length;
 
-                    // Fallback: Linearize matrix/environment content
-                    // We treat & as space and \\ as space in general parsing loop or here?
-                    // The recursive call will handle characters. We just wrap in brackets for clarity if needed.
-                    if (env === 'pmatrix') children.push(new MathRun("("));
-                    else if (env === 'bmatrix') children.push(new MathRun("["));
-                    else if (env === 'vmatrix') children.push(new MathRun("|"));
-                    else if (env === 'cases') children.push(new MathRun("{"));
+                    const isArrayEnv = ['cases', 'matrix', 'pmatrix', 'bmatrix', 'vmatrix', 'array', 'aligned', 'align'].includes(env);
 
-                    children.push(...parseLatexToMathNodes(body));
+                    if (isArrayEnv) {
+                        const rowStrings = body.split(/\\\\/g);
+                        const rows = rowStrings.map(r => parseLatexToMathNodes(r));
+                        const eqArr = new CustomMathEqArr(rows);
 
-                    if (env === 'pmatrix') children.push(new MathRun(")"));
-                    else if (env === 'bmatrix') children.push(new MathRun("]"));
-                    else if (env === 'vmatrix') children.push(new MathRun("|"));
+                        if (env === 'pmatrix') children.push(new CustomMathDelimiter([eqArr], "(", ")"));
+                        else if (env === 'bmatrix') children.push(new CustomMathDelimiter([eqArr], "[", "]"));
+                        else if (env === 'vmatrix') children.push(new CustomMathDelimiter([eqArr], "|", "|"));
+                        else if (env === 'cases') children.push(new CustomMathDelimiter([eqArr], "{", ""));
+                        else children.push(eqArr); // align, aligned, array, matrix
+                    } else {
+                        children.push(...parseLatexToMathNodes(body));
+                    }
                 }
             } else if (cmd === 'frac') {
                 const num = getGroupContent();
@@ -499,7 +544,16 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             if (n.nodeType === Node.TEXT_NODE) {
                 let t = n.textContent;
                 if (t) {
-                    t = t.replace(/[\n\r]+/g, ' ');
+                    // 全面将任意多个可见或不可见空白、全角空格、\xa0 (\xA0 是 &nbsp;) 和制表符转换为一个空格
+                    t = t.replace(/[\n\r\t\v\f \xA0\u3000]+/g, ' ');
+                    
+                    // 彻底清除“中文/全角标点”与“文字(特别是英文、数字)”之间的独立空格
+                    t = t.replace(/([\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF])\s+(?=[^\s])/g, '$1');
+                    t = t.replace(/(?<=[^\s])\s+([\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF])/g, '$1');
+                    
+                    // 彻底清除孤立数学符号及括号周围的生硬排版空格 (避免被Word两端对齐强行拉爆宽度)
+                    t = t.replace(/\s*([=+\-×÷<>\(\)\[\]\{\}])\s*/g, '$1');
+
                     // Match both $$...$$ (Display Math) and $...$ (Inline Math)
                     // Be careful with $ currency: strict constraint that $ cannot be followed by space or number if simple check
                     // But for now, we assume AI generated content follows LaTeX rules.
@@ -667,17 +721,22 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     return false;
                 });
                 if (hasContent) {
+                    const firstNode = inlineBuffer[0];
+                    if (firstNode && firstNode.nodeType === Node.TEXT_NODE && firstNode.textContent) {
+                        firstNode.textContent = firstNode.textContent.replace(/^\s+/, '');
+                    }
+
                     let paragraph = createBodyParagraph(inlineBuffer, tableContext, blockAlign);
                     if (listContext) {
                         if (listContext.type === 'ol') {
                             const first = inlineBuffer[0];
                             if (first.nodeType === Node.TEXT_NODE && first.textContent && !/^(\d+|[a-zA-Z])[\.\u3001]/.test(first.textContent.trim())) {
-                                first.textContent = `${listContext.counter?.value || 1}. ${first.textContent}`; 
+                                first.textContent = `${listContext.counter?.value || 1}. ${first.textContent.trimStart()}`; 
                             }
                             if (listContext.counter) listContext.counter.value++;
                         } else {
                             const first = inlineBuffer[0];
-                            if (first.nodeType === Node.TEXT_NODE && first.textContent) { first.textContent = `• ${first.textContent}`; }
+                            if (first.nodeType === Node.TEXT_NODE && first.textContent) { first.textContent = `• ${first.textContent.trimStart()}`; }
                         }
                         paragraph = createBodyParagraph(inlineBuffer, tableContext, blockAlign);
                     }
@@ -1064,10 +1123,17 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
 
     const doc = new Document({
         styles: {
+            default: {
+                document: {
+                    run: {
+                        font: "SimSun",
+                    }
+                }
+            },
             paragraphStyles: [
                 {
                     id: "TOC1",
-                    name: "TOC 1",
+                    name: "toc 1",
                     basedOn: "Normal",
                     next: "Normal",
                     quickFormat: true,
@@ -1080,6 +1146,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                             cs: "SimSun"
                         },
                         bold: false,
+                        color: "000000",
                         size: 24, // 小四 (12pt)
                     },
                     paragraph: {
@@ -1094,7 +1161,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 },
                 {
                     id: "TOC2",
-                    name: "TOC 2",
+                    name: "toc 2",
                     basedOn: "Normal",
                     next: "Normal",
                     quickFormat: true,
@@ -1107,6 +1174,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                             cs: "SimSun"
                         },
                         bold: false,
+                        color: "000000",
                         size: 24, // 小四
                     },
                     paragraph: {
@@ -1121,7 +1189,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 },
                 {
                     id: "TOC3",
-                    name: "TOC 3",
+                    name: "toc 3",
                     basedOn: "Normal",
                     next: "Normal",
                     quickFormat: true,
@@ -1134,6 +1202,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                             cs: "SimSun"
                         },
                         bold: false,
+                        color: "000000",
                         size: 24, // 小四
                     },
                     paragraph: {

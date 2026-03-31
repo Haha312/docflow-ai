@@ -28,7 +28,8 @@
       "Bash(powershell -Command \"Select-String -Path ''D:\\\\docuflow-ai\\\\frontend\\\\Home.tsx'' -Pattern ''help'' -CaseSensitive:$false | Select-Object LineNumber, Line | Format-Table -AutoSize\")",
       "Bash(echo \"EXIT:$?\")",
       "Bash(node node_modules/typescript/bin/tsc --noEmit)",
-      "Bash(node \"D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\typescript\\\\bin\\\\tsc\" --noEmit --project \"D:\\\\docuflow-ai\\\\frontend\\\\tsconfig.json\")"
+      "Bash(node \"D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\typescript\\\\bin\\\\tsc\" --noEmit --project \"D:\\\\docuflow-ai\\\\frontend\\\\tsconfig.json\")",
+      "Bash(npm run:*)"
     ]
   }
 }

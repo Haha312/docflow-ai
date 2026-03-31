@@ -100,8 +100,8 @@ export const PRESETS: PresetConfig[] = [
       h2Align: 'left',
       bodyAlign: 'justify',
 
-      spacingBefore: '0.5行',
-      spacingAfter: '0.5行',
+      spacingBefore: '0行',
+      spacingAfter: '0行',
       textIndent: '2em',
       h1Indent: '0',
       h2Indent: '0',
@@ -172,8 +172,8 @@ export const PRESETS: PresetConfig[] = [
       h2Align: 'left',
       bodyAlign: 'justify',
 
-      spacingBefore: '8pt', // 默认段前8磅
-      spacingAfter: '8pt',  // 默认段后8磅
+      spacingBefore: '0行', // 默认段前0磅
+      spacingAfter: '0行',  // 默认段后0磅
       textIndent: '2em',
       h1Indent: '0',
       h2Indent: '0',
@@ -250,8 +250,8 @@ export const PRESETS: PresetConfig[] = [
       h2Align: 'left',
       bodyAlign: 'justify',
 
-      spacingBefore: '1行',
-      spacingAfter: '1行',
+      spacingBefore: '0行',
+      spacingAfter: '0行',
       textIndent: '2em',
       h1Indent: '0',
       h2Indent: '0',
@@ -313,7 +313,7 @@ export const PRESETS: PresetConfig[] = [
       bodyAlign: 'justify',
 
       spacingBefore: '0行',
-      spacingAfter: '0.5行',
+      spacingAfter: '0行',
       textIndent: '2em',
       h1Indent: '0',
       h2Indent: '0',
@@ -375,7 +375,7 @@ export const PRESETS: PresetConfig[] = [
       bodyAlign: 'left',
 
       spacingBefore: '0行',
-      spacingAfter: '1行',
+      spacingAfter: '0行',
       textIndent: '0',
       h1Indent: '0',
       h2Indent: '0',

@@ -84,6 +84,36 @@ function Home() {
 
   // TOC sidebar states
   const [tocItems, setTocItems] = useState<{ id: string; level: number; text: string }[]>([]);
+  
+  const [activeFormats, setActiveFormats] = useState<{
+    bold: boolean;
+    italic: boolean;
+    underline: boolean;
+    heading: string;
+    align: string;
+    list: string;
+  }>({
+    bold: false, italic: false, underline: false, heading: '', align: '', list: ''
+  });
+
+  const updateActiveFormats = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    try {
+      setActiveFormats({
+        bold: document.queryCommandState('bold'),
+        italic: document.queryCommandState('italic'),
+        underline: document.queryCommandState('underline'),
+        heading: document.queryCommandValue('formatBlock') || '',
+        align: document.queryCommandState('justifyCenter') ? 'center' :
+               document.queryCommandState('justifyRight') ? 'right' :
+               document.queryCommandState('justifyFull') ? 'justify' : 'left',
+        list: document.queryCommandState('insertOrderedList') ? 'ol' :
+              document.queryCommandState('insertUnorderedList') ? 'ul' : ''
+      });
+    } catch (e) {
+      // Ignored
+    }
+  }, []);
   const [tocCollapsed, setTocCollapsed] = useState(false);
   const prevTocCountRef = useRef(0);
   const [newTocIds, setNewTocIds] = useState<Set<string>>(new Set());
@@ -132,6 +162,7 @@ function Home() {
   useEffect(() => {
     localStorage.setItem('docuflow_selected_model', selectedModel);
   }, [selectedModel]);
+
 
   useEffect(() => {
     // 只在生成期间自动滚动，生成完成后用户可以自由滚动查看内容
@@ -462,13 +493,15 @@ function Home() {
     document.execCommand(command, false, value);
     previewContentRef.current?.focus();
     handleContentEdit();
-  }, [handleContentEdit]);
+    setTimeout(updateActiveFormats, 10);
+  }, [handleContentEdit, updateActiveFormats]);
 
   const execHeading = useCallback((level: string) => {
     document.execCommand('formatBlock', false, level === 'p' ? 'p' : `h${level}`);
     previewContentRef.current?.focus();
     handleContentEdit();
-  }, [handleContentEdit]);
+    setTimeout(updateActiveFormats, 10);
+  }, [handleContentEdit, updateActiveFormats]);
 
   const handleStyleUpdate = (newConfig: StyleConfig) => {
     setCurrentStyles(prev => ({
@@ -499,6 +532,11 @@ function Home() {
 
     // 1. Clean Markdown ```html block quotes if they exist in the stream
     let processedText = outputText.replace(/```html/gi, '').replace(/```/g, '');
+
+    // Inject typing cursor token at the absolute end of the stream string
+    if (aiState.isThinking) {
+      processedText += '___AI_CURSOR_TOKEN___';
+    }
 
     // 2. Restore Image Placeholders
     if (Object.keys(imageMap).length > 0) {
@@ -541,7 +579,7 @@ function Home() {
     }
 
     // 5. After streaming: render with KaTeX — Match Display Math ($$...$$) OR Inline Math ($...$)
-    return processedText.replace(/(\$\$[\s\S]*?\$\$|\$([^\$\n]+)\$)/g, (match) => {
+    const finalText = processedText.replace(/(\$\$[\s\S]*?\$\$|\$([^\$\n]+)\$)/g, (match) => {
       try {
         const isDisplay = match.startsWith('$$');
         const tex = isDisplay
@@ -559,6 +597,10 @@ function Home() {
         return match;
       }
     });
+
+    // Finally, replace the token with the actual blinking cursor HTML
+    // It is injected as a string, letting the browser's HTML parser elegantly wrap it in open tags (e.g. <p>) automatically
+    return finalText.replace('___AI_CURSOR_TOKEN___', '<span id="ai-typing-cursor" class="inline-block w-[6px] h-[15px] bg-slate-400 ml-1 mb-[-2px] animate-[pulse_0.8s_ease-in-out_infinite] rounded-sm align-middle"></span>');
   }, [outputText, imageMap, aiState.isThinking]);
 
   // TOC extraction is now done inside useLayoutEffect below — no DOMParser, no debounce.
@@ -653,14 +695,22 @@ function Home() {
         text-align: ${s.bodyAlign};
         ${s.columns && s.columns > 1 ? `column-count: ${s.columns}; column-gap: 2em;` : ''}
       }
-      #preview-content p { margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.textIndent}; }
+      #preview-content p, #preview-content > div:not(.katex-display):not(.math-display) { margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.textIndent}; }
+      
+      /* Format Defenses: Protect alignments and lists from global text-indent / margin logic */
+      #preview-content [style*="text-align: center"], #preview-content [style*="text-align: right"], #preview-content [align="center"], #preview-content [align="right"], #preview-content center { text-indent: 0 !important; }
+      #preview-content [style*="text-align: justify"], #preview-content [align="justify"] { text-align: justify !important; }
+      #preview-content ul { list-style-type: disc; padding-left: 2.5em; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; }
+      #preview-content ol { list-style-type: decimal; padding-left: 2.5em; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; }
+      #preview-content li { margin-bottom: 0.5em; }
+      #preview-content li p, #preview-content li div { margin: 0; text-indent: 0 !important; }
       #preview-content b, #preview-content strong { font-weight: bold; }
       #preview-content i, #preview-content em { font-style: italic; }
       #preview-content h1 { font-family: ${getPreviewFontStack(s.h1Font || s.headingFont)}; font-size: ${s.h1Size}; font-weight: ${s.h1Bold ? 'bold' : 'normal'}; text-align: ${s.h1Align}; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.h1Indent}; column-span: all; }
       #preview-content h2 { font-family: ${getPreviewFontStack(s.h2Font || s.headingFont)}; font-size: ${s.h2Size}; font-weight: ${s.h2Bold ? 'bold' : 'normal'}; text-align: ${s.h2Align}; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.h2Indent}; }
       #preview-content h3 { font-family: ${getPreviewFontStack(s.h3Font || s.headingFont)}; font-size: ${s.h3Size}; font-weight: ${s.h3Bold ? 'bold' : 'normal'}; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.h3Indent}; }
       #preview-content h4 { font-family: ${getPreviewFontStack(s.h4Font || s.headingFont)}; font-size: ${s.h4Size}; font-weight: ${s.h4Bold ? 'bold' : 'normal'}; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.h4Indent}; }
-      #preview-content .doc-title { font-size: 26pt; text-align: center; margin-bottom: 1em; column-span: all; }
+      #preview-content .doc-title { text-indent: 0; font-size: 26pt; text-align: center; margin-bottom: 1em; column-span: all; }
       #preview-content table { width: 100%; border-collapse: collapse; margin: 1em 0; font-family: ${getPreviewFontStack(s.tableFont)}; font-size: ${s.tableSize}; }
       #preview-content th, #preview-content td { border: 1px solid #e5e5e5; padding: 8px 12px; text-align: left; text-indent: 0; }
       #preview-content td p, #preview-content th p { text-indent: 0; margin: 0; }
@@ -668,6 +718,14 @@ function Home() {
       #preview-content th { background-color: #f9fafb; font-weight: 600; }
       #preview-content .table-caption, #preview-content caption { text-align: ${s.tableCaptionAlign}; font-family: ${getPreviewFontStack(s.tableCaptionFont)}; font-size: ${s.tableCaptionSize}; font-weight: 600; margin-bottom: 8px; display: block; }
       #preview-content .figure-caption { text-align: ${s.figureAlign || 'center'}; font-family: ${getPreviewFontStack(s.figureFont || s.fontFamily)}; font-size: ${s.figureSize || '9pt'}; font-weight: 600; margin-top: 12px; margin-bottom: 24px; }
+      
+      /* Formula & Pre Overflow handling */
+      #preview-content .katex-display, #preview-content .math-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; text-indent: 0; }
+      #preview-content pre { max-width: 100%; overflow-x: auto; }
+      
+      /* Hide scrollbar visually but keep scrollable to maintain the cleanest A4 look */
+      #preview-content .katex-display::-webkit-scrollbar, #preview-content .math-display::-webkit-scrollbar, #preview-content pre::-webkit-scrollbar { display: none; }
+      
       .katex { font-size: 1.1em; }
       @keyframes tocFadeIn {
         from { opacity: 0; transform: translateX(-6px); }
@@ -1083,55 +1141,48 @@ function Home() {
                     {/* Rich editor toolbar movable to left block */}
                     {outputText && !aiState.isThinking && viewMode === 'preview' && (
                       <>
-                        <div className="w-px h-4 bg-gray-200 mx-2" />
-                        <div className="flex items-center gap-1" onMouseDown={(e) => { if ((e.target as HTMLElement).tagName !== 'SELECT') e.preventDefault(); }}>
-                          <button onClick={() => execFormat('bold')} className="w-7 h-7 flex items-center justify-center rounded text-xs font-bold text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-colors" title={t('home.bold', '加粗')}>
-                            B
-                          </button>
-                          <button onClick={() => execFormat('italic')} className="w-7 h-7 flex items-center justify-center rounded text-xs italic text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-colors" title={t('home.italic', '斜体')}>
-                            I
-                          </button>
-                          <button onClick={() => execFormat('underline')} className="w-7 h-7 flex items-center justify-center rounded text-xs underline text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-colors" title={t('home.underline', '下划线')}>
-                            U
-                          </button>
-                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                        <div className="w-px h-4 bg-gray-200 mx-1 lg:mx-2" />
+                        <div className="flex items-center gap-0.5 md:gap-1" onMouseDown={(e) => { if ((e.target as HTMLElement).tagName !== 'SELECT') e.preventDefault(); }}>
+                          <button onClick={() => execFormat('bold')} className={`w-7 h-7 flex items-center justify-center rounded text-xs font-bold transition-all ${activeFormats.bold ? 'bg-gray-800 text-white shadow-inner scale-95' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-800'}`} title={t('home.bold', '加粗')}>B</button>
+                          <button onClick={() => execFormat('italic')} className={`w-7 h-7 flex items-center justify-center rounded text-xs italic transition-all ${activeFormats.italic ? 'bg-gray-800 text-white shadow-inner scale-95' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-800'}`} title={t('home.italic', '斜体')}>I</button>
+                          <button onClick={() => execFormat('underline')} className={`w-7 h-7 flex items-center justify-center rounded text-xs underline transition-all ${activeFormats.underline ? 'bg-gray-800 text-white shadow-inner scale-95' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-800'}`} title={t('home.underline', '下划线')}>U</button>
+                          <div className="w-px h-4 bg-gray-200 mx-0.5 md:mx-1" />
                           <select
                             onChange={(e) => execHeading(e.target.value)}
-                            defaultValue=""
-                            className="text-xs px-1.5 py-1 bg-white border border-gray-200 rounded text-gray-500 hover:border-gray-300 outline-none cursor-pointer"
+                            value={activeFormats.heading ? activeFormats.heading.replace(/h/i, '') : 'p'}
+                            className="text-xs px-1.5 py-1 bg-transparent border border-transparent rounded text-gray-500 hover:bg-white hover:border-gray-200 outline-none cursor-pointer font-medium"
                             title={t('home.heading_level', '标题级别')}
                           >
-                            <option value="" disabled>{t('home.heading', '标题')}</option>
+                            <option value="p">{t('home.normal_text', '正文')}</option>
                             <option value="1">H1</option>
                             <option value="2">H2</option>
                             <option value="3">H3</option>
                             <option value="4">H4</option>
                             <option value="5">H5</option>
                             <option value="6">H6</option>
-                            <option value="p">{t('home.normal_text', '正文')}</option>
                           </select>
-                          <div className="w-px h-4 bg-gray-200 mx-1" />
-                          <button onClick={() => execFormat('justifyLeft')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.align_left', '左对齐')}>
+                          <div className="w-px h-4 bg-gray-200 mx-0.5 md:mx-1" />
+                          <button onClick={() => execFormat('justifyLeft')} className={`w-7 h-7 flex items-center justify-center rounded transition-all ${activeFormats.align === 'left' ? 'bg-gray-200 text-gray-800 shadow-inner scale-95' : 'text-gray-400 hover:bg-gray-200 hover:text-gray-700'}`} title={t('home.align_left', '左对齐')}>
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18 M3 12h12 M3 18h18" strokeLinecap="round"/></svg>
                           </button>
-                          <button onClick={() => execFormat('justifyCenter')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.align_center', '居中对齐')}>
+                          <button onClick={() => execFormat('justifyCenter')} className={`w-7 h-7 flex items-center justify-center rounded transition-all ${activeFormats.align === 'center' ? 'bg-gray-200 text-gray-800 shadow-inner scale-95' : 'text-gray-400 hover:bg-gray-200 hover:text-gray-700'}`} title={t('home.align_center', '居中对齐')}>
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18 M6 12h12 M3 18h18" strokeLinecap="round"/></svg>
                           </button>
-                          <button onClick={() => execFormat('justifyRight')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.align_right', '右对齐')}>
+                          <button onClick={() => execFormat('justifyRight')} className={`w-7 h-7 flex items-center justify-center rounded transition-all ${activeFormats.align === 'right' ? 'bg-gray-200 text-gray-800 shadow-inner scale-95' : 'text-gray-400 hover:bg-gray-200 hover:text-gray-700'}`} title={t('home.align_right', '右对齐')}>
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18 M9 12h12 M3 18h18" strokeLinecap="round"/></svg>
                           </button>
-                          <div className="w-px h-4 bg-gray-200 mx-1" />
-                          <button onClick={() => execFormat('insertUnorderedList')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.bullet_list', '无序列表')}>
+                          <div className="w-px h-4 bg-gray-200 mx-0.5 md:mx-1" />
+                          <button onClick={() => execFormat('insertUnorderedList')} className={`w-7 h-7 flex items-center justify-center rounded transition-all ${activeFormats.list === 'ul' ? 'bg-gray-200 text-gray-800 shadow-inner scale-95' : 'text-gray-400 hover:bg-gray-200 hover:text-gray-700'}`} title={t('home.bullet_list', '无序列表')}>
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           </button>
-                          <button onClick={() => execFormat('insertOrderedList')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.numbered_list', '有序列表')}>
+                          <button onClick={() => execFormat('insertOrderedList')} className={`w-7 h-7 flex items-center justify-center rounded transition-all ${activeFormats.list === 'ol' ? 'bg-gray-200 text-gray-800 shadow-inner scale-95' : 'text-gray-400 hover:bg-gray-200 hover:text-gray-700'}`} title={t('home.numbered_list', '有序列表')}>
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 6h11 M10 12h11 M10 18h11 M4 6h1v4 M4 10h2 M4 14h2 M4 18h2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           </button>
-                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                          <div className="w-px h-4 bg-gray-200 mx-0.5 md:mx-1" />
                           <button onClick={() => execFormat('removeFormat')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.clear_format', '清除格式')}>
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h14v3 M9 20h6 M12 4v16 M17 15l4 4 M21 15l-4 4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           </button>
-                          <div className="w-px h-4 bg-gray-200 mx-1" />
+                          <div className="w-px h-4 bg-gray-200 mx-0.5 md:mx-1" />
                           <button onClick={() => execFormat('undo')} className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition-colors" title={t('home.undo', '撤销')}>
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 10h10a5 5 0 0 1 0 10H9" /><path d="M3 10l4-4" /><path d="M3 10l4 4" /></svg>
                           </button>
@@ -1140,13 +1191,13 @@ function Home() {
                           </button>
                           {isContentEdited && (
                             <>
-                              <div className="w-px h-4 bg-gray-200 mx-1" />
-                              <button onClick={() => handleResetContentRef.current?.()} className="px-2 py-1 text-xs text-amber-600 hover:bg-amber-50 rounded transition-colors" title={t('home.reset_content', '还原为 AI 原始内容')}>
+                              <div className="w-px h-4 bg-gray-200 mx-0.5 md:mx-1" />
+                              <button onClick={() => handleResetContentRef.current?.()} className="px-1.5 py-1 text-xs text-amber-600 hover:bg-amber-100/50 rounded transition-colors font-medium border border-transparent" title={t('home.reset_content', '还原为 AI 原始内容')}>
                                 {t('home.reset', '还原')}
                               </button>
-                              <span className="text-xs text-emerald-500 flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                {t('home.edited', '已编辑')}
+                              <span className="text-[11px] text-emerald-500 font-medium flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100/50">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-[pulse_2s_ease-in-out_infinite]" />
+                                编辑
                               </span>
                             </>
                           )}
@@ -1220,9 +1271,11 @@ function Home() {
                         {viewMode === 'preview' ? (
                           /* A4 纸张模式 */
                           <>
+
+                            
                             <div
-                              className="mx-auto bg-white border border-gray-200 mb-6"
-                              style={{ maxWidth: '794px', width: '100%', padding: '80px 90px' }}
+                              className="mx-auto bg-white border border-gray-200 mb-6 relative shadow-sm flex flex-col"
+                              style={{ maxWidth: '794px', width: '100%', minHeight: '1123px', padding: '80px 90px 40px' }}
                             >
                               <div
                                 id="preview-content"
@@ -1231,14 +1284,13 @@ function Home() {
                                 suppressContentEditableWarning
                                 spellCheck={false}
                                 onInput={handleContentEdit}
-                                className="outline-none"
+                                onKeyUp={updateActiveFormats}
+                                onMouseUp={updateActiveFormats}
+                                className="outline-none min-h-[500px]"
                               />
-                              {aiState.isThinking && (
-                                <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
-                              )}
                               {/* Page number footer */}
                               {outputText && (
-                                <div className="mt-16 pt-4 border-t border-gray-100 flex items-center justify-between select-none pointer-events-none">
+                                <div className="mt-auto pt-4 border-t border-gray-100 flex items-center justify-between select-none pointer-events-none">
                                   <span className="text-xs text-gray-300 tracking-wide">DocFlow AI</span>
                                   <span className="text-xs text-gray-300 tabular-nums">
                                     {aiState.isThinking
@@ -1272,9 +1324,6 @@ function Home() {
                               onInput={handleContentEdit}
                               className="outline-none"
                             />
-                            {aiState.isThinking && (
-                              <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse" />
-                            )}
                             {aiState.isThinking && hasFormulas && (
                               <div style={{ position: 'sticky', bottom: 0 }} className="flex justify-center pb-3 pointer-events-none select-none">
                                 <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 border border-amber-100 rounded-full shadow-sm backdrop-blur-sm" style={{ animation: 'fadeInUp 0.4s ease' }}>
