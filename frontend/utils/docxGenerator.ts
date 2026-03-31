@@ -2,6 +2,7 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LineRuleType, Table, TableRow, TableCell, BorderStyle, WidthType, SectionType, Footer, PageNumber, Math as DocxMath, MathRun, MathSuperScript, MathSubScript, MathFraction, MathRadical, ImageRun, TableOfContents, PageBreak, NumberFormat, XmlComponent } from "docx";
 import { StyleConfig, Alignment } from "../types";
 import i18n from '../i18n';
+import JSZip from 'jszip';
 
 // --- Custom OMML Elements ---
 class GenericXmlComponent extends XmlComponent {
@@ -1203,5 +1204,43 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         },
         sections: sections
     });
-    return await Packer.toBlob(doc);
+
+    const rawBlob = await Packer.toBlob(doc);
+
+    // Post-process: inject w:firstLineChars so Word shows "X字符" instead of "Xcm"
+    // docx 8.x only writes w:firstLine (twips), not w:firstLineChars, so Word falls back to cm display.
+    const indentCharMap = new Map<number, number>();
+    const trackIndent = (cfg: ReturnType<typeof getIndentConfig>) => {
+        if (cfg && typeof cfg.firstLine === 'number' && cfg.firstLine > 0 && typeof (cfg as any).firstLineChars === 'number') {
+            indentCharMap.set(cfg.firstLine, (cfg as any).firstLineChars);
+        }
+    };
+    trackIndent(bodyIndent);
+    // Also track heading indents in case they are set
+    [styleConfig.h1Indent, styleConfig.h2Indent, styleConfig.h3Indent, styleConfig.h4Indent].forEach((ind, i) => {
+        const sizes = [styleConfig.h1Size, styleConfig.h2Size, styleConfig.h3Size, styleConfig.h4Size];
+        trackIndent(getIndentConfig(ind, getPtSize(sizes[i])));
+    });
+
+    if (indentCharMap.size === 0) return rawBlob;
+
+    try {
+        const zip = await JSZip.loadAsync(rawBlob);
+        const docFile = zip.file('word/document.xml');
+        if (!docFile) return rawBlob;
+        let xml = await docFile.async('string');
+        // Replace w:firstLine="NNN" with w:firstLine="NNN" w:firstLineChars="MMM"
+        xml = xml.replace(/w:firstLine="(\d+)"/g, (match, n) => {
+            const chars = indentCharMap.get(parseInt(n, 10));
+            return chars !== undefined ? `w:firstLine="${n}" w:firstLineChars="${chars}"` : match;
+        });
+        zip.file('word/document.xml', xml);
+        return zip.generateAsync({
+            type: 'blob',
+            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            compression: 'DEFLATE',
+        }) as Promise<Blob>;
+    } catch {
+        return rawBlob; // 后处理失败时返回原始 blob
+    }
 };

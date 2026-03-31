@@ -41,7 +41,12 @@
       "Bash(node -e \"var fs=require\\(''fs''\\); var c=fs.readFileSync\\(''D:/docuflow-ai/backend/src/routes/generate.ts'',''utf8''\\); var l=c.split\\(''\\\\n''\\); process.stdout.write\\(JSON.stringify\\(l[376]\\)\\);\")",
       "Bash(node -e \"var x=1; console.log\\(x\\);\")",
       "Bash(node.exe --version)",
-      "Bash(powershell -Command \"node --version\")"
+      "Bash(powershell -Command \"node --version\")",
+      "Bash(cmd /c \"dir D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\docx /b\")",
+      "Bash(powershell \"Get-ChildItem ''D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\docx'' | Select-Object Name\")",
+      "Bash(powershell \"Select-String -Pattern ''firstLineChars|firstLine'' -Path ''D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\docx\\\\build\\\\index.mjs'' | Select-Object -First 20 | ForEach-Object { $_Line }\")",
+      "Bash(powershell -Command \"Select-String ''firstLine'' ''D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\docx\\\\build\\\\index.mjs'' | Select -First 20 | % { $_Line }\")",
+      "Bash(powershell -Command \"& { $lines = Get-Content ''D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\docx\\\\build\\\\index.mjs''; $lines | Select-String ''firstLine'' | Select-Object -First 20 }\")"
     ]
   }
 }

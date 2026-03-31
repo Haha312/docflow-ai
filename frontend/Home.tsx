@@ -81,6 +81,7 @@ function Home() {
   const { isAuthenticated, user, refreshUser } = useAuth();
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const isProgrammaticScrollRef = useRef(false);
 
   // TOC sidebar states
   const [tocItems, setTocItems] = useState<{ id: string; level: number; text: string }[]>([]);
@@ -166,26 +167,28 @@ function Home() {
 
 
   useEffect(() => {
-    // 生成期间让光标元素始终保持在视口内，跟随光标而不是跳到容器底部
-    if (shouldAutoScroll && aiState.isThinking) {
-      const cursor = document.getElementById('ai-typing-cursor');
-      if (cursor) {
-        cursor.scrollIntoView({ block: 'end', inline: 'nearest' });
-      } else if (previewContainerRef.current) {
-        // 光标元素尚未渲染时降级为滚到底部
-        previewContainerRef.current.scrollTop = previewContainerRef.current.scrollHeight;
-      }
-    }
+    if (!shouldAutoScroll || !aiState.isThinking) return;
+    // 用 RAF 合并同一帧内的多次 outputText 更新，避免每个 chunk 都触发 scroll
+    const raf = requestAnimationFrame(() => {
+      const container = previewContainerRef.current;
+      if (!container) return;
+      isProgrammaticScrollRef.current = true;
+      container.scrollTop = container.scrollHeight;
+      requestAnimationFrame(() => { isProgrammaticScrollRef.current = false; });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [outputText, shouldAutoScroll, aiState.isThinking]);
 
   const handlePreviewScroll = () => {
-    if (previewContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = previewContainerRef.current;
-      const isAtBottom = scrollHeight - scrollTop - clientHeight <= 80;
-      if (isAtBottom !== shouldAutoScroll) {
-        setShouldAutoScroll(isAtBottom);
-      }
-    }
+    if (isProgrammaticScrollRef.current) return;
+    const container = previewContainerRef.current;
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const distFromBottom = scrollHeight - scrollTop - clientHeight;
+    // 生成期间用更大的阈值（内容在持续增长，底部一直在移动）
+    const threshold = aiState.isThinking ? 300 : 80;
+    const isNearBottom = distFromBottom <= threshold;
+    if (isNearBottom !== shouldAutoScroll) setShouldAutoScroll(isNearBottom);
   };
 
   const handleClear = async () => {
