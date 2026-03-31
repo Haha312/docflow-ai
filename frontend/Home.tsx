@@ -121,6 +121,7 @@ function Home() {
   // Rich editor states
   const previewContentRef = useRef<HTMLDivElement>(null);
   const [isContentEdited, setIsContentEdited] = useState(false);
+  const savedRangeRef = useRef<Range | null>(null);
 
   // Live page count — measured from real DOM scroll height each time content updates
   const [contentPageCount, setContentPageCount] = useState(1);
@@ -165,10 +166,15 @@ function Home() {
 
 
   useEffect(() => {
-    // 只在生成期间自动滚动，生成完成后用户可以自由滚动查看内容
-    if (shouldAutoScroll && aiState.isThinking && previewContainerRef.current) {
-      const el = previewContainerRef.current;
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    // 生成期间让光标元素始终保持在视口内，跟随光标而不是跳到容器底部
+    if (shouldAutoScroll && aiState.isThinking) {
+      const cursor = document.getElementById('ai-typing-cursor');
+      if (cursor) {
+        cursor.scrollIntoView({ block: 'end', inline: 'nearest' });
+      } else if (previewContainerRef.current) {
+        // 光标元素尚未渲染时降级为滚到底部
+        previewContainerRef.current.scrollTop = previewContainerRef.current.scrollHeight;
+      }
     }
   }, [outputText, shouldAutoScroll, aiState.isThinking]);
 
@@ -490,6 +496,12 @@ function Home() {
   const handleResetContentRef = useRef<() => void>();
 
   const execFormat = useCallback((command: string, value?: string) => {
+    // Restore saved selection before executing so toggle (e.g. un-bold) works correctly
+    const selection = window.getSelection();
+    if (savedRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(savedRangeRef.current);
+    }
     document.execCommand(command, false, value);
     previewContentRef.current?.focus();
     handleContentEdit();
@@ -497,6 +509,12 @@ function Home() {
   }, [handleContentEdit, updateActiveFormats]);
 
   const execHeading = useCallback((level: string) => {
+    // Restore saved selection (select onChange loses editor focus/range)
+    const selection = window.getSelection();
+    if (savedRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(savedRangeRef.current);
+    }
     document.execCommand('formatBlock', false, level === 'p' ? 'p' : `h${level}`);
     previewContentRef.current?.focus();
     handleContentEdit();
@@ -575,7 +593,7 @@ function Home() {
           return `<div style="font-family:ui-monospace,monospace;text-align:center;margin:0.75em auto;padding:8px 16px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;color:#495057;font-size:0.875em;">${tex}</div>`;
         }
         return `<code style="font-family:ui-monospace,monospace;background:#f1f3f5;padding:1px 5px;border-radius:3px;font-size:0.875em;color:#495057;">${tex}</code>`;
-      });
+      }).replace('___AI_CURSOR_TOKEN___', '<span id="ai-typing-cursor" class="inline-block w-[6px] h-[15px] bg-slate-400 ml-1 mb-[-2px] animate-[pulse_0.8s_ease-in-out_infinite] rounded-sm align-middle"></span>');
     }
 
     // 5. After streaming: render with KaTeX — Match Display Math ($$...$$) OR Inline Math ($...$)
@@ -695,8 +713,10 @@ function Home() {
         text-align: ${s.bodyAlign};
         ${s.columns && s.columns > 1 ? `column-count: ${s.columns}; column-gap: 2em;` : ''}
       }
-      #preview-content p, #preview-content > div:not(.katex-display):not(.math-display) { margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.textIndent}; }
-      
+      #preview-content p, #preview-content div:not(.katex-display):not(.math-display):not(.figure-caption):not(.table-caption):not(.doc-title):not(.doc-title-en):not(.author-info):not(.affiliation):not(.abstract-cn):not(.abstract-en):not(.cover-page) { margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.textIndent}; }
+      /* 表格内部的 div/p 不要缩进 */
+      #preview-content td div, #preview-content th div, #preview-content td p, #preview-content th p { text-indent: 0 !important; margin: 0; }
+
       /* Format Defenses: Protect alignments and lists from global text-indent / margin logic */
       #preview-content [style*="text-align: center"], #preview-content [style*="text-align: right"], #preview-content [align="center"], #preview-content [align="right"], #preview-content center { text-indent: 0 !important; }
       #preview-content [style*="text-align: justify"], #preview-content [align="justify"] { text-align: justify !important; }
@@ -1142,12 +1162,13 @@ function Home() {
                     {outputText && !aiState.isThinking && viewMode === 'preview' && (
                       <>
                         <div className="w-px h-4 bg-gray-200 mx-1 lg:mx-2" />
-                        <div className="flex items-center gap-0.5 md:gap-1" onMouseDown={(e) => { if ((e.target as HTMLElement).tagName !== 'SELECT') e.preventDefault(); }}>
+                        <div className="flex items-center gap-0.5 md:gap-1" onMouseDown={(e) => { if ((e.target as HTMLElement).tagName !== 'SELECT') { const sel = window.getSelection(); savedRangeRef.current = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0).cloneRange() : null; e.preventDefault(); } }}>
                           <button onClick={() => execFormat('bold')} className={`w-7 h-7 flex items-center justify-center rounded text-xs font-bold transition-all ${activeFormats.bold ? 'bg-gray-800 text-white shadow-inner scale-95' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-800'}`} title={t('home.bold', '加粗')}>B</button>
                           <button onClick={() => execFormat('italic')} className={`w-7 h-7 flex items-center justify-center rounded text-xs italic transition-all ${activeFormats.italic ? 'bg-gray-800 text-white shadow-inner scale-95' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-800'}`} title={t('home.italic', '斜体')}>I</button>
                           <button onClick={() => execFormat('underline')} className={`w-7 h-7 flex items-center justify-center rounded text-xs underline transition-all ${activeFormats.underline ? 'bg-gray-800 text-white shadow-inner scale-95' : 'text-gray-500 hover:bg-gray-200 hover:text-gray-800'}`} title={t('home.underline', '下划线')}>U</button>
                           <div className="w-px h-4 bg-gray-200 mx-0.5 md:mx-1" />
                           <select
+                            onMouseDown={() => { const sel = window.getSelection(); savedRangeRef.current = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0).cloneRange() : null; }}
                             onChange={(e) => execHeading(e.target.value)}
                             value={activeFormats.heading ? activeFormats.heading.replace(/h/i, '') : 'p'}
                             className="text-xs px-1.5 py-1 bg-transparent border border-transparent rounded text-gray-500 hover:bg-white hover:border-gray-200 outline-none cursor-pointer font-medium"

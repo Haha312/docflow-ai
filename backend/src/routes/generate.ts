@@ -1,4 +1,4 @@
-﻿
+
 import { Router, Response } from 'express';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ProxyAgent, fetch as undiciFetch } from 'undici';
@@ -98,10 +98,10 @@ async function* callOpenAICompatible(
             };
         }
     } catch (err: any) {
-        console.error('鉂?callOpenAICompatible Error:', err);
+        console.error('[ERROR] callOpenAICompatible Error:', err);
         if (err.response) {
-            console.error('鉂?status:', err.status);
-            console.error('鉂?data:', err.response.data);
+            console.error('[ERROR] status:', err.status);
+            console.error('[ERROR] data:', err.response.data);
         }
         throw new Error(`OpenAI Compatible Error: ${err.message}`);
     }
@@ -109,8 +109,8 @@ async function* callOpenAICompatible(
 
 /**
  * POST /api/generate
- * 鏂囨。鐢熸垚鎺ュ彛 (闇€瑕佽璇佸拰闄愭祦)
- * 缁熶竴浣跨敤 Gemini API
+ * 文档生成接口 (需要验证和限流)
+ * 统一使用 Gemini API
  */
 router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Response): Promise<void> => {
     let geminiApiKey: string | undefined;
@@ -144,11 +144,11 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         requestedModelKey = model;
 
         if (!content || !preset || !fileName || !styleConfig) {
-            res.status(400).json(errorResponse('缂哄皯蹇呰鍙傛暟', 400));
+            res.status(400).json(errorResponse('缺少必要参数', 400));
             return;
         }
 
-        // 鑾峰彇鐢ㄦ埛绛夌骇涓庨厤缃?
+        // 获取用户等级与配置
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
 
         // Truncate fileName to prevent oversized prompt injection
@@ -195,9 +195,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             return;
         }
 
-        // 妯″瀷灏嗗湪 chunk 寰幆涓牴鎹储寮曞姩鎬侀€夋嫨
+        // 模型将在 chunk 循环中根据索引动态选择
 
-        // 鏋勫缓绯荤粺鎸囦护
+        // 构建系统指令
         const numberingRules = getNumberingInstruction(styleConfig.headingNumbering);
 
         const BASE_SHARED_PROMPT = `
@@ -206,23 +206,25 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
          - Identify the **Document Title**. Wrap it in \`<h1 class="doc-title">\`. NO numbering.
          - Start numbering from the **first content section**.
 
-      2. **IDENTIFY SECTIONS**: 
+      2. **IDENTIFY SECTIONS**:
          - Analyze semantic structure. Tag <h1>, <h2>... <h6>.
-      
-      3. **APPLY NUMBERING SCHEME**: 
-         - ${numberingRules}
-         - **LISTS (CRITICAL)**: If the source text contains items starting with "1.", "1)", "(1)", you MUST respect the list structure.
-         - **SEQUENTIAL NUMBERING (CRITICAL)**: 
-             - You MUST check your output for lists. 
-             - If you see "1. Item... 1. Item...", you MUST FIX it to "1. Item... 2. Item...".
-             - ENSURE loose lists are consolidated into a single ordered list.
-             - FORBIDDEN: Outputting multiple items with the same number "1." in a row.
-         - Use standard Markdown list syntax.
 
-      4. **Content Integrity (STRICT)**: 
+      3. **APPLY NUMBERING SCHEME**:
+         - ${numberingRules}
+         - **LISTS (CRITICAL)**:
+             - ONLY convert to a list if the source text EXPLICITLY has list markers ("1.", "1)", "(1)", "-", "•") on CONSECUTIVE lines (2+ items in a row).
+             - A single sentence that happens to start with "1." is NOT a list — keep it as a paragraph.
+             - FORBIDDEN: Adding list numbers (1. 2. 3.) to normal body paragraphs that are NOT lists in the source.
+             - FORBIDDEN: Converting regular paragraphs or steps described in prose into numbered lists.
+             - FORBIDDEN: Outputting multiple items with the same number "1." in a row.
+             - If you see "1. Item... 1. Item..." in an actual list, FIX it to "1. Item... 2. Item...".
+             - PRESERVE the source structure: if the source uses prose paragraphs, keep them as paragraphs.
+         - Use standard HTML list tags (\`<ul>\`, \`<ol>\`, \`<li>\`) only for genuine lists.
+
+      4. **Content Integrity (STRICT)**:
          - **ZERO DATA LOSS**. Output every sentence, row, and list item.
          - **VERBATIM BODY TEXT**. Do not summarize.
-         - **PRESERVE IMAGES (HIGHEST PRIORITY)**: 
+         - **PRESERVE IMAGES (HIGHEST PRIORITY)**:
             - You will see placeholders like \`__IMG_0__\`.
             - You MUST output them **EXACTLY** as is.
             - DO NOT put them inside headers (h1-h6).
@@ -239,11 +241,11 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
              - Do NOT simplify or solve equations.
              - Reproduce the exact notation from the source text.
           - **VARIABLE DEFINITION LISTS (CRITICAL)**:
-             - When the source text has patterns like "vx, vy: meaning" or "x, y鈥斺€攎eaning" or "a0 constant term", treat these as **definition items**, NOT standalone list items.
-             - NEVER convert variable names (latin letters, subscripts) into Chinese punctuation "銆? or "锛?.
+             - When the source text has patterns like "vx, vy: meaning" or "x, y—meaning" or "a0 constant term", treat these as **definition items**, NOT standalone list items.
+             - NEVER convert variable names (latin letters, subscripts) into Chinese punctuation or other characters.
              - Keep the original variable identifiers (e.g. $v_x$, $v_y$) in their LaTeX form.
-             - Format each variable definition as: \`<p>$v_x$, $v_y$锛氱i涓狦CP鐨刋/Y鏂瑰悜鍧愭爣娈嬪樊</p>\`
-             - Do NOT turn "vx, vy锛? into bullet points like "路銆侊細" or "鈥€?.
+             - Format each variable definition as: \`<p>$v_x$, $v_y$: meaning</p>\`
+             - Do NOT turn "vx, vy:" into bullet points.
 
        6. **IMAGES & FIGURES (CRITICAL)**:
          - **MANDATORY**: Generate a FIGURE CAPTION for EVERY image based on context.
@@ -257,7 +259,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
           - **MANDATORY**: Generate a TABLE TITLE for EVERY table.
           - Position: **IMMEDIATELY ABOVE** the table.
           - Format: \`<div class="table-caption">表{N} {Description}</div>\`
-          - Example: \`<div class="table-caption">琛?1 浠锋牸鏂规瀵规瘮</div>\n<table>...</table>\`
+          - Example: \`<div class="table-caption">表1 价格方案对比</div>\n<table>...</table>\`
           - **NO TEXT-INDENT in table cells**: Do NOT use text-indent in \`<td>\` or \`<th>\` content.
 
       8. **CAPTION STYLE**:
@@ -312,7 +314,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         }
 
         const systemInstruction = BASE_SYSTEM_PROMPTS[preset] + `
-      
+
       ${BASE_SHARED_PROMPT}
 
       *** DYNAMIC NUMBERING RULES (OVERRIDE DEFAULTS) ***
@@ -321,14 +323,14 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         `;
 
 
-        // 1. 鎻愬彇鍥剧墖 (鍏ㄥ眬澶勭悊)
+        // 1. 提取图片 (全局处理)
         const { textOnly: contentWithoutImages, imageMap } = extractImagesAsPlaceholders(content);
         const imageCount = Object.keys(imageMap).length;
-        if (imageCount > 0) console.log(`馃摲 Extracted ${imageCount} images`);
+        if (imageCount > 0) console.log(`[IMG] Extracted ${imageCount} images`);
 
-        // 2. 璇箟鍒囧垎
-        // ULTRA 鐢ㄦ埛锛氬崟娆″叏鏂囧鐞嗭紝纭繚绔犺妭椤哄簭鍜岀紪鍙峰畬鍏ㄦ纭紙SSE ping 淇濇椿杩炴帴锛?
-        // 鏅€氱敤鎴凤細鎸?12000 chars 鍒囧垎
+        // 2. 语义切分
+        // ULTRA 用户：单次全文处理，确保章节顺序和编号完全正确(SSE ping 保活连接)
+        // 普通用户：按 12000 chars 切分
         // 模型配置 — 在 chunk 循环外解析，所有 chunk 共用
         const modelCfg     = requestedModelKey ? getModelConfig(requestedModelKey, dbConfig) : null;
         const useKey       = modelCfg?.apiKey  || geminiApiKey!;
@@ -350,45 +352,44 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
         let chunks: string[] = [];
         if (userTier === 'ULTRA') {
-            console.log('馃殌 ULTRA Mode: Single-pass full document processing');
+            console.log('[ULTRA] Mode: Single-pass full document processing');
             chunks = [contentWithoutImages];
         } else {
             chunks = splitContentBySemantics(contentWithoutImages, safeChunkSize);
         }
-        console.log(`馃З Document split into ${chunks.length} chunk(s)`);
+        console.log(`[SPLIT] Document split into ${chunks.length} chunk(s)`);
 
         let lastContext = '';
 
-        // 璁剧疆 SSE 鍝嶅簲澶?
+        // 设置 SSE 响应头
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        // 濡傛灉鏈夊浘鐗囷紝灏嗗浘鐗囨槧灏勫瓧鍏稿彂缁欏墠绔紝璁╁墠绔疄鏃舵祦寮忔覆鏌撴椂鍙互鏇挎崲鍥炵湡瀹炵殑 img 鏍囩
+        // 如果有图片，将图片映射字典发给前端，让前端实时流式渲染时可以替换回真实的 img 标签
         if (imageCount > 0) {
             res.write(`data: ${JSON.stringify({ imageMap })}\n\n`);
         }
 
         let totalExactTokens = 0;
 
-        // 3. 寰幆澶勭悊 Chunks
+        // 3. 循环处理 Chunks
         for (let i = 0; i < chunks.length; i++) {
             const chunkContent = chunks[i];
-            console.log(`Processing Chunk ${i + 1}/${chunks.length} (${chunkContent.length} chars) 馃 Model: ${currentModel}`);
+            console.log(`[CHUNK] Processing ${i + 1}/${chunks.length} (${chunkContent.length} chars) Model: ${currentModel}`);
 
-            // 鍔ㄦ€佹瀯寤?System Prompt
-            // 鍔ㄦ€佹瀯寤?System Prompt
+            // 动态构建 System Prompt
             let currentSystemPrompt = systemInstruction;
 
             if (i > 0) {
                 currentSystemPrompt += `
-                
+
                 --- CONTINUATION MODE ACTIVATED ---
                 You are processing **PART ${i + 1} of ${chunks.length}** of a long document.
-                
+
                 **PREVIOUS CONTEXT (ReadOnly)**:
                 "...${lastContext.slice(-800)}"
-                
+
                 **CRITICAL INSTRUCTIONS**:
                 1. **CONTINUITY**: Do NOT assume this is the start of a document (unless it looks like a new H1).
                 2. **NUMBERING**: Look at the "PREVIOUS CONTEXT". If it ended with Section 2.1, you MUST start with 2.2 (or 2.1.1).
@@ -402,26 +403,26 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             let chunkOutput = '';
 
             try {
-                // 妫€鏌ユ槸鍚︿娇鐢?OpenAI Compatible 浠ｇ悊
+                // 检查是否使用 OpenAI Compatible 代理
                 const geminiOpenAIBaseUrl = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL;
 
                 const statusText = chunks.length > 1
                     ? `PARTIAL_GENERATING|${i + 1}|${chunks.length}`
                     : `GENERATING`;
 
-                // 姣忛殧 1s 鍙戦€佽繘搴?ping锛岃鍓嶇楠ㄦ灦灞忚繘搴︽潯鏈夊搷搴?
+                // 每隔 1s 发送进度 ping，让前端骨架屏进度条有响应
                 const pingInterval = setInterval(() => {
                     res.write(`data: ${JSON.stringify({ ping: true, progress: { current: i + 1, total: chunks.length, status: statusText, estimatedRemainingSeconds: null } })}\n\n`);
                 }, 1000);
 
                 try {
                     if (geminiOpenAIBaseUrl) {
-                        // 浣跨敤 OpenAI Compatible Endpoint (濡?hiapi.online)
+                        // 使用 OpenAI Compatible Endpoint (如 hiapi.online)
                         const maxTokens = modelCfg?.maxOutputTokens ?? (userTier === 'ULTRA' ? 32000 : 16000);
                         for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, userContent, currentModel, maxTokens, useProxy, includeUsage)) {
                             if (result.content) {
                                 chunkOutput += result.content;
-                                // 鐪熉锋祦寮忚緭鍑猴細鐩存帴鎶?delta 鎺ㄧ粰鍓嶇
+                                // 真实流式输出：直接把 delta 推给前端
                                 res.write(`data: ${JSON.stringify({ delta: result.content })}\n\n`);
                             }
                             if (result.usage) {
@@ -429,7 +430,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                             }
                         }
                     } else {
-                        // 浣跨敤鍘熺敓 Google SDK
+                        // 使用原生 Google SDK
                         const proxyUrl = process.env.HTTPS_PROXY || 'http://127.0.0.1:7890';
                         const dispatcher = new ProxyAgent(proxyUrl);
                         const customFetch = (url: string | URL, init?: any) => {
@@ -446,11 +447,11 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                             const txt = chunk.text();
                             if (txt) {
                                 chunkOutput += txt;
-                                // 鐪熉锋祦寮忚緭鍑猴細鐩存帴鎶?delta 鎺ㄧ粰鍓嶇
+                                // 真实流式输出：直接把 delta 推给前端
                                 res.write(`data: ${JSON.stringify({ delta: txt })}\n\n`);
                             }
                         }
-                        // 娴佺粨鏉熷悗锛屼粠鑱氬悎鍝嶅簲涓彁鍙栫簿纭殑 token 鐢ㄩ噺
+                        // 流结束后，从聚合响应中提取精确的 token 用量
                         const aggregatedResponse = await result.response;
                         if (aggregatedResponse.usageMetadata) {
                             totalExactTokens += aggregatedResponse.usageMetadata.totalTokenCount || 0;
@@ -460,18 +461,18 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                     clearInterval(pingInterval);
                 }
 
-                // Chunk 瀹屾垚鍚庡鐞嗭紙cleanOutput 鍜屽浘鐗囪繕鍘熼渶瑕佸畬鏁存枃鏈級
+                // Chunk 完成后处理（cleanOutput 和图片还原需要完整文本）
                 let cleanChunk = cleanOutput(chunkOutput);
                 lastContext = cleanChunk.replace(/<[^>]+>/g, ' ');
 
-                // 杩樺師鍥剧墖
+                // 还原图片
                 if (imageCount > 0) {
                     cleanChunk = restoreImages(cleanChunk, imageMap);
                 }
 
                 fullRestoredText += cleanChunk;
 
-                // 浠呭彂閫佽繘搴︽洿鏂帮紝鍓嶇姝ゆ椂宸茬粡閫氳繃娴佸紡娓叉煋鍑烘墍鏈夋枃瀛?
+                // 仅发送进度更新，前端此时已经通过流式渲染输出所有文字
                 res.write(`data: ${JSON.stringify({
                     progress: {
                         current: i + 1,
@@ -487,7 +488,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             }
         }
 
-        // 淇濆瓨鏂囨。
+        // 保存文档
         const pureText = fullRestoredText.replace(/<[^>]+>/g, '').replace(/\s+/g, '').trim();
         await prisma.document.create({
             data: {
@@ -499,18 +500,18 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             }
         });
 
-        // 浼扮畻 token 浣跨敤閲?(杈撳叆 + 杈撳嚭) 褰?API 鏈繑鍥炴椂澶囩敤
-        // Gemini 璁¤垂: 绾?1 token 鈮?0.75 涓腑鏂囧瓧绗?
+        // 估算 token 使用量(输入 + 输出) 当 API 未返回时备用
+        // Gemini 计费: 约 1 token ~= 0.75 个中文字符
         let finalReportedTokens = totalExactTokens;
         if (finalReportedTokens === 0) {
             // Gemini with Chinese text: ~3 chars per token (vs GPT's ~0.75 for English)
             const inputTokens = Math.ceil(contentWithoutImages.length / 3);
             const outputTokens = Math.ceil(fullRestoredText.length / 3);
             finalReportedTokens = inputTokens + outputTokens;
-            console.log(`⚠️ Using estimated tokens instead of API reported tokens.`);
+            console.log(`[WARN] Using estimated tokens instead of API reported tokens.`);
         }
 
-        // 璁板綍浣跨敤鏃ュ織
+        // 记录使用日志
         await prisma.usageLog.create({
             data: {
                 userId: user.id,
@@ -520,9 +521,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             }
         });
 
-        console.log(`鉁?Document generated. Tokens: ${finalReportedTokens}`);
+        console.log(`[DONE] Document generated. Tokens: ${finalReportedTokens}`);
 
-        // 鍙戦€佸畬鎴愪簨浠?
+        // 发送完成事件
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         res.end();
 
@@ -547,11 +548,11 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         }
 
         if (aiError.message?.includes('API key') || aiError.message?.includes('403')) {
-            errorMessage = '[GEMINI] API Key 鏃犳晥鎴栨湭鍚敤锛岃妫€鏌ュ悗绔?.env 閰嶇疆';
+            errorMessage = '[GEMINI] API Key 无效或未启用，请检查后端 .env 配置';
         } else if (aiError.message?.includes('token count') || aiError.message?.includes('limit')) {
             errorMessage = 'Document is too long or has too many images. Please reduce content size and retry.';
         } else if (aiError.message?.includes('400') || aiError.message?.includes('404')) {
-            errorMessage = '褰撳墠鍖哄煙鏆備笉鏀寔楂樼骇 AI 妯″瀷锛岃灏濊瘯寮€鍚叏灞€浠ｇ悊鎴栨洿鎹?API Key';
+            errorMessage = '当前区域暂不支持高级 AI 模型，请尝试开启全局代理或更换 API Key';
         } else {
             errorMessage += ` (Detailed Error: ${aiError.message?.substring(0, 100)}...)`;
         }

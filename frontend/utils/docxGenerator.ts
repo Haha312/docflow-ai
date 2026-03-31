@@ -540,7 +540,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
 
     const getRichTextRuns = (node: Node, baseFont: any, baseSize: number, color: string = "000000"): (TextRun | DocxMath | ImageRun)[] => {
         const runs: (TextRun | DocxMath | ImageRun)[] = [];
-        const traverse = (n: Node, style: { isBold: boolean, isItalic: boolean, isSup: boolean, isSub: boolean }) => {
+        const traverse = (n: Node, style: { isBold: boolean, isItalic: boolean, isSup: boolean, isSub: boolean, isUnderline: boolean }) => {
             if (n.nodeType === Node.TEXT_NODE) {
                 let t = n.textContent;
                 if (t) {
@@ -581,7 +581,8 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                                 bold: style.isBold,
                                 italics: style.isItalic,
                                 superScript: style.isSup,
-                                subScript: style.isSub
+                                subScript: style.isSub,
+                                underline: style.isUnderline ? { type: 'single' } : undefined
                             }));
                         }
                     });
@@ -654,12 +655,13 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 const nextStyle = { ...style };
                 if (tag === 'B' || tag === 'STRONG') nextStyle.isBold = true;
                 if (tag === 'I' || tag === 'EM') nextStyle.isItalic = true;
+                if (tag === 'U') nextStyle.isUnderline = true;
                 if (tag === 'SUP') nextStyle.isSup = true;
                 if (tag === 'SUB') nextStyle.isSub = true;
                 el.childNodes.forEach(c => traverse(c, nextStyle));
             }
         };
-        traverse(node, { isBold: false, isItalic: false, isSup: false, isSub: false });
+        traverse(node, { isBold: false, isItalic: false, isSup: false, isSub: false, isUnderline: false });
         return runs;
     }
 
@@ -1133,18 +1135,12 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             paragraphStyles: [
                 {
                     id: "TOC1",
-                    name: "toc 1",
+                    name: "TOC 1",
                     basedOn: "Normal",
                     next: "Normal",
                     quickFormat: true,
                     run: {
-                        font: {
-                            name: "SimSun",
-                            ascii: "SimSun",
-                            eastAsia: "SimSun",
-                            hAnsi: "SimSun",
-                            cs: "SimSun"
-                        },
+                        font: "SimSun",
                         bold: false,
                         color: "000000",
                         size: 24, // 小四 (12pt)
@@ -1161,18 +1157,12 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 },
                 {
                     id: "TOC2",
-                    name: "toc 2",
+                    name: "TOC 2",
                     basedOn: "Normal",
                     next: "Normal",
                     quickFormat: true,
                     run: {
-                        font: {
-                            name: "SimSun",
-                            ascii: "SimSun",
-                            eastAsia: "SimSun",
-                            hAnsi: "SimSun",
-                            cs: "SimSun"
-                        },
+                        font: "SimSun",
                         bold: false,
                         color: "000000",
                         size: 24, // 小四
@@ -1189,18 +1179,12 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 },
                 {
                     id: "TOC3",
-                    name: "toc 3",
+                    name: "TOC 3",
                     basedOn: "Normal",
                     next: "Normal",
                     quickFormat: true,
                     run: {
-                        font: {
-                            name: "SimSun",
-                            ascii: "SimSun",
-                            eastAsia: "SimSun",
-                            hAnsi: "SimSun",
-                            cs: "SimSun"
-                        },
+                        font: "SimSun",
                         bold: false,
                         color: "000000",
                         size: 24, // 小四

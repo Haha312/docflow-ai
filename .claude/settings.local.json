@@ -29,7 +29,19 @@
       "Bash(echo \"EXIT:$?\")",
       "Bash(node node_modules/typescript/bin/tsc --noEmit)",
       "Bash(node \"D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\typescript\\\\bin\\\\tsc\" --noEmit --project \"D:\\\\docuflow-ai\\\\frontend\\\\tsconfig.json\")",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(python3 -c \":*)",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const lines=fs.readFileSync\\(''D:/docuflow-ai/backend/src/routes/generate.ts'',''utf8''\\).split\\(''\\\\n''\\);console.log\\(JSON.stringify\\(lines[376]\\)\\);\")",
+      "Bash(cd /d D:docuflow-ai)",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const lines=fs.readFileSync\\(''./backend/src/routes/generate.ts'',''utf8''\\).split\\(''\\\\n''\\);console.log\\(JSON.stringify\\(lines[376]\\)\\);\")",
+      "Bash(powershell -Command \"$lines = Get-Content ''D:\\\\docuflow-ai\\\\backend\\\\src\\\\routes\\\\generate.ts''; $lines[376]\")",
+      "Bash(powershell.exe -Command \"Get-Content ''D:/docuflow-ai/backend/src/routes/generate.ts'' | Select-Object -Index 376\")",
+      "Bash(powershell.exe -NoProfile -Command \":*)",
+      "Bash(node -e \"const fs = require\\(''fs''\\); const filePath = ''D:/docuflow-ai/backend/src/routes/generate.ts''; const content = fs.readFileSync\\(filePath, ''utf8''\\); const lines = content.split\\(''\\\\n''\\); console.log\\(JSON.stringify\\(lines[376]\\)\\);\")",
+      "Bash(node -e \"var fs=require\\(''fs''\\); var c=fs.readFileSync\\(''D:/docuflow-ai/backend/src/routes/generate.ts'',''utf8''\\); var l=c.split\\(''\\\\n''\\); process.stdout.write\\(JSON.stringify\\(l[376]\\)\\);\")",
+      "Bash(node -e \"var x=1; console.log\\(x\\);\")",
+      "Bash(node.exe --version)",
+      "Bash(powershell -Command \"node --version\")"
     ]
   }
 }
