@@ -305,6 +305,20 @@ function Home() {
     setAiState({ isThinking: true, error: null, stopMessage: null, progressStep: t('home.analyzing', '正在分析文档结构...'), progress: 0 });
     setOutputText('');
     setImageMap({});
+
+    // 本地预计算 imageMap，避免依赖 SSE 传输 10-50MB JSON 导致 parse 失败
+    const localImageMap: Record<string, string> = {};
+    const imgTagRegex = /<img\s+[^>]*src=["'][^"']*["'][^>]*>/gi;
+    let localImgIndex = 0;
+    let localMatch: RegExpExecArray | null;
+    while ((localMatch = imgTagRegex.exec(inputText)) !== null) {
+      localImageMap[`__IMG_${localImgIndex}__`] = localMatch[0];
+      localImgIndex++;
+    }
+    if (localImgIndex > 0) {
+      setImageMap(localImageMap);
+    }
+
     setShouldAutoScroll(true); // 每次新生成重置自动滚动
     textBufferRef.current = '';
     if (rafIdRef.current !== null) {
@@ -566,6 +580,10 @@ function Home() {
       });
     }
 
+    // 3a. Merge consecutive <ol> blocks split by AI (Word auto-numbering safety net)
+    // AI sometimes wraps each list item in its own <ol>...</ol>, causing all items to show "1."
+    processedText = processedText.replace(/<\/ol>(\s*)<ol>/g, '');
+
     // 3. Strip AI-generated inline font styles so preset CSS takes effect
     processedText = processedText.replace(/(\s+style=")([^"]*?)(")/gi, (_m, open, styleContent: string, close) => {
       const cleaned = styleContent
@@ -729,10 +747,10 @@ function Home() {
       #preview-content li p, #preview-content li div { margin: 0; text-indent: 0 !important; }
       #preview-content b, #preview-content strong { font-weight: bold; }
       #preview-content i, #preview-content em { font-style: italic; }
-      #preview-content h1 { font-family: ${getPreviewFontStack(s.h1Font || s.headingFont)}; font-size: ${s.h1Size}; font-weight: ${s.h1Bold ? 'bold' : 'normal'}; text-align: ${s.h1Align}; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.h1Indent}; column-span: all; }
-      #preview-content h2 { font-family: ${getPreviewFontStack(s.h2Font || s.headingFont)}; font-size: ${s.h2Size}; font-weight: ${s.h2Bold ? 'bold' : 'normal'}; text-align: ${s.h2Align}; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.h2Indent}; }
-      #preview-content h3 { font-family: ${getPreviewFontStack(s.h3Font || s.headingFont)}; font-size: ${s.h3Size}; font-weight: ${s.h3Bold ? 'bold' : 'normal'}; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.h3Indent}; }
-      #preview-content h4 { font-family: ${getPreviewFontStack(s.h4Font || s.headingFont)}; font-size: ${s.h4Size}; font-weight: ${s.h4Bold ? 'bold' : 'normal'}; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.h4Indent}; }
+      #preview-content h1 { font-family: ${getPreviewFontStack(s.h1Font || s.headingFont)}; font-size: ${s.h1Size}; font-weight: ${s.h1Bold ? 'bold' : 'normal'}; text-align: ${s.h1Align}; margin-top: 1em; margin-bottom: 0.5em; text-indent: ${s.h1Indent}; column-span: all; }
+      #preview-content h2 { font-family: ${getPreviewFontStack(s.h2Font || s.headingFont)}; font-size: ${s.h2Size}; font-weight: ${s.h2Bold ? 'bold' : 'normal'}; text-align: ${s.h2Align}; margin-top: 0.85em; margin-bottom: 0.4em; text-indent: ${s.h2Indent}; }
+      #preview-content h3 { font-family: ${getPreviewFontStack(s.h3Font || s.headingFont)}; font-size: ${s.h3Size}; font-weight: ${s.h3Bold ? 'bold' : 'normal'}; margin-top: 0.7em; margin-bottom: 0.3em; text-indent: ${s.h3Indent}; }
+      #preview-content h4 { font-family: ${getPreviewFontStack(s.h4Font || s.headingFont)}; font-size: ${s.h4Size}; font-weight: ${s.h4Bold ? 'bold' : 'normal'}; margin-top: 0.5em; margin-bottom: 0.25em; text-indent: ${s.h4Indent}; }
       #preview-content .doc-title { text-indent: 0; font-size: 26pt; text-align: center; margin-bottom: 1em; column-span: all; }
       #preview-content table { width: 100%; border-collapse: collapse; margin: 1em 0; font-family: ${getPreviewFontStack(s.tableFont)}; font-size: ${s.tableSize}; }
       #preview-content th, #preview-content td { border: 1px solid #e5e5e5; padding: 8px 12px; text-align: left; text-indent: 0; }
@@ -741,6 +759,7 @@ function Home() {
       #preview-content th { background-color: #f9fafb; font-weight: 600; }
       #preview-content .table-caption, #preview-content caption { text-align: ${s.tableCaptionAlign}; font-family: ${getPreviewFontStack(s.tableCaptionFont)}; font-size: ${s.tableCaptionSize}; font-weight: 600; margin-bottom: 8px; display: block; }
       #preview-content .figure-caption { text-align: ${s.figureAlign || 'center'}; font-family: ${getPreviewFontStack(s.figureFont || s.fontFamily)}; font-size: ${s.figureSize || '9pt'}; font-weight: 600; margin-top: 12px; margin-bottom: 24px; }
+      #preview-content img { max-width: 100%; height: auto; display: block; margin: 8px auto; text-indent: 0; }
       
       /* Formula & Pre Overflow handling */
       #preview-content .katex-display, #preview-content .math-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; text-indent: 0; }

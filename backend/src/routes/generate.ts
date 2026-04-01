@@ -23,7 +23,7 @@ const cleanOutput = (text: string): string => {
 
 
 import { TIER_LIMITS } from '../config/tierConfig';
-import { splitContentBySemantics } from '../utils/chunking';
+import { splitContentBySemantics, extractFirstHeading } from '../utils/chunking';
 
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3-pro-preview';
 const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 50));
@@ -60,7 +60,7 @@ async function* callOpenAICompatible(
     maxTokens?: number,
     useProxy?: boolean,
     includeUsage?: boolean
-): AsyncGenerator<{ content: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }> {
+): AsyncGenerator<{ content: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }; finishReason?: string | null }> {
     console.log('DEBUG: callOpenAICompatible start', { baseUrl, modelName, apiKeyLength: apiKey?.length, maxTokens, useProxy });
 
     try {
@@ -87,6 +87,7 @@ async function* callOpenAICompatible(
         for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content || '';
             const usage = chunk.usage;
+            const finishReason = chunk.choices[0]?.finish_reason;
 
             yield {
                 content,
@@ -94,7 +95,8 @@ async function* callOpenAICompatible(
                     prompt_tokens: usage.prompt_tokens,
                     completion_tokens: usage.completion_tokens,
                     total_tokens: usage.total_tokens
-                } : undefined
+                } : undefined,
+                finishReason: finishReason ?? undefined
             };
         }
     } catch (err: any) {
@@ -211,15 +213,30 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
       3. **APPLY NUMBERING SCHEME**:
          - ${numberingRules}
+         - **WORD AUTO-NUMBERING BUG FIX (CRITICAL)**:
+             - Microsoft Word stores auto-numbering separately from text. After export, EVERY list item AND sub-section heading may ALL appear as "1." in the source.
+             - **PATTERN A — Consecutive "1." items (no body text between them)**:
+               e.g. "1. A\n1. B\n1. C" → put ALL into ONE \`<ol>\` tag: \`<ol><li>A</li><li>B</li><li>C</li></ol>\`. FORBIDDEN: separate \`<ol>\` per item.
+             - **PATTERN B — Sub-section headings ALL labeled "1." with body text between them**:
+               e.g. "1. TopicA\nbody...\n1. TopicB\nbody...\n1. TopicC\nbody..."
+               These are sequential sub-sections where Word's auto-numbering was lost.
+               Fix: **manually renumber them in sequence** — first stays "1.", second becomes "2.", third "3.", etc.
+               Format as headings (\`<h4>\`) with corrected sequential numbers: \`<h4>1. TopicA</h4>\`...\`<h4>2. TopicB</h4>\`...\`<h4>3. TopicC</h4>\`
+             - **UNIVERSAL RULE**: Within any given parent section, you MUST NEVER output N headings or items of the same level ALL labeled "1." when they are clearly a sequence. Count them and assign 1, 2, 3, ..., N.
+             - FORBIDDEN: Multiple headings/items at the same level all labeled "1." when they belong to the same sequential section.
          - **LISTS (CRITICAL)**:
              - ONLY convert to a list if the source text EXPLICITLY has list markers ("1.", "1)", "(1)", "-", "•") on CONSECUTIVE lines (2+ items in a row).
              - A single sentence that happens to start with "1." is NOT a list — keep it as a paragraph.
-             - FORBIDDEN: Adding list numbers (1. 2. 3.) to normal body paragraphs that are NOT lists in the source.
-             - FORBIDDEN: Converting regular paragraphs or steps described in prose into numbered lists.
-             - FORBIDDEN: Outputting multiple items with the same number "1." in a row.
-             - If you see "1. Item... 1. Item..." in an actual list, FIX it to "1. Item... 2. Item...".
+             - FORBIDDEN: Adding list numbers to normal body paragraphs that are NOT lists in the source.
+             - FORBIDDEN: Converting regular paragraphs or prose steps into numbered lists.
              - PRESERVE the source structure: if the source uses prose paragraphs, keep them as paragraphs.
          - Use standard HTML list tags (\`<ul>\`, \`<ol>\`, \`<li>\`) only for genuine lists.
+
+      3b. **MULTIPLE DOCUMENTS IN ONE FILE (CRITICAL)**:
+         - If the source contains what appears to be TWO OR MORE separate documents (multiple standalone title lines with completely different topics), treat the ENTIRE content as ONE combined document.
+         - Do NOT restart section numbering (H1, H2...) when a new apparent document title appears mid-content.
+         - Continue the numbering scheme throughout the entire content — e.g. if Document 1 ends at section 6, Document 2's first section MUST be 7, not 1.
+         - Wrap each document's title with \`<h1 class="doc-title">\` (no numbering), but keep body section numbering continuous.
 
       4. **Content Integrity (STRICT)**:
          - **ZERO DATA LOSS**. Output every sentence, row, and list item.
@@ -240,6 +257,12 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
              - Do NOT change variable names (e.g. \`a_0\` must remain \`a_0\`).
              - Do NOT simplify or solve equations.
              - Reproduce the exact notation from the source text.
+          - **FORMULA_DATA SECTION (CRITICAL)**:
+             - The input may contain a \`<!-- FORMULA_DATA -->\` HTML comment marker followed by a raw text representation of the document. This section contains complete LaTeX equations (e.g. \`$$ \\theta = ... $$\`) extracted directly from Word's OMML (equation objects).
+             - This section exists because the MAIN HTML above it has DEGRADED OMML equations — Word equation objects appear as isolated variable characters (θ, φ, x₀, etc.) on their own lines.
+             - **HOW TO USE**: When you see isolated single variable/character symbols (e.g. \`<p>θ</p>\`, \`<p>x₀</p>\`) in the main HTML, these are OMML formula placeholders. Find the corresponding full \`$$...$$\` equation in the FORMULA_DATA section (match by surrounding context/position) and output it INSTEAD of the isolated character.
+             - **DO NOT output the FORMULA_DATA section as document content.** It is a reference tool only. Your output must NOT include the \`<!-- FORMULA_DATA -->\` marker or any raw text from that block verbatim.
+             - If no matching full equation is found, wrap the isolated symbol in inline LaTeX: \`$\\theta$\`.
           - **VARIABLE DEFINITION LISTS (CRITICAL)**:
              - When the source text has patterns like "vx, vy: meaning" or "x, y—meaning" or "a0 constant term", treat these as **definition items**, NOT standalone list items.
              - NEVER convert variable names (latin letters, subscripts) into Chinese punctuation or other characters.
@@ -352,8 +375,15 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
         let chunks: string[] = [];
         if (userTier === 'ULTRA') {
-            console.log('[ULTRA] Mode: Single-pass full document processing');
-            chunks = [contentWithoutImages];
+            // ULTRA 用更大的 chunk（3x），但超出模型单次输出容量时仍需分块
+            const ultraChunkSize = safeChunkSize * 3;
+            if (contentWithoutImages.length <= ultraChunkSize) {
+                console.log('[ULTRA] Mode: Single-pass full document processing');
+                chunks = [contentWithoutImages];
+            } else {
+                console.log(`[ULTRA] Mode: Large doc (${contentWithoutImages.length} chars), splitting into ${ultraChunkSize}-char chunks`);
+                chunks = splitContentBySemantics(contentWithoutImages, ultraChunkSize);
+            }
         } else {
             chunks = splitContentBySemantics(contentWithoutImages, safeChunkSize);
         }
@@ -381,25 +411,36 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             // 动态构建 System Prompt
             let currentSystemPrompt = systemInstruction;
 
+            const chunkFirstHeading = extractFirstHeading(chunkContent);
+
             if (i > 0) {
                 currentSystemPrompt += `
 
-                --- CONTINUATION MODE ACTIVATED ---
-                You are processing **PART ${i + 1} of ${chunks.length}** of a long document.
+                --- CONTINUATION MODE: PART ${i + 1} of ${chunks.length} ---
 
-                **PREVIOUS CONTEXT (ReadOnly)**:
-                "...${lastContext.slice(-800)}"
+                **WHERE TO START (CRITICAL)**:
+                This part's input begins with: "${chunkFirstHeading}"
+                Your HTML output MUST start from this section — do NOT output anything before it.
 
-                **CRITICAL INSTRUCTIONS**:
-                1. **CONTINUITY**: Do NOT assume this is the start of a document (unless it looks like a new H1).
-                2. **NUMBERING**: Look at the "PREVIOUS CONTEXT". If it ended with Section 2.1, you MUST start with 2.2 (or 2.1.1).
-                3. **NO REPETITION**: Do NOT repeat the "PREVIOUS CONTEXT". Start formatting EXACTLY from the provided user input.
+                **PREVIOUS PART CONTEXT (orientation only — NOT a forbidden list)**:
+                The previous part's HTML ended with:
+                "...${lastContext.slice(-600)}"
+                This tells you WHERE the previous chunk ended so you know the document state.
+                It does NOT mean those headings/sentences are forbidden — your task is to format EVERYTHING in the CURRENT INPUT regardless of what appeared above.
+
+                **RULES**:
+                1. Your FIRST line of output must be the formatted version of "${chunkFirstHeading}".
+                2. Format ALL content in the current user input — do NOT skip any section, even if its title resembles something in the previous context.
+                3. Only skip content that is WORD-FOR-WORD identical to sentences in the previous context (exact duplicate sentences only).
+                4. Continue the numbering scheme exactly from where Part ${i} ended.
+                5. Format ONLY the content in the user input. Stop as soon as the input content runs out.
+                6. Do NOT invent or add any content not present in the input.
                 `;
             } else {
-                currentSystemPrompt += `\n\n**MODE**: PART 1 (Start of Document). Start numbering from the beginning.`;
+                currentSystemPrompt += `\n\n**MODE**: PART 1 of ${chunks.length}. Start numbering from the beginning. Format ONLY the content provided. Stop when input runs out.`;
             }
 
-            const userContent = `Filename: ${safeFileName}\n\nContent Part ${i + 1}:\n${chunkContent}`;
+            const userContent = `Filename: ${safeFileName}\n\nContent Part ${i + 1} of ${chunks.length}:\n${chunkContent}\n\n--- END OF PART ${i + 1} INPUT ---\nFormat ONLY the content above. When you reach "--- END OF PART ${i + 1} INPUT ---", stop immediately.`;
             let chunkOutput = '';
 
             try {
@@ -419,15 +460,43 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                     if (geminiOpenAIBaseUrl) {
                         // 使用 OpenAI Compatible Endpoint (如 hiapi.online)
                         const maxTokens = modelCfg?.maxOutputTokens ?? (userTier === 'ULTRA' ? 32000 : 16000);
+                        let finishReason: string | null = null;
+
+                        // 初次生成
                         for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, userContent, currentModel, maxTokens, useProxy, includeUsage)) {
                             if (result.content) {
                                 chunkOutput += result.content;
-                                // 真实流式输出：直接把 delta 推给前端
                                 res.write(`data: ${JSON.stringify({ delta: result.content })}\n\n`);
                             }
-                            if (result.usage) {
-                                totalExactTokens += result.usage.total_tokens || 0;
+                            if (result.finishReason) finishReason = result.finishReason;
+                            if (result.usage) totalExactTokens += result.usage.total_tokens || 0;
+                        }
+
+                        // 截断续写：当 finish_reason === "length" 时，自动从断点继续
+                        let continuations = 0;
+                        while (finishReason === 'length' && continuations < 5) {
+                            continuations++;
+                            // 取纯文本尾部 600 字作为续写锚点（更多上下文防止重复）
+                            const plainTail = chunkOutput.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(-600);
+                            // 同时取 HTML 尾部，帮助 AI 知道当前标签状态
+                            const htmlTail = chunkOutput.slice(-200);
+                            console.log(`[CONTINUE] Chunk ${i + 1} truncated (finish_reason=length), continuation ${continuations}/5`);
+
+                            const continueUserContent = `TRUNCATION CONTINUATION — DO NOT REPEAT\n\nYour previous HTML output was cut off mid-way. The last ~200 characters of your raw HTML output were:\n\`\`\`\n${htmlTail}\n\`\`\`\nThe last ~600 characters of PLAIN TEXT content (for reference) were:\n"...${plainTail}"\n\nRULES:\n1. Continue the HTML output from EXACTLY where it was cut — complete any unclosed tags first if needed.\n2. ABSOLUTELY DO NOT repeat any sentence, paragraph, or heading already in the output above.\n3. Do NOT add any prefix, preamble, or "Continuing from..." text.\n4. Output ONLY the continuation HTML, nothing else.`;
+
+                            finishReason = null;
+                            for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, continueUserContent, currentModel, maxTokens, useProxy, includeUsage)) {
+                                if (result.content) {
+                                    chunkOutput += result.content;
+                                    res.write(`data: ${JSON.stringify({ delta: result.content })}\n\n`);
+                                }
+                                if (result.finishReason) finishReason = result.finishReason;
+                                if (result.usage) totalExactTokens += result.usage.total_tokens || 0;
                             }
+                        }
+
+                        if (continuations > 0) {
+                            console.log(`[CONTINUE] Chunk ${i + 1} completed after ${continuations} continuation(s), final finish_reason: ${finishReason}`);
                         }
                     } else {
                         // 使用原生 Google SDK
@@ -447,14 +516,36 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                             const txt = chunk.text();
                             if (txt) {
                                 chunkOutput += txt;
-                                // 真实流式输出：直接把 delta 推给前端
                                 res.write(`data: ${JSON.stringify({ delta: txt })}\n\n`);
                             }
                         }
-                        // 流结束后，从聚合响应中提取精确的 token 用量
                         const aggregatedResponse = await result.response;
                         if (aggregatedResponse.usageMetadata) {
                             totalExactTokens += aggregatedResponse.usageMetadata.totalTokenCount || 0;
+                        }
+                        // Google SDK 截断检测（MAX_TOKENS）
+                        const googleFinishReason = aggregatedResponse.candidates?.[0]?.finishReason;
+                        let googleContinuations = 0;
+                        let googleFinish: string | undefined = googleFinishReason as string | undefined;
+                        while (googleFinish === 'MAX_TOKENS' && googleContinuations < 5) {
+                            googleContinuations++;
+                            const plainTail = chunkOutput.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(-400);
+                            console.log(`[CONTINUE] Chunk ${i + 1} truncated (MAX_TOKENS), continuation ${googleContinuations}/5`);
+                            const continueUserContent = `CONTINUATION REQUEST\n\nYour previous response was cut off. The last part was:\n"...${plainTail}"\n\nContinue from EXACTLY where you stopped. Do NOT repeat anything. Output ONLY the continuation.`;
+                            const plainTailG = chunkOutput.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(-600);
+                            const htmlTailG = chunkOutput.slice(-200);
+                            const continueG = `TRUNCATION CONTINUATION — DO NOT REPEAT\n\nYour previous HTML output was cut off. Last ~200 chars of raw HTML:\n\`\`\`\n${htmlTailG}\n\`\`\`\nLast ~600 chars plain text: "...${plainTailG}"\n\nRULES:\n1. Continue HTML from EXACTLY where cut — close any open tags first if needed.\n2. ABSOLUTELY DO NOT repeat any content already written.\n3. No prefix or preamble. Output ONLY continuation HTML.`;
+                            const contResult = await model.generateContentStream([continueG]);
+                            for await (const chunk of contResult.stream) {
+                                const txt = chunk.text();
+                                if (txt) {
+                                    chunkOutput += txt;
+                                    res.write(`data: ${JSON.stringify({ delta: txt })}\n\n`);
+                                }
+                            }
+                            const contAgg = await contResult.response;
+                            if (contAgg.usageMetadata) totalExactTokens += contAgg.usageMetadata.totalTokenCount || 0;
+                            googleFinish = contAgg.candidates?.[0]?.finishReason as string | undefined;
                         }
                     }
                 } finally {

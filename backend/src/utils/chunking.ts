@@ -1,7 +1,7 @@
-﻿
+
 /**
  * Smart Chunking Utility
- * 鐢ㄤ簬灏嗛暱鏂囨。璇箟鍖栧垏鍒嗕负閫傚悎 LLM 澶勭悊鐨勭墖娈?
+ * 按语义（优先章节标题边界）将长文档切分为适合 LLM 处理的片段
  */
 
 export interface Chunk {
@@ -12,72 +12,117 @@ export interface Chunk {
     endIndex: number;
 }
 
-/**
- * 浼扮畻 Token 鏁伴噺 (绠€鍗曟寜瀛楃鏁颁及绠? 涓枃 1 char 鈮?1-2 tokens)
- * Gemini 3 Pro Preview 鏀寔澶т笂涓嬫枃绐楀彛鍜?16k output銆?
- * 12000 瀛楃杈撳叆 -> 绾?18000 杈撳嚭瀛楃 -> 绾?12000-14000 tokens銆?
- * 鏇村ぇ鐨勫潡 = 鏇村皯鐨?API 璋冪敤 = 鏇村揩鐨勯€熷害锛屽悓鏃朵繚鎸佸湪妯″瀷杈撳嚭闄愬埗鍐呫€?
- */
 const CHUNK_SIZE_CHARS = 12000;
 
-// 瀹為檯涓婃垜浠笉闇€瑕佺墿鐞嗛噸鍙?content (杩欎細瀵艰嚧閲嶅杈撳嚭)锛?
-// 鎴戜滑闇€瑕佺殑鏄皢涓婁竴娈电殑鏈熬浣滀负 Context 浼犵粰 AI銆?
+/**
+ * 检测中文学术/技术文档中的标题行位置
+ * 返回每个标题行在文档中的字符偏移量
+ */
+const detectHeadingPositions = (content: string): number[] => {
+    const positions: number[] = [];
+    let pos = 0;
+    for (const line of content.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed.length > 0 && trimmed.length < 80) {
+            const isHeading =
+                /^第[一二三四五六七八九十百千]+[章节部篇]/.test(trimmed) ||   // 第一章 第二节
+                /^[一二三四五六七八九十]+[、.]/.test(trimmed) ||               // 一、 二、
+                /^\d+[、.]\s*[\u4e00-\u9fff（【]/.test(trimmed) ||             // 1. 一 / 1、（
+                /^\d+\.\d+(\.\d+)*\s+[\u4e00-\u9fff（【]/.test(trimmed) ||    // 1.1 1.1.1
+                /^[（(]\s*\d+\s*[)）]\s*[\u4e00-\u9fff]/.test(trimmed);       // （1） (1)
+            if (isHeading) {
+                positions.push(pos);
+            }
+        }
+        pos += line.length + 1; // +1 for \n
+    }
+    return positions;
+};
 
+/**
+ * 提取一个 chunk 里的第一个标题行（用作续写锚点）
+ */
+export const extractFirstHeading = (chunkContent: string): string => {
+    for (const line of chunkContent.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed.length === 0 || trimmed.length > 80) continue;
+        const isHeading =
+            /^第[一二三四五六七八九十百千]+[章节部篇]/.test(trimmed) ||
+            /^[一二三四五六七八九十]+[、.]/.test(trimmed) ||
+            /^\d+[、.]\s*[\u4e00-\u9fff（【]/.test(trimmed) ||
+            /^\d+\.\d+(\.\d+)*\s+[\u4e00-\u9fff（【]/.test(trimmed) ||
+            /^[（(]\s*\d+\s*[)）]\s*[\u4e00-\u9fff]/.test(trimmed);
+        if (isHeading) return trimmed;
+    }
+    // 没找到标题就返回第一行非空文本
+    return chunkContent.split('\n').find(l => l.trim().length > 0)?.trim().slice(0, 60) || '';
+};
+
+/**
+ * 语义分块：优先在章节标题处切分，保证每个 chunk 从完整章节开头开始
+ *
+ * 切分策略（优先级从高到低）：
+ * 1. 在目标位置附近（70%~100% 范围内）找最靠近目标的章节标题 → 在标题前切分
+ * 2. 若无标题，找最近的段落边界（\n\n）
+ * 3. 若无段落，找最近的换行（\n）
+ * 4. 若无换行，强制按字符数切分
+ */
 export const splitContentBySemantics = (content: string, maxChars: number = CHUNK_SIZE_CHARS): string[] => {
     if (content.length <= maxChars) {
         return [content];
     }
 
+    // 预扫描所有标题位置
+    const headingPositions = detectHeadingPositions(content);
+
     const chunks: string[] = [];
     let processed = 0;
 
     while (processed < content.length) {
-        // 鍓╀綑鍐呭鏄惁瓒冲灏?
         if (content.length - processed <= maxChars) {
             chunks.push(content.slice(processed));
             break;
         }
 
-        // 瀵绘壘鏈€浣冲垏鍒嗙偣
-        let splitIndex = processed + maxChars;
+        const targetEnd = processed + maxChars;
 
-        // 鍚戝墠鎼滅储鏈€杩戠殑娈佃惤缁撴潫绗?(\n\n)
-        // 鎼滅储鑼冨洿锛歴plitIndex 寰€鍓?1000 瀛楃
-        const searchWindow = content.slice(Math.max(processed, splitIndex - 1000), splitIndex);
-
-        // 浼樺厛绾?1: 鍙屾崲琛?(娈佃惤)
-        const lastDoubleLine = searchWindow.lastIndexOf('\n\n');
-        // 浼樺厛绾?2: 鍗曟崲琛?
-        const lastSingleLine = searchWindow.lastIndexOf('\n');
-        // 浼樺厛绾?3: 鍙ュ瓙缁撴潫绗?(銆傦紒锛?
-        const lastSentenceEnd = Math.max(
-            searchWindow.lastIndexOf('。'),
-            searchWindow.lastIndexOf('！'),
-            searchWindow.lastIndexOf('？')
+        // 策略1：在 70%~100% 范围内找最后一个章节标题，在它之前切分
+        const searchStart70 = processed + Math.floor(maxChars * 0.7);
+        const candidateHeadings = headingPositions.filter(
+            p => p > searchStart70 && p < targetEnd && p > processed
         );
 
-        let cutPointRel = -1;
-
-        if (lastDoubleLine !== -1) {
-            cutPointRel = lastDoubleLine + 2; // 鍖呮嫭鎹㈣绗?
-        } else if (lastSingleLine !== -1) {
-            cutPointRel = lastSingleLine + 1;
-        } else if (lastSentenceEnd !== -1) {
-            cutPointRel = lastSentenceEnd + 1; // 鍖呮嫭鏍囩偣
+        if (candidateHeadings.length > 0) {
+            // 取最靠近 targetEnd 的标题（贪心：每块尽量大）
+            const splitIndex = candidateHeadings[candidateHeadings.length - 1];
+            chunks.push(content.slice(processed, splitIndex));
+            processed = splitIndex;
+            continue;
         }
 
-        if (cutPointRel !== -1) {
-            // 鎵惧埌浜嗚涔夊垏鍒嗙偣
-            // searchWindow 鐨勮捣濮嬩綅缃槸 Math.max(processed, splitIndex - 1000)
-            const windowStart = Math.max(processed, splitIndex - 1000);
-            splitIndex = windowStart + cutPointRel;
-        } else {
-            // 瀹炲湪鎵句笉鍒帮紙姣斿瓒呴暱鐨勪竴娈垫棤鏍囩偣鏂囨湰锛夛紝寮哄埗鍒囧垎
-            // 淇濇寔 splitIndex = processed + maxChars
+        // 策略2：段落边界（\n\n）
+        const windowStart = Math.max(processed, targetEnd - 1000);
+        const searchWindow = content.slice(windowStart, targetEnd);
+        const lastDoubleNewline = searchWindow.lastIndexOf('\n\n');
+        if (lastDoubleNewline !== -1) {
+            const splitIndex = windowStart + lastDoubleNewline + 2;
+            chunks.push(content.slice(processed, splitIndex));
+            processed = splitIndex;
+            continue;
         }
 
-        chunks.push(content.slice(processed, splitIndex));
-        processed = splitIndex;
+        // 策略3：单换行
+        const lastNewline = searchWindow.lastIndexOf('\n');
+        if (lastNewline !== -1) {
+            const splitIndex = windowStart + lastNewline + 1;
+            chunks.push(content.slice(processed, splitIndex));
+            processed = splitIndex;
+            continue;
+        }
+
+        // 策略4：强制切分
+        chunks.push(content.slice(processed, targetEnd));
+        processed = targetEnd;
     }
 
     return chunks;
