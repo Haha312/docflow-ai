@@ -36,7 +36,7 @@ function getModelConfig(modelKey: string, dbConfig: Record<string, string>): Mod
     const registry: Record<string, ModelConfig> = {
         'gemini-flash': { apiKey: geminiKey,  baseUrl: geminiBase, modelId: 'gemini-2.0-flash',                          needsProxy: true,  maxOutputTokens: 16000 },
         'gemini-pro':   { apiKey: geminiKey,  baseUrl: geminiBase, modelId: process.env.GEMINI_MODEL || 'gemini-3-pro-preview', needsProxy: true,  maxOutputTokens: 32000 },
-        'doubao':       { apiKey: process.env.DOUBAO_API_KEY   || '', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',        modelId: process.env.DOUBAO_ENDPOINT_ID || '', needsProxy: false, maxOutputTokens: 4096 },
+        'doubao':       { apiKey: process.env.DOUBAO_API_KEY   || '', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',        modelId: process.env.DOUBAO_ENDPOINT_ID || '', needsProxy: false, maxOutputTokens: 8192 },
         'deepseek':     { apiKey: process.env.DEEPSEEK_API_KEY || '', baseUrl: 'https://api.deepseek.com/v1',                     modelId: 'deepseek-chat',                      needsProxy: false, maxOutputTokens: 8192 },
         'qwen-max':     { apiKey: process.env.DASHSCOPE_API_KEY || '', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', modelId: 'qwen-max',                        needsProxy: false, maxOutputTokens: 8192 },
     };
@@ -214,14 +214,20 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
       3. **APPLY NUMBERING SCHEME**:
          - ${numberingRules}
          - **WORD AUTO-NUMBERING BUG FIX (CRITICAL)**:
-             - Microsoft Word stores auto-numbering separately from text. After export, EVERY list item AND sub-section heading may ALL appear as "1." in the source.
-             - **PATTERN A — Consecutive "1." items (no body text between them)**:
-               e.g. "1. A\n1. B\n1. C" → put ALL into ONE \`<ol>\` tag: \`<ol><li>A</li><li>B</li><li>C</li></ol>\`. FORBIDDEN: separate \`<ol>\` per item.
-             - **PATTERN B — Sub-section headings ALL labeled "1." with body text between them**:
-               e.g. "1. TopicA\nbody...\n1. TopicB\nbody...\n1. TopicC\nbody..."
-               These are sequential sub-sections where Word's auto-numbering was lost.
-               Fix: **manually renumber them in sequence** — first stays "1.", second becomes "2.", third "3.", etc.
-               Format as headings (\`<h4>\`) with corrected sequential numbers: \`<h4>1. TopicA</h4>\`...\`<h4>2. TopicB</h4>\`...\`<h4>3. TopicC</h4>\`
+             - Microsoft Word stores auto-numbering separately from the paragraph text. After conversion to HTML, list numbering information is LOST. The result is that every ordered-list item appears as "1." in the browser. YOU must detect and fix these patterns.
+             - **INPUT IS HTML — DETECT BY TAG STRUCTURE, NOT PLAINTEXT "1."**:
+               Your user input is HTML (e.g. \`<ol><li>...</li></ol>\`, \`<p>...</p>\`). There is often **no** literal \`1.\` / \`2.\` text in the source — do **not** wait for those characters. Infer broken numbering from **repeated \`<ol>\` / single-\`<li>\` structures** and sibling markup, exactly as below.
+             - **PATTERN A — Consecutive `<ol>` blocks directly adjacent (no `<p>` between them)**:
+               **HTML shape** (what you actually receive): \`<ol><li>A</li></ol><ol><li>B</li></ol><ol><li>C</li></ol>\`
+               These are consecutive list items incorrectly split. Merge into ONE \`<ol>\`: \`<ol><li>A</li><li>B</li><li>C</li></ol>\`.
+               FORBIDDEN: leaving them as separate \`<ol>\` blocks — the browser renders each as "1.".
+             - **PATTERN B — Multiple `<ol>` blocks each with EXACTLY ONE `<li>`, separated by `<p>` or other non-list content**:
+               **HTML shape** (what you actually receive): \`<ol><li>TopicA</li></ol><p>body text...</p><ol><li>TopicB</li></ol><p>body text...</p><ol><li>TopicC</li></ol>\`
+               **DETECTION (HTML-only)**: Two or more \`<ol>\` elements where **each** contains **exactly one** \`<li>\`, with \`<p>\`, \`<table>\`, \`<div>\`, or other **non-list** elements between those \`<ol>\` blocks. Do **not** require a leading \`1.\` in the \`<li>\` text — the bug is visible from tags alone.
+               These are SEQUENTIAL SECTION HEADINGS — NOT true lists. Word's auto-numbering was lost, so the browser shows every item as "1.".
+               **Fix**: Convert EACH single-item \`<ol><li>text</li></ol>\` block to an appropriate heading tag (\`<h2>\`, \`<h3>\`, \`<h4>\` — match the level indicated by context and surrounding headings). Assign **sequential** numbers using the configured numbering scheme in the **heading text** (e.g. \`1.\`, \`2.\`).
+               **Example (HTML in → HTML out)**: \`<ol><li>TopicA</li></ol><p>body</p><ol><li>TopicB</li></ol>\` → \`<h2>1. TopicA</h2><p>body</p><h2>2. TopicB</h2>\`
+               FORBIDDEN: Keeping them as \`<ol>\` elements. FORBIDDEN: Numbering all as "1.".
              - **UNIVERSAL RULE**: Within any given parent section, you MUST NEVER output N headings or items of the same level ALL labeled "1." when they are clearly a sequence. Count them and assign 1, 2, 3, ..., N.
              - FORBIDDEN: Multiple headings/items at the same level all labeled "1." when they belong to the same sequential section.
          - **LISTS (CRITICAL)**:
@@ -367,7 +373,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const chunkMaxChars: Record<string, number> = {
             'gemini-flash': 12000,
             'gemini-pro':   16000,
-            'doubao':        3500,
+            'doubao':        12000,
             'deepseek':      7000,
             'qwen-max':      7000,
         };
@@ -390,6 +396,8 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         console.log(`[SPLIT] Document split into ${chunks.length} chunk(s)`);
 
         let lastContext = '';
+        /** Cumulative count of opening `<h1>` tags in HTML already emitted for prior chunks (for continuation numbering). */
+        let cumulativeH1BeforePart = 0;
 
         // 设置 SSE 响应头
         res.setHeader('Content-Type', 'text/event-stream');
@@ -428,11 +436,16 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 This tells you WHERE the previous chunk ended so you know the document state.
                 It does NOT mean those headings/sentences are forbidden — your task is to format EVERYTHING in the CURRENT INPUT regardless of what appeared above.
 
+                **NUMBERING CONTINUATION (CRITICAL)**:
+                - All HTML from completed parts before this one contains **${cumulativeH1BeforePart}** opening \`<h1>\` tags (cumulative count).
+                - **Do NOT restart** top-level / chapter-style numbering at 1 for this part. Treat the next logical first \`<h1>\` in this part as **chapter/section index ${cumulativeH1BeforePart + 1}** for any scheme that numbers by H1 order (including chapter-relative 图/表 captions if applicable).
+                - Subordinate levels (\`<h2>\`, \`<h3>\`, …) must also continue the hierarchical counter state implied by that continuation — do not reset the whole outline to 1.x as if this were a new document.
+
                 **RULES**:
                 1. Your FIRST line of output must be the formatted version of "${chunkFirstHeading}".
                 2. Format ALL content in the current user input — do NOT skip any section, even if its title resembles something in the previous context.
                 3. Only skip content that is WORD-FOR-WORD identical to sentences in the previous context (exact duplicate sentences only).
-                4. Continue the numbering scheme exactly from where Part ${i} ended.
+                4. Obey **NUMBERING CONTINUATION** above; continue the configured numbering scheme from the stated H1 index, not from 1 again.
                 5. Format ONLY the content in the user input. Stop as soon as the input content runs out.
                 6. Do NOT invent or add any content not present in the input.
                 `;
@@ -555,6 +568,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 // Chunk 完成后处理（cleanOutput 和图片还原需要完整文本）
                 let cleanChunk = cleanOutput(chunkOutput);
                 lastContext = cleanChunk.replace(/<[^>]+>/g, ' ');
+
+                const h1OpenInChunk = (cleanChunk.match(/<h1\b/gi) ?? []).length;
+                cumulativeH1BeforePart += h1OpenInChunk;
 
                 // 还原图片
                 if (imageCount > 0) {
