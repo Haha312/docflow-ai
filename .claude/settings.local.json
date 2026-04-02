@@ -46,7 +46,20 @@
       "Bash(powershell \"Get-ChildItem ''D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\docx'' | Select-Object Name\")",
       "Bash(powershell \"Select-String -Pattern ''firstLineChars|firstLine'' -Path ''D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\docx\\\\build\\\\index.mjs'' | Select-Object -First 20 | ForEach-Object { $_Line }\")",
       "Bash(powershell -Command \"Select-String ''firstLine'' ''D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\docx\\\\build\\\\index.mjs'' | Select -First 20 | % { $_Line }\")",
-      "Bash(powershell -Command \"& { $lines = Get-Content ''D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\docx\\\\build\\\\index.mjs''; $lines | Select-String ''firstLine'' | Select-Object -First 20 }\")"
+      "Bash(powershell -Command \"& { $lines = Get-Content ''D:\\\\docuflow-ai\\\\frontend\\\\node_modules\\\\docx\\\\build\\\\index.mjs''; $lines | Select-String ''firstLine'' | Select-Object -First 20 }\")",
+      "Bash(python3 -c \"import docx; print\\(''python-docx available''\\)\")",
+      "Bash(cmd /c \"dir C:\\\\Users\\\\86188\\\\AppData\\\\Roaming\\\\Claude\"\")",
+      "Bash(python3 -c \"import zipfile, xml.etree.ElementTree as ET; print\\(''stdlib ok''\\)\")",
+      "Bash(node D:/docuflow-ai/extract-headings.js)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(grep -r styleMap /d/docuflow-ai --include=*.ts --include=*.tsx --include=*.js)",
+      "Bash(xargs grep:*)",
+      "Bash(node test_doc.js)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\); try { const buf=fs.readFileSync\\(''C:/Users/86188/Desktop/基于三维信息技术的新能源电站数字化设计关键技术研究报告\\(1\\).docx''\\); console.log\\(''文件大小:'', \\(buf.length/1024\\).toFixed\\(1\\), ''KB''\\); } catch\\(e\\) { console.error\\(''错误:'', e.message\\); }\")",
+      "Bash(python \"C:/Users/86188/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/cec6aa43-fd00-49c5-956a-8b1ad955d65d/8b267265-f741-45d9-9030-74ea5ae72922/skills/docx/scripts/office/unpack.py\" \"C:/Users/86188/Desktop/基于三维信息技术的新能源电站数字化设计关键技术研究报告\\(1\\).docx\" \"C:/Users/86188/Desktop/docx_unpacked/\")",
+      "Bash(node test_doc2.js)",
+      "Bash(dir)"
     ]
   }
 }

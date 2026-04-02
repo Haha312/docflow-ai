@@ -1,7 +1,7 @@
 
 import React, { useCallback, useState } from 'react';
 import mammoth from 'mammoth';
-import { extractRawTextWithFormulas } from '../utils/docxParser';
+import { extractRawTextWithFormulas, extractDocumentStructure } from '../utils/docxParser';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -56,9 +56,37 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
       if (file.name.endsWith('.docx')) {
         const arrayBuffer = await file.arrayBuffer();
 
+        // 0. Pre-read styles.xml to build a dynamic mammoth styleMap,
+        //    so heading styles with non-standard names/IDs are correctly mapped to <h1>-<h6>.
+        let dynamicStyleMap: string[] = [];
+        try {
+          const JSZip = (await import('jszip')).default;
+          const zip = await JSZip.loadAsync(arrayBuffer);
+          const stylesEntry = zip.file('word/styles.xml');
+          if (stylesEntry) {
+            const stylesXml = await stylesEntry.async('text');
+            const stylesDoc = new DOMParser().parseFromString(stylesXml, 'application/xml');
+            const allStyles = stylesDoc.getElementsByTagName('w:style');
+            for (const style of Array.from(allStyles)) {
+              if (style.getAttribute('w:type') !== 'paragraph') continue;
+              const nameEl = style.getElementsByTagName('w:name')[0];
+              const name = nameEl?.getAttribute('w:val') ?? '';
+              const enMatch = name.match(/^heading\s+(\d+)$/i);
+              const cnMatch = name.match(/^标题\s*(\d+)$/);
+              const level = enMatch ? enMatch[1] : cnMatch ? cnMatch[1] : null;
+              if (level && parseInt(level) <= 6) {
+                dynamicStyleMap.push(`p[style-name='${name}'] => h${level}:fresh`);
+              }
+            }
+          }
+        } catch (_) { /* silently skip — mammoth falls back to defaults */ }
+
         // 1. Standard HTML conversion (Layout, tables, images)
         // Mammoth strips OMML formulas, so the visual preview usually lacks them.
-        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const result = await mammoth.convertToHtml({
+          arrayBuffer,
+          ...(dynamicStyleMap.length > 0 ? { styleMap: dynamicStyleMap } : {}),
+        });
         let finalContent = result.value;
 
         // 2. Advanced: Extract raw XML text to capture Native Word Formulas (OMML)
@@ -73,6 +101,19 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
           }
         } catch (xmlErr) {
           console.warn("Failed to extract raw XML context", xmlErr);
+        }
+
+        // 3. Extract document heading structure for pre-computed numbering.
+        // This lets the backend tell the AI exactly what number each heading should get,
+        // eliminating cross-chunk numbering drift entirely.
+        try {
+          const structure = await extractDocumentStructure(arrayBuffer);
+          if (structure.length > 0) {
+            finalContent += `\n<!-- STRUCTURE_DATA -->\n${JSON.stringify(structure)}`;
+            console.log(`[STRUCTURE] Appended ${structure.length} heading entries`);
+          }
+        } catch (structErr) {
+          console.warn("Failed to extract document structure", structErr);
         }
 
         setError(null);

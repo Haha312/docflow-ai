@@ -208,6 +208,174 @@ const findElement = (el: Element, localName: string): Element | null => {
     return null;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Document Structure Extraction
+// Reads word/styles.xml + word/document.xml directly from the DOCX ZIP to
+// reconstruct the exact heading hierarchy and pre-compute hierarchical numbers
+// (e.g. "2.2.6") that Word would display via its <w:numPr> auto-numbering.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface HeadingEntry {
+    level: number;   // 1–6 (1 = top-level chapter)
+    text: string;    // heading text with no number prefix
+    number: string;  // pre-computed hierarchical number, e.g. "2.2.6"
+}
+
+/**
+ * Extract the heading structure from a .docx ArrayBuffer.
+ * Returns every heading in document order with its pre-computed number.
+ * Falls back gracefully — returns [] on any error.
+ */
+export const extractDocumentStructure = async (arrayBuffer: ArrayBuffer): Promise<HeadingEntry[]> => {
+    try {
+        const zip = await JSZip.loadAsync(arrayBuffer);
+
+        // ── Step 1: styles.xml → styleId → heading level ──────────────────────
+        const styleHeadingLevel: Record<string, number> = {};
+        // TOC style name patterns to exclude (Word's built-in TOC styles)
+        const TOC_STYLE_PATTERN = /^(toc|目录|table of contents)\s*\d*$/i;
+
+        const stylesXml = await readXmlEntry(zip.file('word/styles.xml'));
+        if (stylesXml) {
+            const stylesDoc = new DOMParser().parseFromString(stylesXml, 'application/xml');
+            const allStyles = stylesDoc.getElementsByTagName('w:style');
+
+            // First pass: build styleId → { name, basedOn, level } for inheritance resolution
+            const styleInfo: Record<string, { name: string; basedOn: string; level: number }> = {};
+            for (const style of Array.from(allStyles)) {
+                if (style.getAttribute('w:type') !== 'paragraph') continue;
+                const styleId = style.getAttribute('w:styleId');
+                if (!styleId) continue;
+                const nameEl = style.getElementsByTagName('w:name')[0];
+                const name = (nameEl?.getAttribute('w:val') ?? '').toLowerCase().trim();
+                const basedOnEl = style.getElementsByTagName('w:basedOn')[0];
+                const basedOn = basedOnEl?.getAttribute('w:val') ?? '';
+                let level = 0;
+                // Skip TOC styles explicitly
+                if (TOC_STYLE_PATTERN.test(name)) { styleInfo[styleId] = { name, basedOn, level: -1 }; continue; }
+                const enMatch = name.match(/^heading\s+(\d+)$/);
+                if (enMatch) level = parseInt(enMatch[1]);
+                if (!level) {
+                    const cnMatch = name.match(/^标题\s*(\d+)$/);
+                    if (cnMatch) level = parseInt(cnMatch[1]);
+                }
+                if (!level) {
+                    const pPrEls = style.getElementsByTagName('w:pPr');
+                    if (pPrEls.length > 0) {
+                        const ol = pPrEls[0].getElementsByTagName('w:outlineLvl')[0];
+                        if (ol) {
+                            const v = parseInt(ol.getAttribute('w:val') ?? '-1');
+                            if (v >= 0 && v <= 5) level = v + 1;
+                        }
+                    }
+                }
+                styleInfo[styleId] = { name, basedOn, level };
+            }
+
+            // Second pass: resolve inheritance (custom styles basedOn a heading style)
+            const resolveLevel = (id: string, depth = 0): number => {
+                if (depth > 10) return 0; // prevent infinite loops
+                const info = styleInfo[id];
+                if (!info) return 0;
+                if (info.level === -1) return -1; // TOC style, exclude
+                if (info.level > 0) return info.level;
+                if (info.basedOn) return resolveLevel(info.basedOn, depth + 1);
+                return 0;
+            };
+
+            for (const [id] of Object.entries(styleInfo)) {
+                const level = resolveLevel(id);
+                if (level > 0 && level <= 6) styleHeadingLevel[id] = level;
+            }
+        }
+        console.log('[STRUCTURE] style→level map:', JSON.stringify(styleHeadingLevel));
+
+        // ── Step 2: document.xml → extract heading paragraphs in order ────────
+        const docXml = await readXmlEntry(zip.file('word/document.xml'));
+        if (!docXml) return [];
+
+        const docDoc = new DOMParser().parseFromString(docXml, 'application/xml');
+        const paragraphs = Array.from(docDoc.getElementsByTagName('w:p'));
+
+        const raw: Array<{ level: number; text: string; number: string }> = [];
+
+        for (const para of paragraphs) {
+            // Skip paragraphs inside table cells (<w:tc>), footnotes, endnotes, etc.
+            let ancestor = para.parentElement;
+            let inTable = false;
+            while (ancestor) {
+                const tag = ancestor.tagName.split(':').pop() ?? '';
+                if (tag === 'tc' || tag === 'footnote' || tag === 'endnote') { inTable = true; break; }
+                ancestor = ancestor.parentElement;
+            }
+            if (inTable) continue;
+
+            // Use getChild() to get DIRECT child <w:pPr> only — not nested ones
+            const pPr = getChild(para, 'pPr');
+            if (!pPr) continue;
+
+            let level = 0;
+
+            // Check direct child <w:pStyle> inside pPr
+            const pStyleEl = getChild(pPr, 'pStyle');
+            if (pStyleEl) {
+                const sid = pStyleEl.getAttribute('w:val') ?? '';
+                if (styleHeadingLevel[sid]) level = styleHeadingLevel[sid];
+            }
+
+            // Fallback: direct child <w:outlineLvl> inside pPr
+            if (!level) {
+                const ol = getChild(pPr, 'outlineLvl');
+                if (ol) {
+                    const v = parseInt(ol.getAttribute('w:val') ?? '-1');
+                    if (v >= 0 && v <= 5) level = v + 1;
+                }
+            }
+
+            if (!level) continue; // Not a heading
+
+            // Extract text: collect all <w:t> inside <w:r> runs
+            // (skip <w:instrText> field instructions, <w:delText>, etc.)
+            let text = '';
+            const runs = Array.from(para.getElementsByTagName('w:r'));
+            for (const run of runs) {
+                // Skip deleted text
+                let inDel = false;
+                let p: Element | null = run.parentElement;
+                while (p && p !== para) {
+                    if ((p.tagName.split(':').pop() ?? '') === 'del') { inDel = true; break; }
+                    p = p.parentElement;
+                }
+                if (inDel) continue;
+                const tEls = run.getElementsByTagName('w:t');
+                for (const t of Array.from(tEls)) {
+                    text += t.textContent ?? '';
+                }
+            }
+            text = text.trim();
+            if (!text) continue;
+
+            raw.push({ level, text, number: '' });
+        }
+
+        // ── Step 3: compute hierarchical numbers ──────────────────────────────
+        const counters = [0, 0, 0, 0, 0, 0];
+        for (const h of raw) {
+            const idx = h.level - 1;
+            counters[idx]++;
+            for (let j = idx + 1; j < 6; j++) counters[j] = 0;
+            h.number = counters.slice(0, h.level).join('.');
+        }
+
+        console.log(`[STRUCTURE] Extracted ${raw.length} headings`);
+        return raw as HeadingEntry[];
+
+    } catch (e) {
+        console.error('[STRUCTURE] extractDocumentStructure failed:', e);
+        return [];
+    }
+};
+
 // Main extraction function
 export const extractRawTextWithFormulas = async (arrayBuffer: ArrayBuffer): Promise<string> => {
     try {

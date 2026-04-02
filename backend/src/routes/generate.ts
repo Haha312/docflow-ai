@@ -15,15 +15,125 @@ import { extractImagesAsPlaceholders, restoreImages } from '../utils/imageUtils'
 import { BASE_SYSTEM_PROMPTS, getNumberingInstruction } from '../config/prompts';
 
 
+type PreComputedHeading = { level: number; text: string; number: string };
+
 // Helper to clean Markdown code blocks from the output
 const cleanOutput = (text: string): string => {
     return text.replace(/```html/g, '').replace(/```/g, '').trim();
 };
 
+const normalizeText = (s: string): string => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+const stripLeadingNumbers = (s: string): string =>
+    s.replace(/(\d+\.)+\s*/g, '')
+     .replace(/第[一二三四五六七八九十百千\d]+[章节条款部分]\s*/g, '')
+     .replace(/\s+/g, ' ').trim();
+
+const calcTailHeadOverlap = (a: string, b: string, maxWindow = 2200): number => {
+    const left  = stripLeadingNumbers(normalizeText(a)).slice(-maxWindow);
+    const right = stripLeadingNumbers(normalizeText(b)).slice(0, maxWindow);
+    const maxLen = Math.min(left.length, right.length);
+    for (let len = maxLen; len >= 80; len--) {
+        if (left.slice(-len) === right.slice(0, len)) return len;
+    }
+    return 0;
+};
+
+/** Extract last N heading texts (with numbers) from HTML output for continuation context. */
+const extractLastHeadings = (html: string, n: number = 5): string => {
+    const matches = [...html.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi)];
+    return matches.slice(-n).map(m => m[0].replace(/<[^>]+>/g, '').trim()).join(' → ');
+};
+
+/**
+ * Extract a compact heading-level map from source HTML (before chunking).
+ * Returns { outline, levelMap } where outline is a human-readable indented list
+ * and levelMap maps normalised heading text → heading level (1-6).
+ */
+const extractDocumentHeadingMap = (html: string): { outline: string; levelMap: Map<string, number> } => {
+    const levelMap = new Map<string, number>();
+    const lines: string[] = [];
+    const indent = ['', '', '  ', '    ', '      ', '        ', '          '];
+    const regex = /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(html)) !== null) {
+        const level = parseInt(match[1]);
+        const text = match[2].replace(/<[^>]+>/g, '').trim().slice(0, 70);
+        if (!text) continue;
+        levelMap.set(text.toLowerCase(), level);
+        lines.push(`${indent[level] ?? '  '}H${level}: ${text}`);
+    }
+    return { outline: lines.join('\n'), levelMap };
+};
+
+/**
+ * Detect a hallucination loop in HTML output (same block repeating ≥3 times in a row)
+ * and truncate to just before the loop started.
+ * Returns the original string if no loop is found.
+ */
+const truncateAtRepetitionLoop = (html: string): string => {
+    const plain = normalizeText(html);
+    if (plain.length < 450) return html;
+
+    const tailLen = Math.min(plain.length, 4000);
+    const tail = plain.slice(-tailLen);
+
+    for (let segLen = 120; segLen <= 450; segLen += 15) {
+        const candidate = tail.slice(-segLen).trim();
+        if (candidate.length < 80) continue;
+
+        // Count consecutive backward repetitions
+        let pos = tail.length - segLen;
+        let repeats = 1;
+        while (pos >= segLen) {
+            if (tail.slice(pos - segLen, pos).trim() === candidate) {
+                repeats++;
+                pos -= segLen;
+            } else {
+                break;
+            }
+        }
+
+        if (repeats >= 3) {
+            // `pos` is where the loop starts inside `tail`
+            const loopStartInPlain = plain.length - tailLen + pos;
+            const ratio = loopStartInPlain / plain.length;
+            // Give extra slack so we don't cut too aggressively
+            const searchUpTo = Math.min(html.length, Math.floor(html.length * ratio) + segLen * 3);
+            const htmlBefore = html.slice(0, searchUpTo);
+            // Find nearest closing block tag just before the loop
+            const blockTags = ['</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>', '</p>', '</li>', '</div>'];
+            let bestCut = -1;
+            for (const tag of blockTags) {
+                const idx = htmlBefore.lastIndexOf(tag);
+                if (idx > bestCut) bestCut = idx + tag.length;
+            }
+            if (bestCut > html.length * 0.05) {
+                console.log(`[LOOP_TRUNCATED] ${repeats}x repeat (segLen=${segLen}), truncating HTML at ${bestCut}/${html.length}`);
+                return html.slice(0, bestCut);
+            }
+        }
+    }
+    return html;
+};
+
+const estimateSafeChunkSize = (modelKey: string | undefined, userTier: keyof typeof TIER_LIMITS): number => {
+    const baselineByModel: Record<string, number> = {
+        'gemini-flash': 12000,
+        'gemini-pro': 16000,
+        'doubao': 9000,
+        'deepseek': 6000,
+        'qwen-max': 6000
+    };
+    const base = baselineByModel[modelKey || ''] || 12000;
+    const tierFactor = userTier === 'ULTRA' ? 1.35 : 1.0;
+    return Math.max(4000, Math.floor(base * tierFactor));
+};
+
 
 
 import { TIER_LIMITS } from '../config/tierConfig';
-import { splitContentBySemantics, extractFirstHeading } from '../utils/chunking';
+import { splitContentBySemantics, extractFirstHeading, compressChunksByCoverage } from '../utils/chunking';
 
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3-pro-preview';
 const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 50));
@@ -163,39 +273,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             return;
         }
 
-        // Usage Check
-        let usageCount = 0;
-
-        if (userTier === 'FREE') {
-            usageCount = await prisma.usageLog.count({
-                where: {
-                    userId: user.id,
-                    actionType: 'generate_document'
-                }
-            });
-        } else {
-            const currentMonthStart = new Date();
-            currentMonthStart.setDate(1);
-            currentMonthStart.setHours(0, 0, 0, 0);
-
-            usageCount = await prisma.usageLog.count({
-                where: {
-                    userId: user.id,
-                    actionType: 'generate_document',
-                    createdAt: {
-                        gte: currentMonthStart
-                    }
-                }
-            });
-        }
-
-        const limit = TIER_LIMITS[userTier] || 10;
-
-        if (usageCount >= limit) {
-            const extraMsg = userTier === 'FREE' ? 'Free quota exhausted' : 'Monthly quota exhausted';
-            res.status(403).json(errorResponse(`${extraMsg} (${usageCount}/${limit})`, 403));
-            return;
-        }
+        // 配额已由 checkRateLimit 中间件统一检查，此处无需重复查询
 
         // 模型将在 chunk 循环中根据索引动态选择
 
@@ -217,11 +295,11 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
              - Microsoft Word stores auto-numbering separately from the paragraph text. After conversion to HTML, list numbering information is LOST. The result is that every ordered-list item appears as "1." in the browser. YOU must detect and fix these patterns.
              - **INPUT IS HTML — DETECT BY TAG STRUCTURE, NOT PLAINTEXT "1."**:
                Your user input is HTML (e.g. \`<ol><li>...</li></ol>\`, \`<p>...</p>\`). There is often **no** literal \`1.\` / \`2.\` text in the source — do **not** wait for those characters. Infer broken numbering from **repeated \`<ol>\` / single-\`<li>\` structures** and sibling markup, exactly as below.
-             - **PATTERN A — Consecutive `<ol>` blocks directly adjacent (no `<p>` between them)**:
+             - **PATTERN A — Consecutive \`<ol>\` blocks directly adjacent (no \`<p>\` between them)**:
                **HTML shape** (what you actually receive): \`<ol><li>A</li></ol><ol><li>B</li></ol><ol><li>C</li></ol>\`
                These are consecutive list items incorrectly split. Merge into ONE \`<ol>\`: \`<ol><li>A</li><li>B</li><li>C</li></ol>\`.
                FORBIDDEN: leaving them as separate \`<ol>\` blocks — the browser renders each as "1.".
-             - **PATTERN B — Multiple `<ol>` blocks each with EXACTLY ONE `<li>`, separated by `<p>` or other non-list content**:
+             - **PATTERN B — Multiple \`<ol>\` blocks each with EXACTLY ONE \`<li>\`, separated by \`<p>\` or other non-list content**:
                **HTML shape** (what you actually receive): \`<ol><li>TopicA</li></ol><p>body text...</p><ol><li>TopicB</li></ol><p>body text...</p><ol><li>TopicC</li></ol>\`
                **DETECTION (HTML-only)**: Two or more \`<ol>\` elements where **each** contains **exactly one** \`<li>\`, with \`<p>\`, \`<table>\`, \`<div>\`, or other **non-list** elements between those \`<ol>\` blocks. Do **not** require a leading \`1.\` in the \`<li>\` text — the bug is visible from tags alone.
                These are SEQUENTIAL SECTION HEADINGS — NOT true lists. Word's auto-numbering was lost, so the browser shows every item as "1.".
@@ -247,6 +325,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
       4. **Content Integrity (STRICT)**:
          - **ZERO DATA LOSS**. Output every sentence, row, and list item.
          - **VERBATIM BODY TEXT**. Do not summarize.
+         - **LOOP PREVENTION (CRITICAL)**:
+            - If you notice your own output repeating the same paragraph, formula, or numbered item with only a counter incrementing (e.g. (5) calc... (6) calc... (7) calc... with the same body each time), STOP IMMEDIATELY — this means you are hallucinating content not present in the source.
+            - Only generate content that is explicitly present in the source input. Do NOT invent additional iterations of any repeating pattern.
          - **PRESERVE IMAGES (HIGHEST PRIORITY)**:
             - You will see placeholders like \`__IMG_0__\`.
             - You MUST output them **EXACTLY** as is.
@@ -352,10 +433,87 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         `;
 
 
-        // 1. 提取图片 (全局处理)
-        const { textOnly: contentWithoutImages, imageMap } = extractImagesAsPlaceholders(content);
+        // 1a. Strip STRUCTURE_DATA (pre-computed heading numbers from frontend XML parser)
+        //     before image extraction so it never reaches the AI as content.
+        let preComputedHeadings: PreComputedHeading[] = [];
+        // Always strip the STRUCTURE_DATA marker from content, regardless of parse success.
+        // If parse fails, we still clean the content so the AI never sees the raw JSON.
+        const structureDataMatch = content.match(/\n<!-- STRUCTURE_DATA -->\n([\s\S]*)$/);
+        const contentStripped = structureDataMatch
+            ? content.slice(0, structureDataMatch.index)
+            : content;
+        if (structureDataMatch) {
+            try {
+                preComputedHeadings = JSON.parse(structureDataMatch[1]) as PreComputedHeading[];
+                console.log(`[STRUCTURE_DATA] Loaded ${preComputedHeadings.length} pre-computed headings`);
+            } catch (e) {
+                console.warn('[STRUCTURE_DATA] Parse failed, falling back to HTML extraction', e);
+            }
+        }
+        const contentForProcessing = contentStripped;
+
+        // 1b. 提取图片 (全局处理)
+        const { textOnly: contentWithoutImages, imageMap } = extractImagesAsPlaceholders(contentForProcessing);
         const imageCount = Object.keys(imageMap).length;
         if (imageCount > 0) console.log(`[IMG] Extracted ${imageCount} images`);
+
+        // 1b-2. Extract FORMULA_DATA block BEFORE chunking so every chunk (not just the last)
+        //       can reference it. The block is injected into each chunk's user content as a
+        //       read-only reference — it is never part of the content to be formatted.
+        let formulaDataContext = '';
+        let contentForChunking = contentWithoutImages;
+        const formulaMarkerIdx = contentWithoutImages.indexOf('\n<!-- FORMULA_DATA -->');
+        if (formulaMarkerIdx !== -1) {
+            formulaDataContext = contentWithoutImages.slice(formulaMarkerIdx + 1); // keeps the marker line
+            contentForChunking = contentWithoutImages.slice(0, formulaMarkerIdx);
+            console.log(`[FORMULA_DATA] Extracted ${formulaDataContext.length} chars — will inject into all ${Math.ceil(contentForChunking.length / 12000)} chunks`);
+        }
+
+        // 1c. Build document structure block for the system prompt.
+        //     Priority: pre-computed headings from XML (exact) > HTML heading tags (approximate).
+        let docStructureBlock = '';
+        // Lookup map: normalised heading text → { level, number }
+        const headingNumberMap = new Map<string, { level: number; number: string }>();
+
+        if (preComputedHeadings.length > 0) {
+            // ── Authoritative path: use numbers extracted directly from Word XML ──
+            const h1Count = preComputedHeadings.filter(h => h.level === 1).length;
+            const indent = ['', '', '  ', '    ', '      ', '        '];
+            const lines = preComputedHeadings.map(h =>
+                `${indent[h.level] ?? ''}H${h.level} [${h.number}] ${h.text}`
+            ).join('\n');
+            preComputedHeadings.forEach(h =>
+                headingNumberMap.set(h.text.toLowerCase().trim(), { level: h.level, number: h.number })
+            );
+            docStructureBlock =
+                `\n\n**PRE-COMPUTED HEADING NUMBERS (authoritative — extracted from Word XML)**:\n` +
+                `This document has **${h1Count}** top-level chapter(s). ` +
+                `Every heading below already has its exact number pre-calculated.\n` +
+                `\`\`\`\n${lines}\n\`\`\`\n` +
+                `CRITICAL RULES:\n` +
+                `- The number in [brackets] IS the correct number for that heading. Use it EXACTLY.\n` +
+                `- DO NOT re-count or re-number. DO NOT add or drop digits (e.g. [2.2.6] must appear as "2.2.6", never as "6." or "5.").\n` +
+                `- DO NOT change the H-level (e.g. H3 must stay <h3>, never <h1> or <h2>).\n` +
+                `- Apply the configured numbering FORMAT to these numbers (e.g. "第N章" for H1 if the scheme uses it).\n`;
+        } else {
+            // ── Fallback path: derive from HTML heading tags (less reliable) ──
+            const { outline: docHeadingOutline, levelMap: docHeadingLevelMap } = extractDocumentHeadingMap(contentForChunking);
+            const h1Count = [...docHeadingLevelMap.values()].filter(l => l === 1).length;
+            docHeadingLevelMap.forEach((level, text) =>
+                headingNumberMap.set(text.toLowerCase().trim(), { level, number: '' })
+            );
+            if (docHeadingOutline) {
+                docStructureBlock =
+                    `\n\n**DOCUMENT STRUCTURE MAP (MANDATORY REFERENCE — DO NOT DEVIATE)**:\n` +
+                    `This document has exactly **${h1Count} top-level chapter(s) (H1)**. The complete heading hierarchy is:\n` +
+                    `\`\`\`\n${docHeadingOutline}\n\`\`\`\n` +
+                    `RULES:\n` +
+                    `- Each line is one heading. The H-level shown IS correct — output it at exactly that level.\n` +
+                    `- H1 = top-level chapter (numbered 1 … ${h1Count}). H2/H3/H4 = sub-sections.\n` +
+                    `- NEVER promote an H2/H3/H4 to H1. Number H1 chapters 1 … ${h1Count} across the entire document.\n`;
+            }
+        }
+        const systemInstructionWithMap = systemInstruction + docStructureBlock;
 
         // 2. 语义切分
         // ULTRA 用户：单次全文处理，确保章节顺序和编号完全正确(SSE ping 保活连接)
@@ -369,35 +527,50 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // Gemini 需要 usage 统计；国内模型不需要且部分不支持该字段
         const includeUsage = useProxy;
 
-        // 按模型输出 token 上限动态调整输入 chunk 大小，防止输出被截断
-        const chunkMaxChars: Record<string, number> = {
-            'gemini-flash': 12000,
-            'gemini-pro':   16000,
-            'doubao':        12000,
-            'deepseek':      7000,
-            'qwen-max':      7000,
-        };
-        const safeChunkSize = (requestedModelKey && chunkMaxChars[requestedModelKey]) || 12000;
+        const safeChunkSize = estimateSafeChunkSize(requestedModelKey, userTier);
+        const estimatedChunks = Math.max(1, Math.ceil(contentForChunking.length / safeChunkSize));
+        console.log(`[ESTIMATE_BUDGET] model=${requestedModelKey || 'gemini-pro'} safeChunkSize=${safeChunkSize} contentLen=${contentForChunking.length}`);
+        console.log(`[ESTIMATED_CHUNKS] ${estimatedChunks}`);
 
         let chunks: string[] = [];
         if (userTier === 'ULTRA') {
             // ULTRA 用更大的 chunk（3x），但超出模型单次输出容量时仍需分块
             const ultraChunkSize = safeChunkSize * 3;
-            if (contentWithoutImages.length <= ultraChunkSize) {
+            if (contentForChunking.length <= ultraChunkSize) {
                 console.log('[ULTRA] Mode: Single-pass full document processing');
-                chunks = [contentWithoutImages];
+                chunks = [contentForChunking];
             } else {
-                console.log(`[ULTRA] Mode: Large doc (${contentWithoutImages.length} chars), splitting into ${ultraChunkSize}-char chunks`);
-                chunks = splitContentBySemantics(contentWithoutImages, ultraChunkSize);
+                console.log(`[ULTRA] Mode: Large doc (${contentForChunking.length} chars), splitting into ${ultraChunkSize}-char chunks`);
+                chunks = splitContentBySemantics(contentForChunking, ultraChunkSize);
             }
         } else {
-            chunks = splitContentBySemantics(contentWithoutImages, safeChunkSize);
+            chunks = splitContentBySemantics(contentForChunking, safeChunkSize);
+        }
+        const beforeCompression = chunks.length;
+        const compressed = compressChunksByCoverage(chunks, 0.78, 280);
+        chunks = compressed.chunks;
+        if (beforeCompression !== chunks.length) {
+            console.log(`[CHUNK_COMPRESSED] from ${beforeCompression} to ${chunks.length} dropped=${compressed.dropped}`);
         }
         console.log(`[SPLIT] Document split into ${chunks.length} chunk(s)`);
 
         let lastContext = '';
-        /** Cumulative count of opening `<h1>` tags in HTML already emitted for prior chunks (for continuation numbering). */
+        /** Cumulative count of opening `<h1>` tags (chapter-level only) emitted so far. */
         let cumulativeH1BeforePart = 0;
+        /**
+         * Cumulative heading counter state across all completed chunks.
+         * Maps heading level (1-6) → last formatted heading text at that level.
+         * e.g. { 1: "2. 研究进展", 2: "2.2 专业模块智能设计方法", 3: "2.2.5 风场尾流效应…" }
+         * Used so continuation chunks know the FULL hierarchical prefix (e.g. "2.2.") to carry forward.
+         */
+        let headingCounterState: { [level: number]: string } = {};
+        /**
+         * Last N headings (with their generated numbers) from the most recently processed chunk.
+         * e.g. "2. 研究进展 → 2.2 专业模块 → 2.2.5 风场尾流效应"
+         * Injected into the continuation prompt so the AI sees the exact numbered headings it produced
+         * and can continue sequentially without restarting sub-levels at "1.".
+         */
+        let lastHeadingsState = '';
 
         // 设置 SSE 响应头
         res.setHeader('Content-Type', 'text/event-stream');
@@ -410,16 +583,49 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         }
 
         let totalExactTokens = 0;
+        let consecutiveCoveredSkips = 0;
+        let finalChunksUsed = 0;
 
         // 3. 循环处理 Chunks
         for (let i = 0; i < chunks.length; i++) {
             const chunkContent = chunks[i];
+            const chunkFirstHeading = extractFirstHeading(chunkContent);
+            const renderedTail = normalizeText(fullRestoredText).slice(-5000);
+            const headingCovered = chunkFirstHeading.length > 0 && renderedTail.includes(chunkFirstHeading);
+            const overlap = calcTailHeadOverlap(fullRestoredText, chunkContent, 2600);
+            const chunkHeadLen = Math.min(normalizeText(chunkContent).length, 2600);
+            const coverageRatio = chunkHeadLen > 0 ? overlap / chunkHeadLen : 0;
+            if (i > 0 && headingCovered && overlap >= 320 && coverageRatio >= 0.78) {
+                consecutiveCoveredSkips += 1;
+                console.log(`[SKIP_COVERED_CHUNK] part=${i + 1}/${chunks.length} heading="${chunkFirstHeading}" overlap=${overlap} coverage=${coverageRatio.toFixed(3)}`);
+                // Sync heading counter state from preComputedHeadings for skipped chunks,
+                // so the continuation prompt for the next processed chunk stays accurate.
+                if (preComputedHeadings.length > 0) {
+                    const key = chunkFirstHeading.toLowerCase().trim();
+                    const idx = preComputedHeadings.findIndex(h => h.text.toLowerCase().trim() === key);
+                    if (idx >= 0) {
+                        // Walk forward through preComputed until the chunk boundary to update state
+                        for (let k = idx; k < preComputedHeadings.length; k++) {
+                            const h = preComputedHeadings[k];
+                            // Stop when we reach a heading that belongs to the NEXT chunk
+                            const nextHeading = extractFirstHeading(chunks[i + 1] ?? '');
+                            if (nextHeading && h.text.toLowerCase().trim() === nextHeading.toLowerCase().trim() && k > idx) break;
+                            headingCounterState[h.level] = `${h.number} ${h.text}`;
+                        }
+                    }
+                }
+                if (consecutiveCoveredSkips >= 2) {
+                    console.log(`[EARLY_STOP_COVERAGE] stop_at_part=${i + 1} total=${chunks.length}`);
+                    break;
+                }
+                continue;
+            }
+            consecutiveCoveredSkips = 0;
+
             console.log(`[CHUNK] Processing ${i + 1}/${chunks.length} (${chunkContent.length} chars) Model: ${currentModel}`);
 
             // 动态构建 System Prompt
-            let currentSystemPrompt = systemInstruction;
-
-            const chunkFirstHeading = extractFirstHeading(chunkContent);
+            let currentSystemPrompt = systemInstructionWithMap;
 
             if (i > 0) {
                 currentSystemPrompt += `
@@ -427,7 +633,13 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 --- CONTINUATION MODE: PART ${i + 1} of ${chunks.length} ---
 
                 **WHERE TO START (CRITICAL)**:
-                This part's input begins with: "${chunkFirstHeading}"
+                This part's input begins with: "${chunkFirstHeading}"${(() => {
+                    const entry = headingNumberMap.get(chunkFirstHeading.toLowerCase().trim());
+                    if (!entry) return '';
+                    return entry.number
+                        ? ` — pre-computed number: **[${entry.number}]**, level: H${entry.level}. Output as \`<h${entry.level}>\` with number "${entry.number}". Do NOT change level or re-count.`
+                        : ` — this heading is H${entry.level}. Output as \`<h${entry.level}>\`, NOT a higher level.`;
+                })()}
                 Your HTML output MUST start from this section — do NOT output anything before it.
 
                 **PREVIOUS PART CONTEXT (orientation only — NOT a forbidden list)**:
@@ -440,6 +652,23 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 - All HTML from completed parts before this one contains **${cumulativeH1BeforePart}** opening \`<h1>\` tags (cumulative count).
                 - **Do NOT restart** top-level / chapter-style numbering at 1 for this part. Treat the next logical first \`<h1>\` in this part as **chapter/section index ${cumulativeH1BeforePart + 1}** for any scheme that numbers by H1 order (including chapter-relative 图/表 captions if applicable).
                 - Subordinate levels (\`<h2>\`, \`<h3>\`, …) must also continue the hierarchical counter state implied by that continuation — do not reset the whole outline to 1.x as if this were a new document.
+                **HEADING COUNTER STATE** (use these to determine the next number at each level):
+                ${lastHeadingsState
+                    ? `Recent output chain (most authoritative — the exact numbered text your model just produced):
+                ${lastHeadingsState}
+                Cumulative last heading per level across ALL completed parts${Object.keys(headingCounterState).length > 0 ? ':' : ': (none yet)'}
+${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`                  H${l}: "${t}"`).join('\n')}`
+                    : Object.keys(headingCounterState).length > 0
+                        ? `Last heading at each level across ALL completed parts:
+${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`                  H${l}: "${t}"`).join('\n')}`
+                        : '(no headings processed yet — start numbering from 1)'}
+                CONTINUATION RULES:
+                - Use the recent output chain first; fall back to the per-level table for levels not shown in the chain.
+                - Your next heading at each level must come sequentially AFTER what is listed above — do NOT restart any level at 1.
+                - **HIERARCHICAL NUMBERING**: If the last H3 was "2.2.5 Foo", your next H3 under the SAME parent (2.2) MUST be "2.2.6 Bar" — NEVER drop the parent prefix.
+                - **NEW PARENT**: Entering a new H2 (e.g. "2.3 …") resets the H3 counter to "2.3.1".
+                - **FLAT NUMBERING**: If the scheme uses flat numbers (e.g. "5. Foo"), next is "6. Bar".
+                - NEVER drop digits from a hierarchical number ("2.2.5" → next is "2.2.6", not "6.").
 
                 **RULES**:
                 1. Your FIRST line of output must be the formatted version of "${chunkFirstHeading}".
@@ -453,7 +682,13 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 currentSystemPrompt += `\n\n**MODE**: PART 1 of ${chunks.length}. Start numbering from the beginning. Format ONLY the content provided. Stop when input runs out.`;
             }
 
-            const userContent = `Filename: ${safeFileName}\n\nContent Part ${i + 1} of ${chunks.length}:\n${chunkContent}\n\n--- END OF PART ${i + 1} INPUT ---\nFormat ONLY the content above. When you reach "--- END OF PART ${i + 1} INPUT ---", stop immediately.`;
+            // Append formula reference to EVERY chunk so the AI can reconstruct OMML formulas
+            // regardless of which chunk the formula appears in.
+            // Cap at 8000 chars to limit extra token usage for very formula-heavy docs.
+            const formulaSuffix = formulaDataContext
+                ? `\n\n--- FORMULA REFERENCE (read-only — DO NOT output or format this section) ---\n${formulaDataContext.slice(0, 8000)}\n--- END FORMULA REFERENCE ---`
+                : '';
+            const userContent = `Filename: ${safeFileName}\n\nContent Part ${i + 1} of ${chunks.length}:\n${chunkContent}\n\n--- END OF PART ${i + 1} INPUT ---\nFormat ONLY the content above. When you reach "--- END OF PART ${i + 1} INPUT ---", stop immediately.${formulaSuffix}`;
             let chunkOutput = '';
 
             try {
@@ -506,6 +741,14 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                                 if (result.finishReason) finishReason = result.finishReason;
                                 if (result.usage) totalExactTokens += result.usage.total_tokens || 0;
                             }
+
+                            // Loop detection: break early if output is already repetitive
+                            const loopCheckPlain = normalizeText(chunkOutput).slice(-1200);
+                            const loopLast300 = loopCheckPlain.slice(-300).trim();
+                            if (loopLast300.length > 100 && loopCheckPlain.slice(0, 900).includes(loopLast300)) {
+                                console.log(`[LOOP_DETECTED] Repetitive continuation output at chunk ${i + 1}, breaking`);
+                                break;
+                            }
                         }
 
                         if (continuations > 0) {
@@ -542,9 +785,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                         let googleFinish: string | undefined = googleFinishReason as string | undefined;
                         while (googleFinish === 'MAX_TOKENS' && googleContinuations < 5) {
                             googleContinuations++;
-                            const plainTail = chunkOutput.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(-400);
                             console.log(`[CONTINUE] Chunk ${i + 1} truncated (MAX_TOKENS), continuation ${googleContinuations}/5`);
-                            const continueUserContent = `CONTINUATION REQUEST\n\nYour previous response was cut off. The last part was:\n"...${plainTail}"\n\nContinue from EXACTLY where you stopped. Do NOT repeat anything. Output ONLY the continuation.`;
                             const plainTailG = chunkOutput.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(-600);
                             const htmlTailG = chunkOutput.slice(-200);
                             const continueG = `TRUNCATION CONTINUATION — DO NOT REPEAT\n\nYour previous HTML output was cut off. Last ~200 chars of raw HTML:\n\`\`\`\n${htmlTailG}\n\`\`\`\nLast ~600 chars plain text: "...${plainTailG}"\n\nRULES:\n1. Continue HTML from EXACTLY where cut — close any open tags first if needed.\n2. ABSOLUTELY DO NOT repeat any content already written.\n3. No prefix or preamble. Output ONLY continuation HTML.`;
@@ -559,6 +800,14 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                             const contAgg = await contResult.response;
                             if (contAgg.usageMetadata) totalExactTokens += contAgg.usageMetadata.totalTokenCount || 0;
                             googleFinish = contAgg.candidates?.[0]?.finishReason as string | undefined;
+
+                            // Loop detection for Google SDK continuation
+                            const loopCheckG = normalizeText(chunkOutput).slice(-1200);
+                            const loopLast300G = loopCheckG.slice(-300).trim();
+                            if (loopLast300G.length > 100 && loopCheckG.slice(0, 900).includes(loopLast300G)) {
+                                console.log(`[LOOP_DETECTED] Repetitive Google continuation at chunk ${i + 1}, breaking`);
+                                break;
+                            }
                         }
                     }
                 } finally {
@@ -567,10 +816,27 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
                 // Chunk 完成后处理（cleanOutput 和图片还原需要完整文本）
                 let cleanChunk = cleanOutput(chunkOutput);
+                // Truncate any hallucination loop that slipped through during main generation
+                cleanChunk = truncateAtRepetitionLoop(cleanChunk);
                 lastContext = cleanChunk.replace(/<[^>]+>/g, ' ');
 
-                const h1OpenInChunk = (cleanChunk.match(/<h1\b/gi) ?? []).length;
+                // Count only chapter-level H1s — exclude <h1 class="doc-title"> (document titles are not chapters)
+                const h1Tags = cleanChunk.match(/<h1\b[^>]*>/gi) ?? [];
+                const h1OpenInChunk = h1Tags.filter(t => !t.includes('doc-title')).length;
                 cumulativeH1BeforePart += h1OpenInChunk;
+                // Update cumulative per-level heading counter state
+                const hcRegex = /<h([1-6])\b([^>]*)>([\s\S]*?)<\/h\1>/gi;
+                let hcMatch: RegExpExecArray | null;
+                while ((hcMatch = hcRegex.exec(cleanChunk)) !== null) {
+                    const lvl = parseInt(hcMatch[1]);
+                    if (hcMatch[2].includes('doc-title')) continue;
+                    const txt = hcMatch[3].replace(/<[^>]+>/g, '').trim().slice(0, 80);
+                    if (txt) headingCounterState[lvl] = txt;
+                }
+                console.log(`[HEADING_STATE] after chunk ${i + 1}:`, JSON.stringify(headingCounterState));
+                // Update lastHeadingsState with the numbered heading chain from this chunk's output
+                lastHeadingsState = extractLastHeadings(cleanChunk, 5);
+                if (lastHeadingsState) console.log(`[LAST_HEADINGS] after chunk ${i + 1}: ${lastHeadingsState}`);
 
                 // 还原图片
                 if (imageCount > 0) {
@@ -578,6 +844,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 }
 
                 fullRestoredText += cleanChunk;
+                finalChunksUsed += 1;
 
                 // 仅发送进度更新，前端此时已经通过流式渲染输出所有文字
                 res.write(`data: ${JSON.stringify({
@@ -594,6 +861,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 throw err;
             }
         }
+        console.log(`[FINAL_CHUNKS_USED] ${finalChunksUsed}/${chunks.length}`);
 
         // 保存文档
         const pureText = fullRestoredText.replace(/<[^>]+>/g, '').replace(/\s+/g, '').trim();

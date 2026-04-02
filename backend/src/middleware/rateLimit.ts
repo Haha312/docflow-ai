@@ -44,10 +44,11 @@ export const checkRateLimit = async (
 
         // 根据等级设置不同的时间范围和限制
         if (tier === 'FREE') {
-            // FREE 用户：终身限制 3 次
+            // FREE 用户：终身限制 3 次（仅计 generate_document，避免其他 actionType 误耗额度）
             const usageCount = await prisma.usageLog.count({
                 where: {
-                    userId: user.id
+                    userId: user.id,
+                    actionType: 'generate_document'
                 }
             });
 

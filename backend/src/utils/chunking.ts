@@ -1,129 +1,147 @@
 
 /**
  * Smart Chunking Utility
- * 按语义（优先章节标题边界）将长文档切分为适合 LLM 处理的片段
+ * 按语义（优先 HTML 标题/块级边界）将长文档切分为适合 LLM 处理的片段
  */
-
-export interface Chunk {
-    index: number;
-    total: number;
-    content: string;
-    startIndex: number;
-    endIndex: number;
-}
 
 const CHUNK_SIZE_CHARS = 12000;
 
-/**
- * 检测中文学术/技术文档中的标题行位置
- * 返回每个标题行在文档中的字符偏移量
- */
-const detectHeadingPositions = (content: string): number[] => {
+const normalizeText = (s: string): string => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+const detectHeadingTagPositions = (content: string): number[] => {
     const positions: number[] = [];
-    let pos = 0;
-    for (const line of content.split('\n')) {
-        const trimmed = line.trim();
-        if (trimmed.length > 0 && trimmed.length < 80) {
-            const isHeading =
-                /^第[一二三四五六七八九十百千]+[章节部篇]/.test(trimmed) ||   // 第一章 第二节
-                /^[一二三四五六七八九十]+[、.]/.test(trimmed) ||               // 一、 二、
-                /^\d+[、.]\s*[\u4e00-\u9fff（【]/.test(trimmed) ||             // 1. 一 / 1、（
-                /^\d+\.\d+(\.\d+)*\s+[\u4e00-\u9fff（【]/.test(trimmed) ||    // 1.1 1.1.1
-                /^[（(]\s*\d+\s*[)）]\s*[\u4e00-\u9fff]/.test(trimmed);       // （1） (1)
-            if (isHeading) {
-                positions.push(pos);
-            }
-        }
-        pos += line.length + 1; // +1 for \n
+    const headingOpenTag = /<h[1-6]\b[^>]*>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = headingOpenTag.exec(content)) !== null) {
+        positions.push(match.index);
     }
     return positions;
 };
 
-/**
- * 提取一个 chunk 里的第一个标题行（用作续写锚点）
- */
-export const extractFirstHeading = (chunkContent: string): string => {
-    for (const line of chunkContent.split('\n')) {
-        const trimmed = line.trim();
-        if (trimmed.length === 0 || trimmed.length > 80) continue;
-        const isHeading =
-            /^第[一二三四五六七八九十百千]+[章节部篇]/.test(trimmed) ||
-            /^[一二三四五六七八九十]+[、.]/.test(trimmed) ||
-            /^\d+[、.]\s*[\u4e00-\u9fff（【]/.test(trimmed) ||
-            /^\d+\.\d+(\.\d+)*\s+[\u4e00-\u9fff（【]/.test(trimmed) ||
-            /^[（(]\s*\d+\s*[)）]\s*[\u4e00-\u9fff]/.test(trimmed);
-        if (isHeading) return trimmed;
+const detectHtmlSafeSplitPositions = (content: string): number[] => {
+    const positions: number[] = [];
+    const blockCloseTag = /<\/(h[1-6]|p|div|section|article|table|ul|ol|li|blockquote|pre)>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = blockCloseTag.exec(content)) !== null) {
+        positions.push(match.index + match[0].length);
     }
-    // 没找到标题就返回第一行非空文本
-    return chunkContent.split('\n').find(l => l.trim().length > 0)?.trim().slice(0, 60) || '';
+    return positions;
 };
 
-/**
- * 语义分块：优先在章节标题处切分，保证每个 chunk 从完整章节开头开始
- *
- * 切分策略（优先级从高到低）：
- * 1. 在目标位置附近（70%~100% 范围内）找最靠近目标的章节标题 → 在标题前切分
- * 2. 若无标题，找最近的段落边界（\n\n）
- * 3. 若无段落，找最近的换行（\n）
- * 4. 若无换行，强制按字符数切分
- */
-export const splitContentBySemantics = (content: string, maxChars: number = CHUNK_SIZE_CHARS): string[] => {
-    if (content.length <= maxChars) {
-        return [content];
+const calcTailHeadOverlap = (a: string, b: string, maxWindow = 2000): number => {
+    const left = normalizeText(a).slice(-maxWindow);
+    const right = normalizeText(b).slice(0, maxWindow);
+    const maxLen = Math.min(left.length, right.length);
+    for (let len = maxLen; len >= 80; len--) {
+        if (left.slice(-len) === right.slice(0, len)) return len;
     }
+    return 0;
+};
 
-    // 预扫描所有标题位置
-    const headingPositions = detectHeadingPositions(content);
+export const extractFirstHeading = (chunkContent: string): string => {
+    const headingMatch = chunkContent.match(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i);
+    if (headingMatch?.[1]) {
+        const headingText = normalizeText(headingMatch[1]);
+        if (headingText) return headingText.slice(0, 80);
+    }
+    const blockMatch = chunkContent.match(/<(p|div|section|article|li|td|th)\b[^>]*>([\s\S]*?)<\/\1>/i);
+    if (blockMatch?.[2]) {
+        const txt = normalizeText(blockMatch[2]);
+        if (txt) return txt.slice(0, 80);
+    }
+    return normalizeText(chunkContent).slice(0, 80);
+};
 
+export const splitContentBySemantics = (content: string, maxChars: number = CHUNK_SIZE_CHARS): string[] => {
+    if (content.length <= maxChars) return [content];
+
+    const headingPositions = detectHeadingTagPositions(content);
+    const safeBoundaries = detectHtmlSafeSplitPositions(content);
     const chunks: string[] = [];
     let processed = 0;
 
     while (processed < content.length) {
+        const chunkStart = processed;
         if (content.length - processed <= maxChars) {
-            chunks.push(content.slice(processed));
+            const tailChunk = content.slice(processed);
+            chunks.push(tailChunk);
+            console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${content.length}) len=${tailChunk.length} strategy=final-tail`);
             break;
         }
 
         const targetEnd = processed + maxChars;
-
-        // 策略1：在 70%~100% 范围内找最后一个章节标题，在它之前切分
         const searchStart70 = processed + Math.floor(maxChars * 0.7);
-        const candidateHeadings = headingPositions.filter(
-            p => p > searchStart70 && p < targetEnd && p > processed
-        );
 
+        const candidateHeadings = headingPositions.filter((p) => p > searchStart70 && p < targetEnd && p > processed);
         if (candidateHeadings.length > 0) {
-            // 取最靠近 targetEnd 的标题（贪心：每块尽量大）
             const splitIndex = candidateHeadings[candidateHeadings.length - 1];
-            chunks.push(content.slice(processed, splitIndex));
+            const chunk = content.slice(processed, splitIndex);
+            chunks.push(chunk);
+            console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${splitIndex}) len=${chunk.length} strategy=heading-tag`);
             processed = splitIndex;
             continue;
         }
 
-        // 策略2：段落边界（\n\n）
+        const candidateSafe = safeBoundaries.filter((p) => p > searchStart70 && p <= targetEnd && p > processed);
+        if (candidateSafe.length > 0) {
+            const splitIndex = candidateSafe[candidateSafe.length - 1];
+            const chunk = content.slice(processed, splitIndex);
+            chunks.push(chunk);
+            console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${splitIndex}) len=${chunk.length} strategy=html-safe-boundary`);
+            processed = splitIndex;
+            continue;
+        }
+
         const windowStart = Math.max(processed, targetEnd - 1000);
         const searchWindow = content.slice(windowStart, targetEnd);
         const lastDoubleNewline = searchWindow.lastIndexOf('\n\n');
         if (lastDoubleNewline !== -1) {
             const splitIndex = windowStart + lastDoubleNewline + 2;
-            chunks.push(content.slice(processed, splitIndex));
+            const chunk = content.slice(processed, splitIndex);
+            chunks.push(chunk);
+            console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${splitIndex}) len=${chunk.length} strategy=double-newline`);
             processed = splitIndex;
             continue;
         }
 
-        // 策略3：单换行
         const lastNewline = searchWindow.lastIndexOf('\n');
         if (lastNewline !== -1) {
             const splitIndex = windowStart + lastNewline + 1;
-            chunks.push(content.slice(processed, splitIndex));
+            const chunk = content.slice(processed, splitIndex);
+            chunks.push(chunk);
+            console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${splitIndex}) len=${chunk.length} strategy=newline`);
             processed = splitIndex;
             continue;
         }
 
-        // 策略4：强制切分
-        chunks.push(content.slice(processed, targetEnd));
+        const hardChunk = content.slice(processed, targetEnd);
+        chunks.push(hardChunk);
+        console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${targetEnd}) len=${hardChunk.length} strategy=hard-cut`);
         processed = targetEnd;
     }
 
     return chunks;
+};
+
+export const compressChunksByCoverage = (
+    chunks: string[],
+    overlapThreshold = 0.78,
+    minOverlapChars = 240
+): { chunks: string[]; dropped: number } => {
+    if (chunks.length <= 1) return { chunks, dropped: 0 };
+    const compressed: string[] = [chunks[0]];
+    let dropped = 0;
+    for (let i = 1; i < chunks.length; i++) {
+        const prev = compressed[compressed.length - 1];
+        const curr = chunks[i];
+        const overlap = calcTailHeadOverlap(prev, curr, 2600);
+        const currHeadLen = Math.min(normalizeText(curr).length, 2600);
+        const coverage = currHeadLen > 0 ? overlap / currHeadLen : 0;
+        if (overlap >= minOverlapChars && coverage >= overlapThreshold) {
+            dropped += 1;
+            continue;
+        }
+        compressed.push(curr);
+    }
+    return { chunks: compressed, dropped };
 };

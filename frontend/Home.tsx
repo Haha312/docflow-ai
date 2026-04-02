@@ -14,6 +14,7 @@ import { useConfirmDialog } from './components/ConfirmDialog';
 import { generateDocumentViaBackend } from './services/backendApiService';
 import { generateDocx } from './utils/docxGenerator';
 import { useAuth } from './contexts/AuthContext';
+import systemLogo from './image/image.jpg';
 // useTypewriter removed: SSE stream is already incremental, no need for secondary typing animation
 import { PRESETS } from './constants';
 import { DocPreset, AIState, StyleConfig } from './types';
@@ -306,18 +307,28 @@ function Home() {
     setOutputText('');
     setImageMap({});
 
-    // 本地预计算 imageMap，避免依赖 SSE 传输 10-50MB JSON 导致 parse 失败
+    // ── 客户端预处理：在发送给后端之前完成，避免传输大量 base64 图片数据 ──
+    // 1. 提取图片：把 <img ...> 替换为 __IMG_N__ 占位符（与后端 imageUtils 逻辑一致）
+    //    这样发给后端的 payload 从 10-50MB 降至几十 KB。
     const localImageMap: Record<string, string> = {};
-    const imgTagRegex = /<img\s+[^>]*src=["'][^"']*["'][^>]*>/gi;
     let localImgIndex = 0;
-    let localMatch: RegExpExecArray | null;
-    while ((localMatch = imgTagRegex.exec(inputText)) !== null) {
-      localImageMap[`__IMG_${localImgIndex}__`] = localMatch[0];
+    const contentStripped = inputText.replace(/<img\s[^>]*>/gi, (match) => {
+      const key = `__IMG_${localImgIndex}__`;
+      localImageMap[key] = match;
       localImgIndex++;
-    }
+      return key;
+    });
     if (localImgIndex > 0) {
       setImageMap(localImageMap);
+      console.log(`[CLIENT_STRIP] Replaced ${localImgIndex} images; payload: ${(inputText.length / 1024).toFixed(0)}KB → ${(contentStripped.length / 1024).toFixed(0)}KB`);
     }
+
+    // 2. 清理 Word TOC 超链接行（<p><a href="#_Toc...">...</a></p>）
+    //    目录条目会被 mammoth 转成带 href 的 <a> 段落，AI 收到后可能误当正文格式化。
+    // 3. 清理 Word 内部锚点（<a id="_Hlk..."></a>、<a id="_Toc..."></a>）
+    const contentForBackend = contentStripped
+      .replace(/<p[^>]*>\s*<a\s+href="#_Toc[^"]*"[^>]*>[\s\S]*?<\/a>\s*<\/p>/gi, '')
+      .replace(/<a\s+id="[^"]*"[^>]*><\/a>/gi, '');
 
     setShouldAutoScroll(true); // 每次新生成重置自动滚动
     textBufferRef.current = '';
@@ -332,7 +343,7 @@ function Home() {
     try {
       await generateDocumentViaBackend(
         {
-          content: inputText,
+          content: contentForBackend,
           preset: selectedPreset,
           fileName: inputFileName,
           styleConfig: activeStyle,
@@ -784,10 +795,12 @@ function Home() {
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                </svg>
+                  <img
+                    src={systemLogo}
+                    alt="DocFlow AI"
+                    className="w-6 h-6 object-contain invert brightness-200"
+                    draggable={false}
+                  />
               </div>
               <span className="text-lg font-semibold text-gray-900">DocFlow AI</span>
             </div>

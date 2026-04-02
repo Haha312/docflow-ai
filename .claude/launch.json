@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "docx-analyzer",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["docx-server.js"],
+      "port": 7788
+    }
+  ]
+}
