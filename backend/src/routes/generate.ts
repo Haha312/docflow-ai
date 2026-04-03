@@ -323,18 +323,20 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
       3. **APPLY NUMBERING SCHEME**:
          - ${numberingRules}
-         - **NO DOUBLE-NUMBERING (CRITICAL)**:
-             - Before adding any number prefix to a heading, CHECK whether the heading text already begins with a numbering pattern.
-             - Patterns that count as "already numbered":
-               - Chinese ordinal: "一、", "二、", "三、", "四、", "五、", "六、", "七、", "八、", "九、", "十" (followed by 、)
-               - Chinese chapter: "第一章", "第二章", "第一节", etc.
-               - Arabic decimal: leading digits like "1.", "2.", "1.1", "2.3.1", etc.
-               - Parenthesized: "(一)", "(二)", "(1)", "(2)", etc.
-             - **If the heading text ALREADY starts with any of the above**, do NOT prepend another number. Output the heading with its ORIGINAL text exactly as-is (inside the appropriate \`<hN>\` tag).
-             - **ONLY add a number prefix when the heading text has NO existing numbering**.
-            - Example (WRONG): Input heading "一、核心原理" → Output \`<h1>1. 一、核心原理</h1>\` ← FORBIDDEN, this adds "1." to text that already has "一、".
-            - Example (CORRECT): Input heading "一、核心原理" → Output \`<h1>一、核心原理</h1>\` ← keep original.
-            - Example (CORRECT): Input heading "核心原理" (no existing number) → Output \`<h1>1. 核心原理</h1>\` ← add number.
+         - **STRIP OLD NUMBERING, APPLY TEMPLATE (CRITICAL)**:
+             - The user has chosen a numbering template (e.g. decimal: 1. / 1.1 / 1.1.1). This template is the SINGLE source of truth for all heading numbers in the output.
+             - Before tagging a heading, STRIP any pre-existing numbering prefix from the heading text, then apply the configured numbering scheme.
+             - Prefixes to strip (remove entirely from heading text):
+               - Chinese ordinal: "一、", "二、", "三、", ... "十、" and multi-character like "十一、"
+               - Chinese chapter/section: "第一章", "第二章", "第一节", "第二节", etc.
+               - Arabic decimal: "1.", "2.", "1.1", "1.1.1", "3.4.4.", etc. (leading digits + dots)
+               - Parenthesized ASCII: "(1)", "(2)", "(一)", "(二)", etc.
+               - Parenthesized full-width: "（1）", "（2）", "（一）", "（二）", etc.
+             - After stripping, apply the template number, then output the clean heading text.
+             - Example: Input "一、核心原理" with decimal template → strip "一、" → apply "2." → Output \`<h2>2. 核心原理</h2>\`
+             - Example: Input "（1）误差方程" with decimal template → strip "（1）" → apply "3.4.1" → Output \`<h4>3.4.1 误差方程</h4>\`
+             - Example: Input "核心原理" (no prefix) → apply "1." → Output \`<h2>1. 核心原理</h2>\`
+             - **NEVER output both the original numbering prefix AND the template number** — the result must have exactly one number prefix from the template.
          - **WORD AUTO-NUMBERING BUG FIX (CRITICAL)**:
              - Microsoft Word stores auto-numbering separately from the paragraph text. After conversion to HTML, list numbering information is LOST. The result is that every ordered-list item appears as "1." in the browser. YOU must detect and fix these patterns.
              - **INPUT IS HTML — DETECT BY TAG STRUCTURE, NOT PLAINTEXT "1."**:
@@ -347,9 +349,11 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                **HTML shape** (what you actually receive): \`<ol><li>TopicA</li></ol><p>body text...</p><ol><li>TopicB</li></ol><p>body text...</p><ol><li>TopicC</li></ol>\`
                **DETECTION (HTML-only)**: Two or more \`<ol>\` elements where **each** contains **exactly one** \`<li>\`, with \`<p>\`, \`<table>\`, \`<div>\`, or other **non-list** elements between those \`<ol>\` blocks. Do **not** require a leading \`1.\` in the \`<li>\` text — the bug is visible from tags alone.
                These are SEQUENTIAL SECTION HEADINGS — NOT true lists. Word's auto-numbering was lost, so the browser shows every item as "1.".
-               **Fix**: Convert EACH single-item \`<ol><li>text</li></ol>\` block to an appropriate heading tag (\`<h2>\`, \`<h3>\`, \`<h4>\` — match the level indicated by context and surrounding headings). Assign **sequential** numbers using the configured numbering scheme in the **heading text** (e.g. \`1.\`, \`2.\`).
-               **Example (HTML in → HTML out)**: \`<ol><li>TopicA</li></ol><p>body</p><ol><li>TopicB</li></ol>\` → \`<h2>1. TopicA</h2><p>body</p><h2>2. TopicB</h2>\`
-               FORBIDDEN: Keeping them as \`<ol>\` elements. FORBIDDEN: Numbering all as "1.".
+               **Fix**: Convert EACH single-item \`<ol><li>text</li></ol>\` block to an appropriate heading tag (\`<h2>\`, \`<h3>\`, \`<h4>\` — match the level indicated by context and surrounding headings).
+               **Strip old prefix, apply template number**: If the \`<li>\` text starts with an old numbering prefix (Chinese ordinal like "一、", "二、"; parenthesized like "(1)", "（1）"; Arabic like "1.", "2."), STRIP that prefix first, then assign the sequential template number.
+               - Example: \`<ol><li>一、TopicA</li></ol><p>body</p><ol><li>二、TopicB</li></ol>\` → strip "一、"/"二、" → \`<h2>1. TopicA</h2><p>body</p><h2>2. TopicB</h2>\`
+               - Example (no prefix): \`<ol><li>TopicA</li></ol><p>body</p><ol><li>TopicB</li></ol>\` → \`<h2>1. TopicA</h2><p>body</p><h2>2. TopicB</h2>\`
+               FORBIDDEN: Keeping them as \`<ol>\` elements. FORBIDDEN: Numbering all as "1.". FORBIDDEN: Keeping old prefix AND adding template number (e.g. "2. 二、TopicB").
              - **UNIVERSAL RULE**: Within any given parent section, you MUST NEVER output N headings or items of the same level ALL labeled "1." when they are clearly a sequence. Count them and assign 1, 2, 3, ..., N.
              - FORBIDDEN: Multiple headings/items at the same level all labeled "1." when they belong to the same sequential section.
          - **LISTS (CRITICAL)**:

@@ -752,9 +752,9 @@ function Home() {
       /* Format Defenses: Protect alignments and lists from global text-indent / margin logic */
       #preview-content [style*="text-align: center"], #preview-content [style*="text-align: right"], #preview-content [align="center"], #preview-content [align="right"], #preview-content center { text-indent: 0 !important; }
       #preview-content [style*="text-align: justify"], #preview-content [align="justify"] { text-align: justify !important; }
-      #preview-content ul { list-style-type: disc; padding-left: 2.5em; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; }
-      #preview-content ol { list-style-type: decimal; padding-left: 2.5em; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; }
-      #preview-content li { margin-bottom: 0.5em; }
+      #preview-content ul { list-style-type: disc; list-style-position: inside; padding-left: 2em; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; }
+      #preview-content ol { list-style-type: decimal; list-style-position: inside; padding-left: 2em; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; }
+      #preview-content li { margin-bottom: 0.5em; text-indent: 0; }
       #preview-content li p, #preview-content li div { margin: 0; text-indent: 0 !important; }
       #preview-content b, #preview-content strong { font-weight: bold; }
       #preview-content i, #preview-content em { font-style: italic; }
@@ -829,8 +829,8 @@ function Home() {
         </div>
       </header>
 
-      <main className="w-full px-4 md:px-6 lg:px-8 py-4 md:py-6">
-        <div ref={workspaceRef} className="flex flex-col md:flex-row gap-4 md:gap-6 h-auto md:h-[calc(100vh-100px)]">
+      <main className="w-full px-4 md:px-6 lg:px-8 pt-4 md:pt-6 pb-0">
+        <div ref={workspaceRef} className="flex flex-col md:flex-row gap-4 md:gap-6 h-auto md:h-[calc(100vh-88px)]">
 
           {/* Left Panel */}
           <div

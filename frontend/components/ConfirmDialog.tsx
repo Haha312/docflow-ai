@@ -12,6 +12,30 @@ interface ConfirmDialogProps {
     variant?: 'danger' | 'warning' | 'info';
 }
 
+const WarningIcon = ({ className }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+);
+
+const DangerIcon = ({ className }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="15" y1="9" x2="9" y2="15" />
+        <line x1="9" y1="9" x2="15" y2="15" />
+    </svg>
+);
+
+const InfoIcon = ({ className }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+);
+
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     isOpen,
     title,
@@ -30,65 +54,66 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
     const variantStyles = {
         danger: {
-            icon: '⚠️',
-            iconBg: 'bg-red-500/10',
+            Icon: DangerIcon,
+            iconBg: 'bg-red-50',
             iconColor: 'text-red-500',
-            confirmBtn: 'bg-red-500 hover:bg-red-600 focus:ring-red-500/50'
+            confirmBtn: 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-100 hover:shadow-red-200'
         },
         warning: {
-            icon: '⚠️',
-            iconBg: 'bg-amber-500/10',
+            Icon: WarningIcon,
+            iconBg: 'bg-amber-50',
             iconColor: 'text-amber-500',
-            confirmBtn: 'bg-amber-500 hover:bg-amber-600 focus:ring-amber-500/50'
+            confirmBtn: 'bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-100 hover:shadow-amber-200'
         },
         info: {
-            icon: 'ℹ️',
-            iconBg: 'bg-blue-500/10',
+            Icon: InfoIcon,
+            iconBg: 'bg-blue-50',
             iconColor: 'text-blue-500',
-            confirmBtn: 'bg-blue-500 hover:bg-blue-600 focus:ring-blue-500/50'
+            confirmBtn: 'bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100 hover:shadow-blue-200'
         }
     };
 
     const style = variantStyles[variant];
+    const { Icon } = style;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center animate-in fade-in duration-200">
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
                 onClick={onCancel}
             />
 
             {/* Dialog */}
-            <div className="relative bg-white border border-gray-200 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
-                {/* Header with Icon */}
-                <div className="flex items-start gap-4 p-6 pb-4">
-                    <div className={`flex-shrink-0 w-12 h-12 rounded-xl ${style.iconBg} flex items-center justify-center text-2xl`}>
-                        {style.icon}
+            <div className="relative bg-white rounded-3xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden animate-in zoom-in-95 fade-in duration-200">
+                {/* Body */}
+                <div className="flex items-start gap-4 px-6 pt-6 pb-4">
+                    <div className={`flex-shrink-0 w-11 h-11 rounded-2xl ${style.iconBg} flex items-center justify-center`}>
+                        <Icon className={`w-5 h-5 ${style.iconColor}`} />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 pt-0.5">
                         {title && (
-                            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                            <h3 className="text-base font-bold text-gray-900 mb-1 tracking-tight">
                                 {title}
                             </h3>
                         )}
-                        <p className="text-sm text-gray-600 leading-relaxed">
+                        <p className="text-sm text-gray-500 leading-relaxed">
                             {message}
                         </p>
                     </div>
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-3 px-6 pb-6 pt-2">
+                <div className="flex items-center gap-3 px-6 pb-6 pt-3">
                     <button
                         onClick={onCancel}
-                        className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-300"
+                        className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all duration-200 active:scale-[0.98]"
                     >
                         {finalCancelText}
                     </button>
                     <button
                         onClick={onConfirm}
-                        className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white ${style.confirmBtn} transition-all duration-200 focus:outline-none focus:ring-2 shadow-lg`}
+                        className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-white ${style.confirmBtn} transition-all duration-200 active:scale-[0.98]`}
                     >
                         {finalConfirmText}
                     </button>
