@@ -70,7 +70,6 @@ function Home() {
     progressStep: '',
     progress: 0
   });
-  const [isCopied, setIsCopied] = useState(false);
 
   const [showPRD, setShowPRD] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'preview'>('preview');
@@ -487,19 +486,6 @@ function Home() {
     }
   };
 
-  const handleCopyOutput = async () => {
-    if (!outputText) return;
-    try {
-      const plainText = isContentEdited && previewContentRef.current
-        ? previewContentRef.current.innerText.trim()
-        : outputText.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-      await navigator.clipboard.writeText(plainText);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    } catch (e) {
-      console.error('Copy failed', e);
-    }
-  };
 
   // Rich editor: update TOC from DOM after user edits
   const updateTocFromDom = useCallback(() => {
@@ -1114,28 +1100,6 @@ function Home() {
                 {outputText && !aiState.isThinking && (
                   <>
                     <button
-                      onClick={handleCopyOutput}
-                      className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-white border border-gray-200 rounded-xl hover:border-gray-300 hover:bg-gray-50 transition-all"
-                      title={t('home.copy_output', '复制内容')}
-                    >
-                      {isCopied ? (
-                        <>
-                          <svg className="w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                          <span className="text-green-600 font-medium">{t('home.copied', '已复制 ✓')}</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                          </svg>
-                          <span>{t('home.copy_output', '复制内容')}</span>
-                        </>
-                      )}
-                    </button>
-                    <button
                       onClick={() => { handleDownload(); setDownloadHighlight(false); }}
                       className={`flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all shadow-sm ${downloadHighlight ? 'ring-2 ring-offset-2 ring-green-400 scale-105' : 'ring-0 scale-100'}`}
                     >
@@ -1312,7 +1276,7 @@ function Home() {
 
                   {/* Preview container (original) */}
                   <div
-                    className={`flex-1 overflow-auto ${viewMode === 'preview' ? 'bg-[#f0f0f0] p-6' : 'bg-white p-8'}`}
+                    className={`flex-1 overflow-auto ${viewMode === 'preview' ? 'bg-[#f0f0f0] pt-6 px-6 pb-2' : 'bg-white p-8'}`}
                     ref={previewContainerRef}
                     onScroll={handlePreviewScroll}
                   >
@@ -1330,7 +1294,7 @@ function Home() {
 
                             
                             <div
-                              className="mx-auto bg-white border border-gray-200 mb-6 relative shadow-sm flex flex-col"
+                              className="mx-auto bg-white border border-gray-200 mb-2 relative shadow-sm flex flex-col"
                               style={{ maxWidth: '794px', width: '100%', minHeight: '1123px', padding: '80px 90px 40px' }}
                             >
                               <div
