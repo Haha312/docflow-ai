@@ -6,6 +6,13 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["docx-server.js"],
       "port": 7788
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "frontend",
+      "port": 5173
     }
   ]
 }

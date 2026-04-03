@@ -39,6 +39,38 @@ const calcTailHeadOverlap = (a: string, b: string, maxWindow = 2200): number => 
     return 0;
 };
 
+/**
+ * Post-processing safety net: re-insert any __IMG_N__ placeholders that the AI dropped.
+ * Strategy: for each <div class="figure-caption"> in the output that has no placeholder
+ * within the preceding 500 chars, prepend the next missing placeholder from the input.
+ * This ensures captions always have their image, even when the AI omits the placeholder.
+ */
+const reinjectMissingPlaceholders = (chunkInput: string, chunkOutput: string): string => {
+    const inputPlaceholders = [...chunkInput.matchAll(/__IMG_(\d+)__/g)].map(m => m[0]);
+    if (inputPlaceholders.length === 0) return chunkOutput;
+
+    const outputHasPlaceholder = new Set([...chunkOutput.matchAll(/__IMG_(\d+)__/g)].map(m => m[0]));
+    const missing = inputPlaceholders.filter(p => !outputHasPlaceholder.has(p));
+    if (missing.length === 0) return chunkOutput;
+
+    console.log(`[IMG_REINJECT] ${missing.length} missing placeholder(s): ${missing.join(', ')}`);
+
+    let missingIdx = 0;
+    // Walk through output, inserting missing placeholders before orphaned figure captions
+    const result = chunkOutput.replace(/(<div\s+class="figure-caption")/gi, (match, _tag, offset) => {
+        if (missingIdx >= missing.length) return match;
+        // Check if there's already a placeholder in the 500 chars before this caption
+        const preceding = chunkOutput.slice(Math.max(0, offset - 500), offset);
+        if (/__IMG_\d+__/.test(preceding)) return match; // caption already has an image nearby
+        // Inject the next missing placeholder immediately before this caption
+        const placeholder = missing[missingIdx++];
+        console.log(`[IMG_REINJECT] Inserting ${placeholder} before figure-caption at offset ${offset}`);
+        return `${placeholder}\n${match}`;
+    });
+
+    return result;
+};
+
 /** Extract last N heading texts (with numbers) from HTML output for continuation context. */
 const extractLastHeadings = (html: string, n: number = 5): string => {
     const matches = [...html.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi)];
@@ -291,6 +323,18 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
       3. **APPLY NUMBERING SCHEME**:
          - ${numberingRules}
+         - **NO DOUBLE-NUMBERING (CRITICAL)**:
+             - Before adding any number prefix to a heading, CHECK whether the heading text already begins with a numbering pattern.
+             - Patterns that count as "already numbered":
+               - Chinese ordinal: "一、", "二、", "三、", "四、", "五、", "六、", "七、", "八、", "九、", "十" (followed by 、)
+               - Chinese chapter: "第一章", "第二章", "第一节", etc.
+               - Arabic decimal: leading digits like "1.", "2.", "1.1", "2.3.1", etc.
+               - Parenthesized: "(一)", "(二)", "(1)", "(2)", etc.
+             - **If the heading text ALREADY starts with any of the above**, do NOT prepend another number. Output the heading with its ORIGINAL text exactly as-is (inside the appropriate \`<hN>\` tag).
+             - **ONLY add a number prefix when the heading text has NO existing numbering**.
+            - Example (WRONG): Input heading "一、核心原理" → Output \`<h1>1. 一、核心原理</h1>\` ← FORBIDDEN, this adds "1." to text that already has "一、".
+            - Example (CORRECT): Input heading "一、核心原理" → Output \`<h1>一、核心原理</h1>\` ← keep original.
+            - Example (CORRECT): Input heading "核心原理" (no existing number) → Output \`<h1>1. 核心原理</h1>\` ← add number.
          - **WORD AUTO-NUMBERING BUG FIX (CRITICAL)**:
              - Microsoft Word stores auto-numbering separately from the paragraph text. After conversion to HTML, list numbering information is LOST. The result is that every ordered-list item appears as "1." in the browser. YOU must detect and fix these patterns.
              - **INPUT IS HTML — DETECT BY TAG STRUCTURE, NOT PLAINTEXT "1."**:
@@ -358,12 +402,21 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
              - Do NOT turn "vx, vy:" into bullet points.
 
        6. **IMAGES & FIGURES (CRITICAL)**:
-         - **MANDATORY**: Generate a FIGURE CAPTION for EVERY image based on context.
-         - Position: **IMMEDIATELY BELOW** the image.
-         - Format: \`<div class="figure-caption">图{N} {Description}</div>\`
-         - Example:
-           \`__IMG_0__\`
-           \`<div class="figure-caption">图1 系统架构示意图</div>\`
+         - **PRESERVE PLACEHOLDERS (ABSOLUTE RULE)**:
+           - Image placeholders look like \`__IMG_0__\`, \`__IMG_55__\`, \`__IMG_122__\`, etc.
+           - The NUMBER inside is a **fixed unique ID assigned before you were called** — it is NOT a sequence counter.
+           - You MUST copy each placeholder **character-for-character, digit-for-digit** exactly as it appears in your input.
+           - **FORBIDDEN**: Changing \`__IMG_55__\` to \`__IMG_1__\`, \`__IMG_56__\`, or any other number.
+           - **FORBIDDEN**: Inventing placeholder numbers that were not in your input.
+           - **FORBIDDEN**: Placing placeholders inside \`<h1>\`–\`<h6>\` tags.
+           - If an image placeholder is in your input, it MUST appear in your output at the same relative position.
+         - **MANDATORY PAIRING**: Every \`__IMG_N__\` placeholder MUST appear in your output, and it MUST be followed IMMEDIATELY by a figure caption.
+         - Format:
+           \`__IMG_55__\`
+           \`<div class="figure-caption">图3 系统架构示意图</div>\`
+         - **NEVER** output a \`<div class="figure-caption">\` without its \`__IMG_N__\` placeholder directly above it.
+         - **NEVER** output a \`__IMG_N__\` without a \`<div class="figure-caption">\` directly below it.
+         - If you are unsure of the figure description, use a generic one like "示意图" — but you MUST keep the placeholder.
 
        7. **TABLES (CRITICAL)**:
           - **MANDATORY**: Generate a TABLE TITLE for EVERY table.
@@ -469,6 +522,47 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             console.log(`[FORMULA_DATA] Extracted ${formulaDataContext.length} chars — will inject into all ${Math.ceil(contentForChunking.length / 12000)} chunks`);
         }
 
+        // 1b-3. Heading level normalization: if the document has no H1 anywhere
+        //        (neither in the HTML nor in preComputedHeadings), promote the
+        //        highest heading level present to H1.
+        //        This prevents "0.0.x" numbering when a Word doc uses H3/H4 as its
+        //        top-level heading style.
+        {
+            const hasH1Html        = /<h1\b/i.test(contentForChunking);
+            const hasH1PreComputed = preComputedHeadings.some(h => h.level === 1);
+            if (!hasH1Html && !hasH1PreComputed) {
+                const htmlLevels = [...contentForChunking.matchAll(/<h([1-6])\b/gi)].map(m => parseInt(m[1]));
+                const pcLevels   = preComputedHeadings.map(h => h.level);
+                const allLevels  = [...htmlLevels, ...pcLevels];
+                if (allLevels.length > 0) {
+                    const minLevel = Math.min(...allLevels);
+                    if (minLevel > 1) {
+                        const shift = minLevel - 1;
+                        console.log(`[LEVEL_NORM] No H1 — shifting all heading levels by -${shift} (H${minLevel}→H1)`);
+                        // Single-pass replacement to avoid double-substitution.
+                        // e.g. H3/H4/H5 with shift=2: H3→H1, H4→H2, H5→H3 in one pass.
+                        contentForChunking = contentForChunking.replace(
+                            /<(\/?)h([1-6])(\b[^>]*)?>/gi,
+                            (_m, slash, lvlStr, attrs) => {
+                                const lvl = parseInt(lvlStr);
+                                if (lvl < minLevel) return _m; // already above minLevel, shouldn't occur
+                                const newLvl = Math.max(1, lvl - shift);
+                                return `<${slash}h${newLvl}${attrs ?? ''}>`;
+                            }
+                        );
+                        // Also normalize preComputedHeadings so the structure map is consistent
+                        if (preComputedHeadings.length > 0) {
+                            preComputedHeadings = preComputedHeadings.map(h => ({
+                                ...h,
+                                level: Math.max(1, h.level - shift)
+                            }));
+                            console.log(`[LEVEL_NORM] Also shifted ${preComputedHeadings.length} pre-computed headings`);
+                        }
+                    }
+                }
+            }
+        }
+
         // 1c. Build document structure block for the system prompt.
         //     Priority: pre-computed headings from XML (exact) > HTML heading tags (approximate).
         let docStructureBlock = '';
@@ -557,6 +651,10 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         let lastContext = '';
         /** Cumulative count of opening `<h1>` tags (chapter-level only) emitted so far. */
         let cumulativeH1BeforePart = 0;
+        /** Cumulative figure caption count across all completed chunks (for 图N numbering). */
+        let cumulativeFigureCount = 0;
+        /** Cumulative table caption count across all completed chunks (for 表N numbering). */
+        let cumulativeTableCount = 0;
         /**
          * Cumulative heading counter state across all completed chunks.
          * Maps heading level (1-6) → last formatted heading text at that level.
@@ -669,6 +767,16 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 - **NEW PARENT**: Entering a new H2 (e.g. "2.3 …") resets the H3 counter to "2.3.1".
                 - **FLAT NUMBERING**: If the scheme uses flat numbers (e.g. "5. Foo"), next is "6. Bar".
                 - NEVER drop digits from a hierarchical number ("2.2.5" → next is "2.2.6", not "6.").
+
+                **FIGURE & TABLE NUMBERING CONTINUATION**:
+                - Completed parts before this one contain **${cumulativeFigureCount}** figure caption(s) and **${cumulativeTableCount}** table caption(s).
+                - Your NEXT figure caption must be 图${cumulativeFigureCount + 1}, next table caption must be 表${cumulativeTableCount + 1}.
+                - Do NOT restart figure or table numbering at 1.
+
+                **IMAGE PLACEHOLDER RULE (ABSOLUTE)**:
+                - Placeholders like \`__IMG_55__\` appear in your input. The number is a FIXED UNIQUE ID — copy it verbatim.
+                - FORBIDDEN: Changing any digit in a placeholder. Output \`__IMG_55__\` as \`__IMG_55__\`, never as \`__IMG_56__\` or \`__IMG_1__\`.
+                - FORBIDDEN: Inventing placeholder numbers not present in your input.
 
                 **RULES**:
                 1. Your FIRST line of output must be the formatted version of "${chunkFirstHeading}".
@@ -818,6 +926,8 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 let cleanChunk = cleanOutput(chunkOutput);
                 // Truncate any hallucination loop that slipped through during main generation
                 cleanChunk = truncateAtRepetitionLoop(cleanChunk);
+                // Re-insert any __IMG_N__ placeholders the AI dropped (safety net)
+                cleanChunk = reinjectMissingPlaceholders(chunkContent, cleanChunk);
                 lastContext = cleanChunk.replace(/<[^>]+>/g, ' ');
 
                 // Count only chapter-level H1s — exclude <h1 class="doc-title"> (document titles are not chapters)
@@ -837,6 +947,10 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 // Update lastHeadingsState with the numbered heading chain from this chunk's output
                 lastHeadingsState = extractLastHeadings(cleanChunk, 5);
                 if (lastHeadingsState) console.log(`[LAST_HEADINGS] after chunk ${i + 1}: ${lastHeadingsState}`);
+                // Track cumulative figure / table caption counts for continuation numbering
+                cumulativeFigureCount += (cleanChunk.match(/<div\s+class="figure-caption"/gi) ?? []).length;
+                cumulativeTableCount  += (cleanChunk.match(/<div\s+class="table-caption"/gi)  ?? []).length;
+                console.log(`[CAPTION_STATE] after chunk ${i + 1}: figures=${cumulativeFigureCount} tables=${cumulativeTableCount}`);
 
                 // 还原图片
                 if (imageCount > 0) {

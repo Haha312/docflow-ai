@@ -219,8 +219,8 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
   };
 
   const userLevel = user ? getTierLevel(user.subscriptionStatus) : 0;
-  // Filter out tiers that are lower than the user's current tier
-  const tiers = allTiers.filter(t => getTierLevel(t) >= userLevel);
+  // Show all tiers; lower tiers are visually disabled
+  const tiers = allTiers;
 
   // getPrice helper - always returns CNY
   const getPrice = (tier: Tier) => {
@@ -489,11 +489,21 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                   const price = getPrice(tier);
                   const isUltra = tier === 'ultra';
                   const isPro = tier === 'pro';
+                  const isCurrentPlanTier = user?.subscriptionStatus?.toLowerCase() === tier;
+                  const isDowngrade = getTierLevel(tier) < userLevel;
+
+                  const cardBorder = isCurrentPlanTier
+                    ? isUltra
+                      ? 'border-purple-300 ring-2 ring-purple-100'
+                      : isPro
+                        ? 'border-blue-300 ring-2 ring-blue-100'
+                        : 'border-gray-300 ring-2 ring-gray-100'
+                    : 'border-gray-100';
 
                   return (
                     <div
                       key={tier}
-                      className={`relative flex flex-col rounded-[2rem] p-6 transition-all duration-300 bg-white border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:-translate-y-1 w-full md:w-[320px] md:flex-1 md:max-w-[340px]`}
+                      className={`relative flex flex-col rounded-[2rem] p-6 transition-all duration-300 bg-white border ${cardBorder} ${isDowngrade ? 'opacity-60 pointer-events-none' : 'hover:border-blue-200 hover:shadow-lg hover:-translate-y-1'} w-full md:w-[320px] md:flex-1 md:max-w-[340px]`}
                     >
                       {(isPro || isUltra) && (
                         <div className={`absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 ${isUltra ? 'bg-purple-600' : 'bg-blue-600'} text-white text-xs font-bold tracking-wide uppercase rounded-full shadow-sm`}>
@@ -543,7 +553,17 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                       </ul>
 
                       {(() => {
-                        const isCurrentPlan = user?.subscriptionStatus?.toLowerCase() === tier;
+                        if (isDowngrade) {
+                          return (
+                            <button
+                              disabled
+                              className="mt-6 w-full py-3.5 rounded-xl text-sm font-bold bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                            >
+                              已有更高方案
+                            </button>
+                          );
+                        }
+                        const isCurrentPlan = isCurrentPlanTier;
                         if (isCurrentPlan) {
                           // Allow upgrade to yearly if viewing yearly tab
                           if (billingCycle === 'yearly') {
