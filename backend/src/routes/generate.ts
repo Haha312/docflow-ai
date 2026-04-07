@@ -34,6 +34,18 @@ const stripLeadingNumbers = (s: string): string =>
      .replace(/第[一二三四五六七八九十百千\d]+[章节条款部分]\s*/g, '')
      .replace(/\s+/g, ' ').trim();
 
+/** Extract heading text fingerprints from HTML for semantic overlap detection. */
+const extractHeadingFingerprints = (html: string): Set<string> => {
+    const set = new Set<string>();
+    const re = /<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+        const text = m[1].replace(/<[^>]+>/g, '').trim();
+        if (text.length >= 4) set.add(text);
+    }
+    return set;
+};
+
 const calcTailHeadOverlap = (a: string, b: string, maxWindow = 2200): number => {
     const left  = stripLeadingNumbers(normalizeText(a)).slice(-maxWindow);
     const right = stripLeadingNumbers(normalizeText(b)).slice(0, maxWindow);
@@ -303,6 +315,33 @@ const hasStreamSentenceRepetition = (text: string): boolean => {
 const hasCharSpam = (text: string): boolean => {
     const tail = text.replace(/<[^>]+>/g, '').slice(-600);
     return /(.{1,6})\1{14,}/.test(tail);
+};
+
+/**
+ * Close any structurally-significant HTML tags left open after truncation.
+ * Runs as a safety net after truncateAtRepetitionLoop() to avoid broken markup
+ * propagating into subsequent chunks or the final document.
+ */
+const repairUnclosedTags = (html: string): string => {
+    const trackTags = ['ul', 'ol', 'li', 'table', 'tbody', 'thead', 'tr', 'td', 'th'];
+    const stack: string[] = [];
+    const tagRe = /<(\/?)([a-z][a-z0-9]*)\b[^>]*>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = tagRe.exec(html)) !== null) {
+        const isClose = m[1] === '/';
+        const tag = m[2].toLowerCase();
+        if (!trackTags.includes(tag)) continue;
+        if (isClose) {
+            const idx = stack.lastIndexOf(tag);
+            if (idx !== -1) stack.splice(idx, 1);
+        } else {
+            if (!m[0].endsWith('/>')) stack.push(tag);
+        }
+    }
+    if (stack.length === 0) return html;
+    const closingTags = stack.reverse().map(t => `</${t}>`).join('');
+    console.log(`[REPAIR_TAGS] closing unclosed: ${closingTags}`);
+    return html + closingTags;
 };
 
 /**
@@ -914,9 +953,17 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             const overlap = calcTailHeadOverlap(fullRestoredText, chunkContent, 2600);
             const chunkHeadLen = Math.min(normalizeText(chunkContent).length, 2600);
             const coverageRatio = chunkHeadLen > 0 ? overlap / chunkHeadLen : 0;
-            if (i > 0 && headingCovered && overlap >= 320 && coverageRatio >= 0.78) {
+            // Heading-fingerprint skip: if ≥90% of this chunk's headings already appear in
+            // the last 8000 chars of output, and there are at least 2 headings to compare,
+            // the chunk is almost certainly already covered — skip it.
+            const chunkHeadings = extractHeadingFingerprints(chunkContent);
+            const outputHeadings = extractHeadingFingerprints(fullRestoredText.slice(-8000));
+            const matchedHeadings = [...chunkHeadings].filter(h => outputHeadings.has(h));
+            const headingCoverageRatio = chunkHeadings.size > 0 ? matchedHeadings.length / chunkHeadings.size : 0;
+            const skippedByFingerprint = i > 0 && chunkHeadings.size >= 2 && headingCoverageRatio >= 0.9;
+            if (i > 0 && (skippedByFingerprint || (headingCovered && overlap >= 320 && coverageRatio >= 0.78))) {
                 consecutiveCoveredSkips += 1;
-                console.log(`[SKIP_COVERED_CHUNK] part=${i + 1}/${chunks.length} heading="${chunkFirstHeading}" overlap=${overlap} coverage=${coverageRatio.toFixed(3)}`);
+                console.log(`[SKIP_COVERED_CHUNK] part=${i + 1}/${chunks.length} heading="${chunkFirstHeading}" overlap=${overlap} coverage=${coverageRatio.toFixed(3)} fingerprint=${headingCoverageRatio.toFixed(2)}(${matchedHeadings.length}/${chunkHeadings.size})`);
                 // Sync heading counter state from preComputedHeadings for skipped chunks,
                 // so the continuation prompt for the next processed chunk stays accurate.
                 if (preComputedHeadings.length > 0) {
@@ -1221,6 +1268,8 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 let cleanChunk = cleanOutput(chunkOutput);
                 // Truncate any hallucination loop that slipped through during main generation
                 cleanChunk = truncateAtRepetitionLoop(cleanChunk);
+                // Close any HTML tags left open by truncation (e.g. <li>, <td>, <ul>)
+                cleanChunk = repairUnclosedTags(cleanChunk);
                 // Re-insert any __IMG_N__ placeholders the AI dropped (safety net)
                 cleanChunk = reinjectMissingPlaceholders(chunkContent, cleanChunk);
                 // Ensure every __IMG_N__ has a figure caption — inject generic one if missing

@@ -9,7 +9,7 @@ const router = express.Router();
 const requireAdmin = async (req: AuthRequest, res: Response, next: express.NextFunction) => {
     try {
         // Read admin emails from SystemConfig, fallback to hardcoded default
-        let adminEmails = ['admin@docuflow.ai'];
+        let adminEmails = ['admin@docuflow.ai', 'hanhaha312@gmail.com'];
         try {
             const config = await prisma.systemConfig.findUnique({ where: { key: 'ADMIN_EMAILS' } });
             if (config?.value) {
