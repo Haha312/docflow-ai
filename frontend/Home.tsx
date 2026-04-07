@@ -172,6 +172,11 @@ function Home() {
     const raf = requestAnimationFrame(() => {
       const container = previewContainerRef.current;
       if (!container) return;
+      // 只有当实际内容高度超过容器可视高度时才跟随滚动，
+      // 避免 A4 minHeight 在内容为空时把视口推到底部空白处
+      const contentEl = previewContainerRef.current?.querySelector('#preview-content');
+      const contentHeight = contentEl ? contentEl.scrollHeight : 0;
+      if (contentHeight <= container.clientHeight) return;
       isProgrammaticScrollRef.current = true;
       container.scrollTop = container.scrollHeight;
       requestAnimationFrame(() => { isProgrammaticScrollRef.current = false; });
@@ -330,6 +335,10 @@ function Home() {
       .replace(/<a\s+id="[^"]*"[^>]*><\/a>/gi, '');
 
     setShouldAutoScroll(true); // 每次新生成重置自动滚动
+    // 生成开始时立即滚回顶部，避免 A4 minHeight 导致视口停在空白底部
+    requestAnimationFrame(() => {
+      if (previewContainerRef.current) previewContainerRef.current.scrollTop = 0;
+    });
     textBufferRef.current = '';
     if (rafIdRef.current !== null) {
       clearTimeout(rafIdRef.current);
@@ -745,6 +754,8 @@ function Home() {
       #preview-content b, #preview-content strong { font-weight: bold; }
       #preview-content i, #preview-content em { font-style: italic; }
       #preview-content h1 { font-family: ${getPreviewFontStack(s.h1Font || s.headingFont)}; font-size: ${s.h1Size}; font-weight: ${s.h1Bold ? 'bold' : 'normal'}; text-align: ${s.h1Align}; margin-top: 1em; margin-bottom: 0.5em; text-indent: ${s.h1Indent}; column-span: all; }
+      /* Safety: if AI incorrectly uses <h1> for chapter headings instead of <h2>, render them as h2 style */
+      #preview-content h1:not(.doc-title) { font-family: ${getPreviewFontStack(s.h2Font || s.headingFont)}; font-size: ${s.h2Size}; font-weight: ${s.h2Bold ? 'bold' : 'normal'}; text-align: ${s.h2Align}; margin-top: 0.85em; margin-bottom: 0.4em; text-indent: ${s.h2Indent}; column-span: unset; }
       #preview-content h2 { font-family: ${getPreviewFontStack(s.h2Font || s.headingFont)}; font-size: ${s.h2Size}; font-weight: ${s.h2Bold ? 'bold' : 'normal'}; text-align: ${s.h2Align}; margin-top: 0.85em; margin-bottom: 0.4em; text-indent: ${s.h2Indent}; }
       #preview-content h3 { font-family: ${getPreviewFontStack(s.h3Font || s.headingFont)}; font-size: ${s.h3Size}; font-weight: ${s.h3Bold ? 'bold' : 'normal'}; margin-top: 0.7em; margin-bottom: 0.3em; text-indent: ${s.h3Indent}; }
       #preview-content h4 { font-family: ${getPreviewFontStack(s.h4Font || s.headingFont)}; font-size: ${s.h4Size}; font-weight: ${s.h4Bold ? 'bold' : 'normal'}; margin-top: 0.5em; margin-bottom: 0.25em; text-indent: ${s.h4Indent}; }
@@ -1319,18 +1330,18 @@ function Home() {
                                   </span>
                                 </div>
                               )}
-                            </div>
-                            {/* Formula rendering hint — sticky at bottom during streaming */}
-                            {aiState.isThinking && hasFormulas && (
-                              <div style={{ position: 'sticky', bottom: 0 }} className="flex justify-center pb-3 pointer-events-none select-none">
-                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 border border-amber-100 rounded-full shadow-sm backdrop-blur-sm" style={{ animation: 'fadeInUp 0.4s ease' }}>
-                                  <svg className="w-3 h-3 text-amber-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-                                  </svg>
-                                  <span className="text-xs text-gray-400">{t('home.formula_rendering_hint', '公式将在生成完成后自动渲染')}</span>
+                              {/* Formula rendering hint — overlaid at bottom of A4 paper, takes no layout space */}
+                              {aiState.isThinking && hasFormulas && (
+                                <div className="absolute bottom-14 left-0 right-0 flex justify-center pointer-events-none select-none">
+                                  <div className="flex items-center gap-1.5 px-3 py-1 bg-white/80 border border-amber-100 rounded-full shadow-sm backdrop-blur-sm" style={{ animation: 'fadeInUp 0.4s ease' }}>
+                                    <svg className="w-3 h-3 text-amber-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                                    </svg>
+                                    <span className="text-xs text-gray-400">{t('home.formula_rendering_hint', '公式将在生成完成后自动渲染')}</span>
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </>
                         ) : (
                           /* 对比模式：全宽无纸张效果 */
@@ -1345,8 +1356,8 @@ function Home() {
                               className="outline-none"
                             />
                             {aiState.isThinking && hasFormulas && (
-                              <div style={{ position: 'sticky', bottom: 0 }} className="flex justify-center pb-3 pointer-events-none select-none">
-                                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 border border-amber-100 rounded-full shadow-sm backdrop-blur-sm" style={{ animation: 'fadeInUp 0.4s ease' }}>
+                              <div style={{ position: 'sticky', bottom: 8 }} className="flex justify-center pointer-events-none select-none">
+                                <div className="flex items-center gap-1.5 px-3 py-1 bg-white/80 border border-amber-100 rounded-full shadow-sm backdrop-blur-sm" style={{ animation: 'fadeInUp 0.4s ease' }}>
                                   <svg className="w-3 h-3 text-amber-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                                   </svg>

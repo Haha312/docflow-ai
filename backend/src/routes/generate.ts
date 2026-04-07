@@ -19,7 +19,12 @@ type PreComputedHeading = { level: number; text: string; number: string };
 
 // Helper to clean Markdown code blocks from the output
 const cleanOutput = (text: string): string => {
-    return text.replace(/```html/g, '').replace(/```/g, '').trim();
+    let result = text.replace(/```html/g, '').replace(/```/g, '').trim();
+    // Remove consecutive duplicate block-level formula/paragraph elements
+    // e.g. <p>$\theta$</p><p>$\theta$</p> → <p>$\theta$</p>
+    // This handles Word OMML artifacts where the same symbol appears twice in a row.
+    result = result.replace(/(<(?:p|div)[^>]*>\s*(\$[^$\n]{1,60}\$|\$\$[\s\S]{1,200}?\$\$)\s*<\/(?:p|div)>)\s*\1/g, '$1');
+    return result;
 };
 
 const normalizeText = (s: string): string => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -57,7 +62,7 @@ const reinjectMissingPlaceholders = (chunkInput: string, chunkOutput: string): s
 
     let missingIdx = 0;
     // Walk through output, inserting missing placeholders before orphaned figure captions
-    const result = chunkOutput.replace(/(<div\s+class="figure-caption")/gi, (match, _tag, offset) => {
+    let result = chunkOutput.replace(/(<div\s+class="figure-caption")/gi, (match, _tag, offset) => {
         if (missingIdx >= missing.length) return match;
         // Check if there's already a placeholder in the 500 chars before this caption
         const preceding = chunkOutput.slice(Math.max(0, offset - 500), offset);
@@ -67,6 +72,14 @@ const reinjectMissingPlaceholders = (chunkInput: string, chunkOutput: string): s
         console.log(`[IMG_REINJECT] Inserting ${placeholder} before figure-caption at offset ${offset}`);
         return `${placeholder}\n${match}`;
     });
+
+    // Fallback: append any still-missing placeholders at the end of the chunk
+    // (happens when figure captions are also lost during hallucination)
+    while (missingIdx < missing.length) {
+        const placeholder = missing[missingIdx++];
+        console.log(`[IMG_REINJECT] Fallback: appending ${placeholder} at end of chunk`);
+        result += `\n<p>${placeholder}</p>`;
+    }
 
     return result;
 };
@@ -99,54 +112,255 @@ const extractDocumentHeadingMap = (html: string): { outline: string; levelMap: M
 };
 
 /**
- * Detect a hallucination loop in HTML output (same block repeating ≥3 times in a row)
- * and truncate to just before the loop started.
+ * Comprehensive hallucination loop detector.
+ * Checks 6 distinct repetition patterns and truncates just before the loop starts.
  * Returns the original string if no loop is found.
+ *
+ * Patterns detected:
+ *  1. Exact segment repetition       — same N-char block repeating ≥3×
+ *  2a. Prefix-mutation list          — (N)Cwakeee → (N+1)Cwakeeee → ...
+ *  2b. Same-body numbered list       — (31)X (32)X (33)X ... all identical body
+ *  3. Non-numbered sentence loop     — same complete sentence appearing ≥4×
+ *  4. Alternating pair loop          — A B A B A B A B (≥4 cycles)
+ *  5. Character / short-phrase spam  — "的的的的" / "xxxxxxxxxxx"
+ *  6. Empty block spam               — many consecutive blank <p>/<div> tags
  */
 const truncateAtRepetitionLoop = (html: string): string => {
     const plain = normalizeText(html);
-    if (plain.length < 450) return html;
+    if (plain.length < 200) return html;
 
-    const tailLen = Math.min(plain.length, 4000);
+    const tailLen = Math.min(plain.length, 5000);
     const tail = plain.slice(-tailLen);
 
-    for (let segLen = 120; segLen <= 450; segLen += 15) {
-        const candidate = tail.slice(-segLen).trim();
-        if (candidate.length < 80) continue;
+    const blockTags = ['</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>', '</p>', '</li>', '</div>'];
 
-        // Count consecutive backward repetitions
+    /** Find the best HTML cut point just before loopStartInPlain, return truncated string or null. */
+    const cutAt = (loopStartInPlain: number, extraSlack: number, reason: string): string | null => {
+        const ratio = loopStartInPlain / plain.length;
+        const searchUpTo = Math.min(html.length, Math.floor(html.length * ratio) + extraSlack);
+        const htmlBefore = html.slice(0, searchUpTo);
+        let bestCut = -1;
+        for (const tag of blockTags) {
+            const idx = htmlBefore.lastIndexOf(tag);
+            if (idx > bestCut) bestCut = idx + tag.length;
+        }
+        if (bestCut > html.length * 0.05) {
+            console.log(`[LOOP_TRUNCATED] ${reason}, cutting at ${bestCut}/${html.length}`);
+            return html.slice(0, bestCut);
+        }
+        return null;
+    };
+
+    // ── 1. Exact segment repetition ─────────────────────────────────────────
+    // Catches any block of 35–450 chars that repeats ≥3 times consecutively.
+    for (let segLen = 35; segLen <= 450; segLen += 15) {
+        const candidate = tail.slice(-segLen).trim();
+        if (candidate.length < 20) continue;
         let pos = tail.length - segLen;
         let repeats = 1;
         while (pos >= segLen) {
-            if (tail.slice(pos - segLen, pos).trim() === candidate) {
-                repeats++;
-                pos -= segLen;
-            } else {
-                break;
-            }
+            if (tail.slice(pos - segLen, pos).trim() === candidate) { repeats++; pos -= segLen; }
+            else break;
+        }
+        if (repeats >= 3) {
+            const result = cutAt(plain.length - tailLen + pos, segLen * 3, `${repeats}× exact repeat segLen=${segLen}`);
+            if (result) return result;
+        }
+    }
+
+    // ── 2. Numbered-list patterns ────────────────────────────────────────────
+    const numberedRe = /[（(（]\s*\d+\s*[）)）]\s*[^\n（(（]{5,120}/g;
+    const items = [...tail.matchAll(numberedRe)];
+    if (items.length >= 5) {
+        const lastItems = items.slice(-8);
+        const stripped = lastItems.map(m => m[0].replace(/^[（(（]\s*\d+\s*[）)）]\s*/, '').trim());
+
+        // 2a. Prefix-mutation: Cwakeee → Cwakeeee → Cwakeeeee
+        let mutatingCount = 0;
+        for (let i = 1; i < stripped.length; i++) {
+            const a = stripped[i - 1], b = stripped[i];
+            if (a && b && (b.startsWith(a) || a.startsWith(b))) mutatingCount++;
+        }
+        if (mutatingCount >= stripped.length - 2) {
+            const result = cutAt(
+                plain.length - tailLen + (lastItems[0].index ?? 0), 200,
+                `prefix-mutation list (${mutatingCount}/${stripped.length - 1})`
+            );
+            if (result) return result;
         }
 
-        if (repeats >= 3) {
-            // `pos` is where the loop starts inside `tail`
-            const loopStartInPlain = plain.length - tailLen + pos;
-            const ratio = loopStartInPlain / plain.length;
-            // Give extra slack so we don't cut too aggressively
-            const searchUpTo = Math.min(html.length, Math.floor(html.length * ratio) + segLen * 3);
-            const htmlBefore = html.slice(0, searchUpTo);
-            // Find nearest closing block tag just before the loop
-            const blockTags = ['</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>', '</p>', '</li>', '</div>'];
-            let bestCut = -1;
-            for (const tag of blockTags) {
-                const idx = htmlBefore.lastIndexOf(tag);
-                if (idx > bestCut) bestCut = idx + tag.length;
-            }
-            if (bestCut > html.length * 0.05) {
-                console.log(`[LOOP_TRUNCATED] ${repeats}x repeat (segLen=${segLen}), truncating HTML at ${bestCut}/${html.length}`);
-                return html.slice(0, bestCut);
+        // 2b. Same-body: (31)X (32)X (33)X — body is identical, only number differs
+        // Require body ≥ 8 chars to avoid false positives on short cross-references like "详见附录A"
+        const refBody = stripped[stripped.length - 1];
+        if (refBody.length >= 8) {
+            const sameCount = stripped.filter(b => b === refBody).length;
+            if (sameCount >= 5) {
+                const firstRepeatIdx = stripped.findIndex(b => b === refBody);
+                const result = cutAt(
+                    plain.length - tailLen + (lastItems[firstRepeatIdx].index ?? 0), 100,
+                    `same-body numbered list (${sameCount}× "${refBody.slice(0, 30)}")`
+                );
+                if (result) return result;
             }
         }
     }
+
+    // ── 3. Non-numbered sentence repetition ─────────────────────────────────
+    // e.g. "研究表明X。研究表明X。研究表明X。研究表明X。研究表明X。"
+    // Threshold kept at 5× (matching hasStreamSentenceRepetition) to avoid false positives
+    // on technical documents that legitimately repeat common transitional phrases.
+    const sentenceRe = /[^。！？.!?\n]{20,150}[。！？.!?]/g;
+    const sentences = [...tail.matchAll(sentenceRe)];
+    if (sentences.length >= 8) {
+        const last10 = sentences.slice(-10);
+        const sentTexts = last10.map(m => m[0].trim());
+        const sentCounts = new Map<string, number>();
+        for (const s of sentTexts) sentCounts.set(s, (sentCounts.get(s) ?? 0) + 1);
+        for (const [s, cnt] of sentCounts) {
+            if (cnt >= 5) {
+                const firstIdx = last10.findIndex(m => m[0].trim() === s);
+                const result = cutAt(
+                    plain.length - tailLen + (last10[firstIdx].index ?? 0), 300,
+                    `sentence ×${cnt}: "${s.slice(0, 30)}"`
+                );
+                if (result) return result;
+            }
+        }
+    }
+
+    // ── 4. Alternating pair loop ─────────────────────────────────────────────
+    // e.g. A B A B A B A B (same two distinct paragraphs cycling ≥4 times)
+    // Require ≥30 chars and mostly CJK/alpha content to avoid false positives on
+    // formula lines, short labels, or structured table rows.
+    const lineRe = /[^\n]{30,300}/g;
+    const lines = [...tail.matchAll(lineRe)]
+        .map(m => m[0].trim())
+        .filter(l => l.length >= 30 && /[\u4e00-\u9fa5a-zA-Z]{10,}/.test(l)); // must have real text
+    if (lines.length >= 8) {
+        const last8 = lines.slice(-8);
+        const evens = last8.filter((_, i) => i % 2 === 0);
+        const odds  = last8.filter((_, i) => i % 2 === 1);
+        const uniqueEvens = new Set(evens);
+        const uniqueOdds  = new Set(odds);
+        if (uniqueEvens.size === 1 && uniqueOdds.size === 1 && evens[0] !== odds[0]) {
+            const result = cutAt(plain.length - tailLen + Math.max(0, tail.length - 800), 300,
+                `alternating pair: "${evens[0].slice(0, 20)}" / "${odds[0].slice(0, 20)}"`);
+            if (result) return result;
+        }
+    }
+
+    // ── 5. Character / short-phrase spam ────────────────────────────────────
+    // e.g. "的的的的的的的" or "计算尾流计算尾流计算尾流"
+    const charTail = tail.slice(-300);
+    const spamMatch = charTail.match(/(.{1,6})\1{12,}/);
+    if (spamMatch) {
+        const result = cutAt(plain.length - tailLen + tail.length - 300, 100,
+            `char spam: "${spamMatch[1].slice(0, 20)}" ×${Math.floor(spamMatch[0].length / spamMatch[1].length)}`);
+        if (result) return result;
+    }
+
+    // ── 6. Empty block spam ──────────────────────────────────────────────────
+    // e.g. 15+ consecutive <p></p> or <p> </p>
+    const emptyBlockSpam = (html.match(/<p>(\s|&nbsp;)*<\/p>/gi) ?? []).length;
+    if (emptyBlockSpam >= 15) {
+        // Find where the spam starts in HTML
+        const spamStartRe = /(?:<p>(?:\s|&nbsp;)*<\/p>\s*){10}/i;
+        const spamMatch2 = html.match(spamStartRe);
+        if (spamMatch2?.index !== undefined) {
+            const result = cutAt(Math.floor(spamMatch2.index / html.length * plain.length), 50,
+                `empty block spam (${emptyBlockSpam} empty <p>)`);
+            if (result) return result;
+        }
+    }
+
     return html;
+};
+
+/**
+ * Stream-time sentence repetition detector.
+ * Returns true if the EXACT same sentence (≥20 chars) appears 5+ times in the last 2500 chars.
+ * Threshold is intentionally conservative (5×, ≥20 chars) to avoid false positives on
+ * common Chinese transitional phrases like "如图X所示" / "根据上述分析".
+ */
+const hasStreamSentenceRepetition = (text: string): boolean => {
+    const plain = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(-2500);
+    // Require ≥20 chars to avoid catching short transitional phrases
+    const sentences = [...plain.matchAll(/[^。！？.!?\n]{20,150}[。！？.!?]/g)].map(m => m[0].trim());
+    if (sentences.length < 8) return false;
+    const counts = new Map<string, number>();
+    for (const s of sentences.slice(-10)) {
+        const n = (counts.get(s) ?? 0) + 1;
+        counts.set(s, n);
+        if (n >= 5) return true;  // raised from 4 to 5 to reduce false positives
+    }
+    return false;
+};
+
+/**
+ * Stream-time character spam detector.
+ * Returns true if a short phrase repeats 15+ times consecutively.
+ */
+const hasCharSpam = (text: string): boolean => {
+    const tail = text.replace(/<[^>]+>/g, '').slice(-600);
+    return /(.{1,6})\1{14,}/.test(tail);
+};
+
+/**
+ * Ensure every __IMG_N__ placeholder in the output has a figure caption immediately following it.
+ * If a placeholder has no <div class="figure-caption"> within the next 600 chars, inject one.
+ * @param priorFigCount  number of figure captions already emitted in previous chunks
+ */
+const ensureFigureCaptions = (html: string, priorFigCount: number): string => {
+    const parts: string[] = [];
+    let lastIdx = 0;
+    let injectedCount = 0;  // track captions we've already injected in this call
+    const imgRe = /__IMG_(\d+)__/g;
+    let m: RegExpExecArray | null;
+    while ((m = imgRe.exec(html)) !== null) {
+        const imgEnd = m.index + m[0].length;
+        const after600 = html.slice(imgEnd, imgEnd + 600);
+        if (/class="figure-caption"/.test(after600)) continue; // already has caption
+        // Count captions in the ORIGINAL html before this image position
+        const before = html.slice(0, imgEnd);
+        const captionsInOriginal = (before.match(/class="figure-caption"/g) ?? []).length;
+        // Add injected captions so far to avoid duplicate numbers when multiple images miss captions
+        const figNum = priorFigCount + captionsInOriginal + injectedCount + 1;
+        console.log(`[CAPTION_INJECT] ${m[0]} missing caption, injecting 图${figNum}`);
+        parts.push(html.slice(lastIdx, imgEnd));
+        parts.push(`\n<div class="figure-caption">图${figNum}</div>`);
+        lastIdx = imgEnd;
+        injectedCount++;
+    }
+    if (parts.length === 0) return html; // nothing to fix
+    parts.push(html.slice(lastIdx));
+    return parts.join('');
+};
+
+/** Count numbered items in a string — covers both （N）/(N) explicit and <li> list items,
+ *  since Word ordered lists become <li> in source but （N） in AI output. */
+const countNumberedItems = (text: string): number => {
+    const explicitCount = (text.match(/[（(]\s*\d+\s*[）)]/g) ?? []).length;
+    const listItemCount = (text.match(/<li\b/gi) ?? []).length;
+    return Math.max(explicitCount, listItemCount);
+};
+
+/**
+ * Detect same-body hallucination: (31)X (32)X (33)X ... where body X is identical.
+ * Returns true if the last 5+ consecutive numbered items all share the same body text.
+ */
+const hasSameBodyHallucination = (text: string): boolean => {
+    const plain = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    const tail = plain.slice(-3000);
+    // Require ≥8 chars body to avoid false positives on short cross-references ("详见附录A")
+    const re = /[（(]\s*\d+\s*[）)]\s*([^\n（(]{8,100})/g;
+    const matches = [...tail.matchAll(re)];
+    if (matches.length < 5) return false;
+    const last8 = matches.slice(-8);
+    const bodies = last8.map(m => m[1].trim());
+    const refBody = bodies[bodies.length - 1];
+    if (refBody.length < 8) return false;
+    const sameCount = bodies.filter(b => b === refBody).length;
+    return sameCount >= 5;
 };
 
 const estimateSafeChunkSize = (modelKey: string | undefined, userTier: keyof typeof TIER_LIMITS): number => {
@@ -315,11 +529,13 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const BASE_SHARED_PROMPT = `
       \nFormatting & Structural Analysis Rules:
       1. **DOCUMENT TITLE vs HEADINGS (CRITICAL)**:
-         - Identify the **Document Title**. Wrap it in \`<h1 class="doc-title">\`. NO numbering.
-         - Start numbering from the **first content section**.
+         - Identify the **Document Title**. Wrap it ONLY in \`<h1 class="doc-title">\`. NO numbering on the title.
+         - **NEVER use plain \`<h1>\` (without class="doc-title") for any content section** — \`<h1>\` is reserved exclusively for the document title.
+         - All content sections (chapters, subsections, etc.) MUST start from \`<h2>\` (chapter level), \`<h3>\` (subsection), \`<h4>\` (sub-subsection), and so on.
+         - Start numbering from the **first content section** using \`<h2>\`.
 
       2. **IDENTIFY SECTIONS**:
-         - Analyze semantic structure. Tag <h1>, <h2>... <h6>.
+         - Analyze semantic structure. Tag <h2>, <h3>... <h6> for content sections. <h1> is ONLY for the document title (class="doc-title").
 
       3. **APPLY NUMBERING SCHEME**:
          - ${numberingRules}
@@ -398,6 +614,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
              - **HOW TO USE**: When you see isolated single variable/character symbols (e.g. \`<p>θ</p>\`, \`<p>x₀</p>\`) in the main HTML, these are OMML formula placeholders. Find the corresponding full \`$$...$$\` equation in the FORMULA_DATA section (match by surrounding context/position) and output it INSTEAD of the isolated character.
              - **DO NOT output the FORMULA_DATA section as document content.** It is a reference tool only. Your output must NOT include the \`<!-- FORMULA_DATA -->\` marker or any raw text from that block verbatim.
              - If no matching full equation is found, wrap the isolated symbol in inline LaTeX: \`$\\theta$\`.
+             - **DEDUPLICATION (CRITICAL)**: If the same isolated symbol or formula appears **consecutively twice** in the input (one right after the other, e.g. \`<p>θ</p><p>θ</p>\`), this is a mammoth/Word conversion artifact — output it **only ONCE**. Do NOT output the same formula or variable twice in a row.
           - **VARIABLE DEFINITION LISTS (CRITICAL)**:
              - When the source text has patterns like "vx, vy: meaning" or "x, y—meaning" or "a0 constant term", treat these as **definition items**, NOT standalone list items.
              - NEVER convert variable names (latin letters, subscripts) into Chinese punctuation or other characters.
@@ -751,9 +968,10 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 It does NOT mean those headings/sentences are forbidden — your task is to format EVERYTHING in the CURRENT INPUT regardless of what appeared above.
 
                 **NUMBERING CONTINUATION (CRITICAL)**:
-                - All HTML from completed parts before this one contains **${cumulativeH1BeforePart}** opening \`<h1>\` tags (cumulative count).
-                - **Do NOT restart** top-level / chapter-style numbering at 1 for this part. Treat the next logical first \`<h1>\` in this part as **chapter/section index ${cumulativeH1BeforePart + 1}** for any scheme that numbers by H1 order (including chapter-relative 图/表 captions if applicable).
-                - Subordinate levels (\`<h2>\`, \`<h3>\`, …) must also continue the hierarchical counter state implied by that continuation — do not reset the whole outline to 1.x as if this were a new document.
+                - All HTML from completed parts before this one contains **${cumulativeH1BeforePart}** chapter-level \`<h2>\` tags (cumulative count, excludes document title).
+                - **Do NOT restart** chapter-level numbering at 1 for this part. The next chapter \`<h2>\` in this part must be **chapter/section index ${cumulativeH1BeforePart + 1}** (continuing from where the previous part left off).
+                - IMPORTANT: Use \`<h2>\` for chapter-level headings (NOT \`<h1>\`). \`<h1>\` is ONLY for document titles with class="doc-title".
+                - Subordinate levels (\`<h3>\`, \`<h4>\`, …) must also continue the hierarchical counter state implied by that continuation — do not reset the whole outline to 1.x as if this were a new document.
                 **HEADING COUNTER STATE** (use these to determine the next number at each level):
                 ${lastHeadingsState
                     ? `Recent output chain (most authoritative — the exact numbered text your model just produced):
@@ -803,6 +1021,12 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             const userContent = `Filename: ${safeFileName}\n\nContent Part ${i + 1} of ${chunks.length}:\n${chunkContent}\n\n--- END OF PART ${i + 1} INPUT ---\nFormat ONLY the content above. When you reach "--- END OF PART ${i + 1} INPUT ---", stop immediately.${formulaSuffix}`;
             let chunkOutput = '';
 
+            // Stream-time hallucination guard: cap output numbered items at 2× source + 5
+            const inputItemCount = countNumberedItems(chunkContent);
+            const maxOutputItems = Math.max(inputItemCount * 2 + 5, 20);
+            let streamScanBuffer = 0;       // chars since last scan
+            const STREAM_SCAN_INTERVAL = 500;
+
             try {
                 // 检查是否使用 OpenAI Compatible 代理
                 const geminiOpenAIBaseUrl = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL;
@@ -821,16 +1045,51 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                         // 使用 OpenAI Compatible Endpoint (如 hiapi.online)
                         const maxTokens = modelCfg?.maxOutputTokens ?? (userTier === 'ULTRA' ? 32000 : 16000);
                         let finishReason: string | null = null;
+                        let streamHallucinationDetected = false;
 
                         // 初次生成
                         for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, userContent, currentModel, maxTokens, useProxy, includeUsage)) {
                             if (result.content) {
                                 chunkOutput += result.content;
                                 res.write(`data: ${JSON.stringify({ delta: result.content })}\n\n`);
+                                streamScanBuffer += result.content.length;
+                                if (streamScanBuffer >= STREAM_SCAN_INTERVAL) {
+                                    streamScanBuffer = 0;
+                                    // Guard 1: output item count cap (2× input + 5)
+                                    const outItems = countNumberedItems(chunkOutput);
+                                    if (outItems > maxOutputItems) {
+                                        console.log(`[STREAM_HALL] chunk ${i+1}: item count ${outItems} > max ${maxOutputItems}, breaking`);
+                                        streamHallucinationDetected = true; break;
+                                    }
+                                    // Guard 2: same-body numbered list
+                                    if (hasSameBodyHallucination(chunkOutput)) {
+                                        console.log(`[STREAM_HALL] chunk ${i+1}: same-body repetition, breaking`);
+                                        streamHallucinationDetected = true; break;
+                                    }
+                                    // Guard 3: sentence repetition
+                                    if (hasStreamSentenceRepetition(chunkOutput)) {
+                                        console.log(`[STREAM_HALL] chunk ${i+1}: sentence repetition, breaking`);
+                                        streamHallucinationDetected = true; break;
+                                    }
+                                    // Guard 4: character/phrase spam
+                                    if (hasCharSpam(chunkOutput)) {
+                                        console.log(`[STREAM_HALL] chunk ${i+1}: char spam, breaking`);
+                                        streamHallucinationDetected = true; break;
+                                    }
+                                    // Guard 5: output >> input length
+                                    // Use max(inputLen, 2000) as floor to avoid false positives
+                                    // on image-heavy chunks with little text. Threshold: 10×.
+                                    const inputLenFloor = Math.max(chunkContent.length, 2000);
+                                    if (chunkOutput.length > inputLenFloor * 10) {
+                                        console.log(`[STREAM_HALL] chunk ${i+1}: output ${chunkOutput.length} >> input floor ${inputLenFloor} (10×), breaking`);
+                                        streamHallucinationDetected = true; break;
+                                    }
+                                }
                             }
                             if (result.finishReason) finishReason = result.finishReason;
                             if (result.usage) totalExactTokens += result.usage.total_tokens || 0;
                         }
+                        if (streamHallucinationDetected) finishReason = null; // skip continuation
 
                         // 截断续写：当 finish_reason === "length" 时，自动从断点继续
                         let continuations = 0;
@@ -880,21 +1139,53 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                             { customFetch } as any
                         );
                         const result = await model.generateContentStream([userContent]);
+                        let googleStreamHallucinated = false;
                         for await (const chunk of result.stream) {
                             const txt = chunk.text();
                             if (txt) {
                                 chunkOutput += txt;
                                 res.write(`data: ${JSON.stringify({ delta: txt })}\n\n`);
+                                streamScanBuffer += txt.length;
+                                if (streamScanBuffer >= STREAM_SCAN_INTERVAL) {
+                                    streamScanBuffer = 0;
+                                    // Guard 1: output item count cap
+                                    const outItems = countNumberedItems(chunkOutput);
+                                    if (outItems > maxOutputItems) {
+                                        console.log(`[STREAM_HALL] Google chunk ${i+1}: item count ${outItems} > max ${maxOutputItems}, breaking`);
+                                        googleStreamHallucinated = true; break;
+                                    }
+                                    // Guard 2: same-body numbered list
+                                    if (hasSameBodyHallucination(chunkOutput)) {
+                                        console.log(`[STREAM_HALL] Google chunk ${i+1}: same-body repetition, breaking`);
+                                        googleStreamHallucinated = true; break;
+                                    }
+                                    // Guard 3: sentence repetition
+                                    if (hasStreamSentenceRepetition(chunkOutput)) {
+                                        console.log(`[STREAM_HALL] Google chunk ${i+1}: sentence repetition, breaking`);
+                                        googleStreamHallucinated = true; break;
+                                    }
+                                    // Guard 4: character/phrase spam
+                                    if (hasCharSpam(chunkOutput)) {
+                                        console.log(`[STREAM_HALL] Google chunk ${i+1}: char spam, breaking`);
+                                        googleStreamHallucinated = true; break;
+                                    }
+                                    // Guard 5: output >> input length
+                                    const inputLenFloorG = Math.max(chunkContent.length, 2000);
+                                    if (chunkOutput.length > inputLenFloorG * 10) {
+                                        console.log(`[STREAM_HALL] Google chunk ${i+1}: output ${chunkOutput.length} >> input floor ${inputLenFloorG} (10×), breaking`);
+                                        googleStreamHallucinated = true; break;
+                                    }
+                                }
                             }
                         }
                         const aggregatedResponse = await result.response;
                         if (aggregatedResponse.usageMetadata) {
                             totalExactTokens += aggregatedResponse.usageMetadata.totalTokenCount || 0;
                         }
-                        // Google SDK 截断检测（MAX_TOKENS）
+                        // Google SDK 截断检测（MAX_TOKENS）— skip if hallucination already detected
                         const googleFinishReason = aggregatedResponse.candidates?.[0]?.finishReason;
                         let googleContinuations = 0;
-                        let googleFinish: string | undefined = googleFinishReason as string | undefined;
+                        let googleFinish: string | undefined = googleStreamHallucinated ? undefined : googleFinishReason as string | undefined;
                         while (googleFinish === 'MAX_TOKENS' && googleContinuations < 5) {
                             googleContinuations++;
                             console.log(`[CONTINUE] Chunk ${i + 1} truncated (MAX_TOKENS), continuation ${googleContinuations}/5`);
@@ -932,11 +1223,15 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 cleanChunk = truncateAtRepetitionLoop(cleanChunk);
                 // Re-insert any __IMG_N__ placeholders the AI dropped (safety net)
                 cleanChunk = reinjectMissingPlaceholders(chunkContent, cleanChunk);
+                // Ensure every __IMG_N__ has a figure caption — inject generic one if missing
+                cleanChunk = ensureFigureCaptions(cleanChunk, cumulativeFigureCount);
                 lastContext = cleanChunk.replace(/<[^>]+>/g, ' ');
 
-                // Count only chapter-level H1s — exclude <h1 class="doc-title"> (document titles are not chapters)
+                // Count chapter-level H2s (chapters use <h2>) + any non-doc-title H1s (fallback in case AI uses h1 for chapters)
+                const h2Tags = cleanChunk.match(/<h2\b[^>]*>/gi) ?? [];
                 const h1Tags = cleanChunk.match(/<h1\b[^>]*>/gi) ?? [];
-                const h1OpenInChunk = h1Tags.filter(t => !t.includes('doc-title')).length;
+                const h1NonTitle = h1Tags.filter(t => !t.includes('doc-title')).length;
+                const h1OpenInChunk = h2Tags.length + h1NonTitle;
                 cumulativeH1BeforePart += h1OpenInChunk;
                 // Update cumulative per-level heading counter state
                 const hcRegex = /<h([1-6])\b([^>]*)>([\s\S]*?)<\/h\1>/gi;

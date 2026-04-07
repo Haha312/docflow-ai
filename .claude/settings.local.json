@@ -64,7 +64,15 @@
       "Bash(git -C \"D:\\\\docuflow-ai\" diff --name-only)",
       "Bash(dir \"D:\\\\docuflow-ai\\\\frontend\\\\components\\\\ConfirmDialog.tsx\")",
       "Bash(Get-Item \"D:\\\\docuflow-ai\\\\frontend\\\\components\\\\ConfirmDialog.tsx\")",
-      "Bash(Select-Object LastWriteTime)"
+      "Bash(Select-Object LastWriteTime)",
+      "Bash(node -e \"const ts = require\\(''''typescript''''\\); const prog = ts.createProgram\\([''''src/routes/generate.ts''''], {}\\); const diags = ts.getPreEmitDiagnostics\\(prog\\); diags.forEach\\(d => console.log\\(ts.flattenDiagnosticMessageText\\(d.messageText, ''''\\\\n''''\\), ''''line:'''', d.file?.getLineAndCharacterOfPosition\\(d.start\\).line + 1\\)\\);\")",
+      "Bash(npx ts-node:*)",
+      "Bash(dir D:docuflow-aibackendnode_modules.bin)",
+      "Bash(node D:/docuflow-ai/backend/node_modules/typescript/bin/tsc --noEmit --project D:/docuflow-ai/backend/tsconfig.json)",
+      "Bash(curl -s -X POST http://localhost:3001/api/analyze-docx -F \"file=@\"\"C:/Users/86188/Desktop/基于三维信息技术的新能源电站数字化设计关键技术研究报告\\(1\\).docx\"\"\")",
+      "Bash(where curl:*)",
+      "Bash(node -e \"require\\(''fs''\\).copyFileSync\\(''C:/Users/86188/Desktop/\\\\u57fa\\\\u4e8e\\\\u4e09\\\\u7ef4\\\\u4fe1\\\\u606f\\\\u6280\\\\u672f\\\\u7684\\\\u65b0\\\\u80fd\\\\u6e90\\\\u7535\\\\u7ad9\\\\u6570\\\\u5b57\\\\u5316\\\\u8bbe\\\\u8ba1\\\\u5173\\\\u952e\\\\u6280\\\\u672f\\\\u7814\\\\u7a76\\\\u62a5\\\\u544a\\(1\\).docx'', ''D:/docuflow-ai/test-report.docx''\\); console.log\\(''copied''\\)\")",
+      "Bash(powershell -Command \"Copy-Item ''C:\\\\Users\\\\86188\\\\Desktop\\\\基于三维信息技术的新能源电站数字化设计关键技术研究报告\\(1\\).docx'' ''D:\\\\docuflow-ai\\\\test-report.docx''; Write-Host ''done''\")"
     ]
   }
 }
