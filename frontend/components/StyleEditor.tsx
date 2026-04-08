@@ -22,6 +22,7 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
     // Determine if we are editing the Journal preset to show extra fields
     // Use presetId (enum value) for reliable detection regardless of display language
     const isJournal = presetId === 'ACADEMIC_JOURNAL' || presetTitle.includes("学术期刊") || presetTitle.includes("Journal");
+    const isCorporate = presetId === 'CORPORATE' || presetTitle.includes("商务公文") || presetTitle.includes("Corporate");
 
     const handleChange = (key: keyof StyleConfig, value: string | boolean) => {
         onUpdate({ ...config, [key]: value });
@@ -217,114 +218,89 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                     </div>
                                 </div>
 
-                                {/* 生成目录开关 */}
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('styles.generate_toc', '导出时生成目录')}</span>
-                                    <button
-                                        onClick={() => handleChange('generateToc', !config.generateToc)}
-                                        className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${config.generateToc ? 'bg-indigo-600' : 'bg-zinc-200'}`}
-                                        role="switch"
-                                        aria-checked={!!config.generateToc}
-                                        title={t('styles.generate_toc_desc', '下载 .docx 时自动在正文前插入目录页')}
-                                    >
-                                        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${config.generateToc ? 'translate-x-4' : 'translate-x-0'}`} />
-                                    </button>
-                                </div>
+                                {/* 生成目录开关 — 公文/期刊不需要目录 */}
+                                {!isCorporate && !isJournal && (
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('styles.generate_toc', '导出时生成目录')}</span>
+                                        <button
+                                            onClick={() => handleChange('generateToc', !config.generateToc)}
+                                            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${config.generateToc ? 'bg-indigo-600' : 'bg-zinc-200'}`}
+                                            role="switch"
+                                            aria-checked={!!config.generateToc}
+                                            title={t('styles.generate_toc_desc', '下载 .docx 时自动在正文前插入目录页')}
+                                        >
+                                            <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${config.generateToc ? 'translate-x-4' : 'translate-x-0'}`} />
+                                        </button>
+                                    </div>
+                                )}
 
-                                <div className="grid grid-cols-4 gap-6">
-                                    {renderSelect(t('styles.align_h1'), config.h1Align, (v) => handleChange('h1Align', v), ALIGNMENT_OPTIONS)}
-                                    {renderSelect(t('styles.align_h2'), config.h2Align, (v) => handleChange('h2Align', v), ALIGNMENT_OPTIONS)}
-                                    {renderSelect(t('styles.indent_h1'), config.h1Indent, (v) => handleChange('h1Indent', v), TEXT_INDENT_OPTIONS)}
-                                    {renderSelect(t('styles.indent_h2'), config.h2Indent, (v) => handleChange('h2Indent', v), TEXT_INDENT_OPTIONS)}
+                                {isCorporate ? (
+                                    /* 公文：格式固定，只保留正文对齐和首行缩进 */
+                                    <div className="grid grid-cols-2 gap-6">
+                                        {renderSelect(t('styles.align_body'), config.bodyAlign, (v) => handleChange('bodyAlign', v), ALIGNMENT_OPTIONS)}
+                                        {renderSelect(t('styles.indent_body'), config.textIndent, (v) => handleChange('textIndent', v), TEXT_INDENT_OPTIONS)}
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-4 gap-6">
+                                        {renderSelect(t('styles.align_h1'), config.h1Align, (v) => handleChange('h1Align', v), ALIGNMENT_OPTIONS)}
+                                        {renderSelect(t('styles.align_h2'), config.h2Align, (v) => handleChange('h2Align', v), ALIGNMENT_OPTIONS)}
+                                        {renderSelect(t('styles.indent_h1'), config.h1Indent, (v) => handleChange('h1Indent', v), TEXT_INDENT_OPTIONS)}
+                                        {renderSelect(t('styles.indent_h2'), config.h2Indent, (v) => handleChange('h2Indent', v), TEXT_INDENT_OPTIONS)}
 
-                                    {/* Row 2 */}
-                                    {renderSelect(t('styles.align_body'), config.bodyAlign, (v) => handleChange('bodyAlign', v), ALIGNMENT_OPTIONS)}
-                                    {renderSelect(t('styles.indent_body'), config.textIndent, (v) => handleChange('textIndent', v), TEXT_INDENT_OPTIONS)}
+                                        {renderSelect(t('styles.align_body'), config.bodyAlign, (v) => handleChange('bodyAlign', v), ALIGNMENT_OPTIONS)}
+                                        {renderSelect(t('styles.indent_body'), config.textIndent, (v) => handleChange('textIndent', v), TEXT_INDENT_OPTIONS)}
 
-                                    {!isJournal && (
-                                        <>
-                                            {renderSelect(t('styles.indent_h3'), config.h3Indent, (v) => handleChange('h3Indent', v), TEXT_INDENT_OPTIONS)}
-                                            {renderSelect(t('styles.indent_h4'), config.h4Indent, (v) => handleChange('h4Indent', v), TEXT_INDENT_OPTIONS)}
-                                        </>
-                                    )}
-                                </div>
+                                        {!isJournal && (
+                                            <>
+                                                {renderSelect(t('styles.indent_h3'), config.h3Indent, (v) => handleChange('h3Indent', v), TEXT_INDENT_OPTIONS)}
+                                                {renderSelect(t('styles.indent_h4'), config.h4Indent, (v) => handleChange('h4Indent', v), TEXT_INDENT_OPTIONS)}
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </section>
 
-                        <div className="grid grid-cols-2 gap-8 items-start">
+                        {/* Layout: journal→2 stacked rows, corporate→vertical, others→2-col */}
+                        <div className={!isCorporate && !isJournal ? "grid grid-cols-2 gap-8 items-start" : "space-y-8"}>
 
-                            {/* 2. Left Column: Typography & Spacing */}
-                            <div className="space-y-8">
-                                {/* Fonts Section */}
-                                <section className="space-y-4">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <div className="p-1.5 bg-indigo-100/50 rounded-lg text-indigo-600">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h16v3"></path><path d="M9 20h6"></path><path d="M12 4v16"></path></svg>
+                            {isJournal ? (
+                                /* ── Journal Row 1: Typography (left) | Journal Config (right) ── */
+                                <div className="grid grid-cols-2 gap-8 items-start">
+                                    {/* Typography */}
+                                    <section className="space-y-4">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="p-1.5 bg-indigo-100/50 rounded-lg text-indigo-600">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h16v3"></path><path d="M9 20h6"></path><path d="M12 4v16"></path></svg>
+                                            </div>
+                                            <h4 className="font-bold text-zinc-900">{t('styles.typography_journal')}</h4>
                                         </div>
-                                        <h4 className="font-bold text-zinc-900">{isJournal ? t('styles.typography_journal') : t('styles.typography_spacing')}</h4>
-                                    </div>
-
-                                    <div className="space-y-5">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            {renderSelect(t('styles.font_heading_def'), config.headingFont, (v) => handleChange('headingFont', v), FONT_FAMILY_OPTIONS)}
-                                            {renderSelect(t('styles.font_body'), config.fontFamily, (v) => handleChange('fontFamily', v), FONT_FAMILY_OPTIONS)}
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-x-4 gap-y-6">
-                                            {isJournal ? (
-                                                <>
-                                                    {renderHeadingStyleRow(t('styles.h1'), 'h1Size', 'h1Bold', 'h1Italic', 'h1Font')}
-                                                    {renderHeadingStyleRow(t('styles.h2'), 'h2Size', 'h2Bold', 'h2Italic', 'h2Font')}
-                                                    {renderHeadingStyleRow(t('styles.h3'), 'h3Size', 'h3Bold', 'h3Italic', 'h3Font')}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    {renderHeadingStyleRow(t('styles.h1'), 'h1Size', 'h1Bold', 'h1Italic')}
-                                                    {renderHeadingStyleRow(t('styles.h2'), 'h2Size', 'h2Bold', 'h2Italic')}
-                                                    {renderHeadingStyleRow(t('styles.h3'), 'h3Size', 'h3Bold', 'h3Italic')}
-                                                    {renderHeadingStyleRow(t('styles.h4'), 'h4Size', 'h4Bold', 'h4Italic')}
-                                                    {renderHeadingStyleRow(t('styles.h5'), 'h5Size', 'h5Bold', 'h5Italic')}
-                                                    {renderHeadingStyleRow(t('styles.h6'), 'h6Size', 'h6Bold', 'h6Italic')}
-                                                </>
-                                            )}
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-zinc-100">
-                                            {renderSelect(t('styles.size_body'), config.baseSize, (v) => handleChange('baseSize', v), FONT_SIZE_OPTIONS)}
-                                            <div>
-                                                <span className="text-xs text-zinc-500 block mb-1.5">{t('styles.line_height')}</span>
-                                                <input
-                                                    type="text"
-                                                    value={config.lineHeight}
-                                                    onChange={(e) => handleChange('lineHeight', e.target.value)}
-                                                    className="w-full text-sm p-2.5 border border-zinc-200 rounded-lg bg-zinc-50 focus:border-indigo-500 outline-none"
-                                                />
+                                        <div className="space-y-5">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {renderSelect(t('styles.font_heading_def'), config.headingFont, (v) => handleChange('headingFont', v), FONT_FAMILY_OPTIONS)}
+                                                {renderSelect(t('styles.font_body'), config.fontFamily, (v) => handleChange('fontFamily', v), FONT_FAMILY_OPTIONS)}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+                                                {renderHeadingStyleRow(t('styles.journal_h1', '论文标题'), 'h1Size', 'h1Bold', 'h1Italic', 'h1Font')}
+                                                {renderHeadingStyleRow(t('styles.journal_h2', '一级节标题'), 'h2Size', 'h2Bold', 'h2Italic', 'h2Font')}
+                                                {renderHeadingStyleRow(t('styles.journal_h3', '二级节标题'), 'h3Size', 'h3Bold', 'h3Italic', 'h3Font')}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-zinc-100">
+                                                {renderSelect(t('styles.size_body'), config.baseSize, (v) => handleChange('baseSize', v), FONT_SIZE_OPTIONS)}
+                                                <div>
+                                                    <span className="text-xs text-zinc-500 block mb-1.5">{t('styles.line_height')}</span>
+                                                    <input
+                                                        type="text"
+                                                        value={config.lineHeight}
+                                                        onChange={(e) => handleChange('lineHeight', e.target.value)}
+                                                        className="w-full text-sm p-2.5 border border-zinc-200 rounded-lg bg-zinc-50 focus:border-indigo-500 outline-none"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                </section>
+                                    </section>
 
-                                {/* Spacing Section */}
-                                <section className="space-y-4">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <div className="p-1.5 bg-indigo-100/50 rounded-lg text-indigo-600">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v18"></path><rect x="6" y="8" width="12" height="8" rx="1"></rect></svg>
-                                        </div>
-                                        <h4 className="font-bold text-zinc-900">{t('styles.paragraph_spacing')}</h4>
-                                    </div>
-                                    <div className="bg-zinc-50/50 rounded-xl border border-zinc-200/60 p-5">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            {renderSelect(t('styles.space_before'), config.spacingBefore, (v) => handleChange('spacingBefore', v), SPACING_OPTIONS)}
-                                            {renderSelect(t('styles.space_after'), config.spacingAfter, (v) => handleChange('spacingAfter', v), SPACING_OPTIONS)}
-                                        </div>
-                                    </div>
-                                </section>
-                            </div>
-
-                            {/* 3. Right Column: Journal, Figures, Tables */}
-                            <div className="space-y-8">
-                                {/* Journal Specifics */}
-                                {isJournal && (
+                                    {/* Journal Config */}
                                     <section className="space-y-4">
                                         <div className="flex items-center gap-3 mb-2">
                                             <div className="p-1.5 bg-blue-100/50 rounded-lg text-blue-600">
@@ -332,7 +308,6 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                             </div>
                                             <h4 className="font-bold text-blue-900">{t('styles.journal_config')}</h4>
                                         </div>
-
                                         <div className="bg-blue-50/30 p-5 rounded-xl border border-blue-100/60 space-y-4">
                                             <div className="grid grid-cols-2 gap-3">
                                                 {renderSelect(t('styles.en_title_font'), config.englishTitleFont, (v) => handleChange('englishTitleFont', v), FONT_FAMILY_OPTIONS)}
@@ -346,7 +321,6 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                                 {renderSelect(t('styles.affil_font'), config.affiliationFont, (v) => handleChange('affiliationFont', v), FONT_FAMILY_OPTIONS)}
                                                 {renderSelect(t('styles.affil_size'), config.affiliationSize, (v) => handleChange('affiliationSize', v), FONT_SIZE_OPTIONS)}
                                             </div>
-
                                             <div className="pt-3 border-t border-blue-200/50">
                                                 <span className="text-xs font-bold text-blue-800/70 block mb-3">{t('styles.abstract_settings')}</span>
                                                 <div className="grid grid-cols-2 gap-3 mb-3">
@@ -360,17 +334,91 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                             </div>
                                         </div>
                                     </section>
-                                )}
+                                </div>
+                            ) : (
+                                /* ── Non-journal Left Column: Typography + optional Spacing ── */
+                                <div className="space-y-8">
+                                    <section className="space-y-4">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="p-1.5 bg-indigo-100/50 rounded-lg text-indigo-600">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7V4h16v3"></path><path d="M9 20h6"></path><path d="M12 4v16"></path></svg>
+                                            </div>
+                                            <h4 className="font-bold text-zinc-900">{t('styles.typography_spacing')}</h4>
+                                        </div>
+                                        <div className="space-y-5">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {renderSelect(t('styles.font_heading_def'), config.headingFont, (v) => handleChange('headingFont', v), FONT_FAMILY_OPTIONS)}
+                                                {renderSelect(t('styles.font_body'), config.fontFamily, (v) => handleChange('fontFamily', v), FONT_FAMILY_OPTIONS)}
+                                            </div>
+                                            <div className={`grid gap-x-4 gap-y-6 ${isCorporate ? 'grid-cols-4' : 'grid-cols-2'}`}>
+                                                {isCorporate ? (
+                                                    <>
+                                                        {renderHeadingStyleRow('发文标题', 'h1Size', 'h1Bold', 'h1Italic')}
+                                                        {renderHeadingStyleRow('一级条目', 'h2Size', 'h2Bold', 'h2Italic')}
+                                                        {renderHeadingStyleRow('二级条目', 'h3Size', 'h3Bold', 'h3Italic')}
+                                                        {renderHeadingStyleRow('三级条目', 'h4Size', 'h4Bold', 'h4Italic')}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {renderHeadingStyleRow(t('styles.h1'), 'h1Size', 'h1Bold', 'h1Italic')}
+                                                        {renderHeadingStyleRow(t('styles.h2'), 'h2Size', 'h2Bold', 'h2Italic')}
+                                                        {renderHeadingStyleRow(t('styles.h3'), 'h3Size', 'h3Bold', 'h3Italic')}
+                                                        {renderHeadingStyleRow(t('styles.h4'), 'h4Size', 'h4Bold', 'h4Italic')}
+                                                        {renderHeadingStyleRow(t('styles.h5'), 'h5Size', 'h5Bold', 'h5Italic')}
+                                                        {renderHeadingStyleRow(t('styles.h6'), 'h6Size', 'h6Bold', 'h6Italic')}
+                                                    </>
+                                                )}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-zinc-100">
+                                                {renderSelect(t('styles.size_body'), config.baseSize, (v) => handleChange('baseSize', v), FONT_SIZE_OPTIONS)}
+                                                <div>
+                                                    <span className="text-xs text-zinc-500 block mb-1.5">
+                                                        {t('styles.line_height')}
+                                                        {isCorporate && <span className="ml-1 text-zinc-400 font-normal normal-case">（默认 28磅 / GB/T 9704）</span>}
+                                                    </span>
+                                                    <input
+                                                        type="text"
+                                                        value={config.lineHeight}
+                                                        onChange={(e) => handleChange('lineHeight', e.target.value)}
+                                                        className="w-full text-sm p-2.5 border border-zinc-200 rounded-lg bg-zinc-50 focus:border-indigo-500 outline-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
 
+                                    {/* Spacing — not for corporate */}
+                                    {!isCorporate && (
+                                        <section className="space-y-4">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className="p-1.5 bg-indigo-100/50 rounded-lg text-indigo-600">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v18"></path><rect x="6" y="8" width="12" height="8" rx="1"></rect></svg>
+                                                </div>
+                                                <h4 className="font-bold text-zinc-900">{t('styles.paragraph_spacing')}</h4>
+                                            </div>
+                                            <div className="bg-zinc-50/50 rounded-xl border border-zinc-200/60 p-5">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    {renderSelect(t('styles.space_before'), config.spacingBefore, (v) => handleChange('spacingBefore', v), SPACING_OPTIONS)}
+                                                    {renderSelect(t('styles.space_after'), config.spacingAfter, (v) => handleChange('spacingAfter', v), SPACING_OPTIONS)}
+                                                </div>
+                                            </div>
+                                        </section>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ── Row 2 / Right Column: Figures + Tables ── */}
+                            {/* journal/corporate: side-by-side grid; others: stacked in right col */}
+                            <div className={isCorporate || isJournal ? "grid grid-cols-2 gap-8 items-stretch" : "space-y-8"}>
                                 {/* Figures */}
-                                <section className="space-y-4">
+                                <section className="space-y-4 flex flex-col">
                                     <div className="flex items-center gap-3 mb-2">
                                         <div className="p-1.5 bg-indigo-100/50 rounded-lg text-indigo-600">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
                                         </div>
                                         <h4 className="font-bold text-zinc-900">{t('styles.figures')}</h4>
                                     </div>
-                                    <div className="p-5 bg-zinc-50/50 rounded-xl border border-zinc-200/60 space-y-4">
+                                    <div className="flex-1 p-5 bg-zinc-50/50 rounded-xl border border-zinc-200/60 space-y-4">
                                         <div>
                                             <span className="text-xs text-zinc-500 block mb-1.5">{t('styles.numbering_mode')}</span>
                                             <div className="relative">
@@ -386,7 +434,6 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                                 </div>
                                             </div>
                                         </div>
-
                                         <div className="grid grid-cols-2 gap-3">
                                             {renderSelect(t('styles.fig_font'), config.figureFont, (v) => handleChange('figureFont', v), FONT_FAMILY_OPTIONS)}
                                             {renderSelect(t('styles.fig_size'), config.figureSize, (v) => handleChange('figureSize', v), FONT_SIZE_OPTIONS)}
@@ -398,14 +445,14 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                 </section>
 
                                 {/* Tables */}
-                                <section className="space-y-4">
+                                <section className="space-y-4 flex flex-col">
                                     <div className="flex items-center gap-3 mb-2">
                                         <div className="p-1.5 bg-indigo-100/50 rounded-lg text-indigo-600">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"></path></svg>
                                         </div>
                                         <h4 className="font-bold text-zinc-900">{t('styles.tables')}</h4>
                                     </div>
-                                    <div className="p-5 bg-zinc-50/50 rounded-xl border border-zinc-200/60 space-y-4">
+                                    <div className="flex-1 p-5 bg-zinc-50/50 rounded-xl border border-zinc-200/60 space-y-4">
                                         <div>
                                             <span className="text-xs text-zinc-500 block mb-1.5">{t('styles.tab_num_mode')}</span>
                                             <div className="relative">
@@ -421,26 +468,17 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                                 </div>
                                             </div>
                                         </div>
-
                                         <div className="grid grid-cols-2 gap-3">
                                             {renderSelect(t('styles.tab_cap_font'), config.tableCaptionFont, (v) => handleChange('tableCaptionFont', v), FONT_FAMILY_OPTIONS)}
                                             {renderSelect(t('styles.tab_cap_size'), config.tableCaptionSize, (v) => handleChange('tableCaptionSize', v), FONT_SIZE_OPTIONS)}
                                         </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {renderSelect(t('styles.tab_cap_align'), config.tableCaptionAlign, (v) => handleChange('tableCaptionAlign', v), ALIGNMENT_OPTIONS)}
-                                            {/* Spacer */}
-                                            <div />
-                                        </div>
-
                                         <hr className="border-zinc-200 border-dashed my-2" />
-
                                         <div className="grid grid-cols-2 gap-3">
                                             {renderSelect(t('styles.tab_content_font'), config.tableFont, (v) => handleChange('tableFont', v), FONT_FAMILY_OPTIONS)}
                                             {renderSelect(t('styles.tab_content_size'), config.tableSize, (v) => handleChange('tableSize', v), FONT_SIZE_OPTIONS)}
                                         </div>
                                     </div>
                                 </section>
-
                             </div>
                         </div>
 

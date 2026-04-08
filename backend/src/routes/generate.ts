@@ -12,7 +12,7 @@ const router = Router();
 
 import OpenAI from 'openai';
 import { extractImagesAsPlaceholders, restoreImages } from '../utils/imageUtils';
-import { BASE_SYSTEM_PROMPTS, getNumberingInstruction } from '../config/prompts';
+import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
 
 
 type PreComputedHeading = { level: number; text: string; number: string };
@@ -345,6 +345,137 @@ const repairUnclosedTags = (html: string): string => {
 };
 
 /**
+ * Content-based detection for Chinese government (公文) document elements.
+ * Tags unclassified block elements with appropriate doc-* classes based on text patterns,
+ * so that reorderCorporateDocument can find and reorder them even when the AI omits classes.
+ * Runs BEFORE reorderCorporateDocument.
+ */
+const detectCorporateElementClasses = (html: string): string => {
+    // Check if there's already a doc-title in the document
+    const hasDocTitle = /class="[^"]*doc-title[^"]*"/.test(html);
+
+    return html.replace(/<(p|div|h[1-6])\b([^>]*)>([\s\S]*?)<\/\1>/gi, (match, tag, attrs, content) => {
+        // Skip if already has a doc-* class
+        if (/class="[^"]*doc-/.test(attrs)) return match;
+
+        const text = content.replace(/<[^>]+>/g, '').trim();
+        if (!text || text.length > 120) return match;
+
+        // 密级/保密期限: e.g. "机密★10年", "绝密", "秘密★5年"
+        if (/★/.test(text) || /^(绝密|机密|秘密)([\s\u3000]*\d+年)?$/.test(text)) {
+            return `<p class="doc-classification">${content}</p>`;
+        }
+        // 紧急程度: exactly 特急 / 加急 / 紧急 / 平急
+        if (/^(特急|加急|紧急|平急)$/.test(text)) {
+            return `<p class="doc-urgency">${content}</p>`;
+        }
+        // 发文字号: e.g. "×政发〔2026〕15号"
+        if (/[〔【\[][0-9]{4}[〕】\]][0-9]+号/.test(text) && text.length < 35) {
+            return `<p class="doc-ref-number">${content}</p>`;
+        }
+        // 发文机关标志: ends with "文件", short, no sentence punctuation
+        if (/文件$/.test(text) && text.length < 45 && !/[。，！？]/.test(text)) {
+            return `<div class="doc-issuer">${content}</div>`;
+        }
+        // 主送机关: ends with full-width colon ：, short, no sentence-ending punct
+        if (/：$/.test(text) && text.length < 100 && !/[。！？]/.test(text)) {
+            return `<p class="doc-addressee">${content}</p>`;
+        }
+        // 公文标题: <h1> without a class, and no doc-title exists yet in this chunk
+        if (tag === 'h1' && !hasDocTitle && !/class=/.test(attrs)) {
+            return `<h1 class="doc-title">${content}</h1>`;
+        }
+
+        return match;
+    });
+};
+
+/**
+ * Reorder Chinese government document (公文) elements to match GB/T 9704-2012 standard layout.
+ * Applied only to the FIRST chunk of a CORPORATE preset document.
+ * Order: classification → urgency → issuer → divider → ref-number → title → addressee → body...
+ */
+const reorderCorporateDocument = (html: string): string => {
+    // Extract a block-level element by class (greedy, handles nested tags)
+    const extractByClass = (src: string, cls: string): { el: string; rest: string } => {
+        // Match opening tag with the class, then capture until corresponding closing tag
+        const openRe = new RegExp(`<(div|p|h1|h2|h3|h4|h5|h6|section)\\b[^>]*\\bclass="[^"]*${cls}[^"]*"[^>]*>`, 'i');
+        const m = openRe.exec(src);
+        if (!m) return { el: '', rest: src };
+        const tag = m[1].toLowerCase();
+        const start = m.index;
+        const afterOpen = start + m[0].length;
+        // Find matching closing tag (simple depth counter)
+        let depth = 1;
+        let pos = afterOpen;
+        while (pos < src.length && depth > 0) {
+            const nextOpen = src.indexOf(`<${tag}`, pos);
+            const nextClose = src.indexOf(`</${tag}>`, pos);
+            if (nextClose === -1) break;
+            if (nextOpen !== -1 && nextOpen < nextClose) {
+                depth++;
+                pos = nextOpen + 1;
+            } else {
+                depth--;
+                pos = nextClose + `</${tag}>`.length;
+            }
+        }
+        const el = src.slice(start, pos);
+        const rest = src.slice(0, start) + src.slice(pos);
+        return { el, rest };
+    };
+
+    const extractHrDivider = (src: string): { el: string; rest: string } => {
+        const re = /<hr\b[^>]*class="[^"]*doc-divider[^"]*"[^>]*\/?>/i;
+        const m = re.exec(src);
+        if (!m) return { el: '', rest: src };
+        return { el: m[0], rest: src.slice(0, m.index) + src.slice(m.index + m[0].length) };
+    };
+
+    // Define extraction order (GB/T 9704-2012)
+    const slots: { cls: string; extracted: string }[] = [
+        { cls: 'doc-classification', extracted: '' },
+        { cls: 'doc-urgency',        extracted: '' },
+        { cls: 'doc-issuer',         extracted: '' },
+        { cls: '__DIVIDER__',        extracted: '' },  // hr.doc-divider
+        { cls: 'doc-ref-number',     extracted: '' },
+        { cls: 'doc-title',          extracted: '' },
+        { cls: 'doc-addressee',      extracted: '' },
+    ];
+
+    let remaining = html;
+    for (const slot of slots) {
+        if (slot.cls === '__DIVIDER__') {
+            const { el, rest } = extractHrDivider(remaining);
+            slot.extracted = el;
+            remaining = rest;
+        } else {
+            const { el, rest } = extractByClass(remaining, slot.cls);
+            slot.extracted = el;
+            remaining = rest;
+        }
+    }
+
+    // If doc-issuer found but no divider, inject one
+    const issuerSlot = slots.find(s => s.cls === 'doc-issuer');
+    const dividerSlot = slots.find(s => s.cls === '__DIVIDER__');
+    if (issuerSlot?.extracted && !dividerSlot?.extracted) {
+        if (dividerSlot) dividerSlot.extracted = '<hr class="doc-divider">';
+    }
+
+    // Only reorder if we found at least the doc-title (sanity check)
+    const titleSlot = slots.find(s => s.cls === 'doc-title');
+    if (!titleSlot?.extracted) {
+        console.log('[CORPORATE_REORDER] doc-title not found, skipping reorder');
+        return html;
+    }
+
+    const header = slots.map(s => s.extracted).filter(Boolean).join('\n');
+    console.log(`[CORPORATE_REORDER] Reordered header (${header.length} chars) + body (${remaining.trim().length} chars)`);
+    return header + '\n' + remaining.trim();
+};
+
+/**
  * Ensure every __IMG_N__ placeholder in the output has a figure caption immediately following it.
  * If a placeholder has no <div class="figure-caption"> within the next 600 chars, inject one.
  * @param priorFigCount  number of figure captions already emitted in previous chunks
@@ -537,7 +668,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             // SystemConfig table might not exist
         }
 
-        const { content, preset, fileName, styleConfig, model }: GenerateRequest = req.body;
+        const { content, preset: rawPreset, fileName, styleConfig, model }: GenerateRequest = req.body;
+        // Normalize preset to lowercase to handle frontend sending 'CORPORATE' vs backend enum 'corporate'
+        const preset = (rawPreset as string).toLowerCase() as typeof rawPreset;
         requestedModelKey = model;
 
         if (!content || !preset || !fileName || !styleConfig) {
@@ -569,8 +702,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
       \nFormatting & Structural Analysis Rules:
       1. **DOCUMENT TITLE vs HEADINGS (CRITICAL)**:
          - Identify the **Document Title**. Wrap it ONLY in \`<h1 class="doc-title">\`. NO numbering on the title.
-         - **NEVER use plain \`<h1>\` (without class="doc-title") for any content section** — \`<h1>\` is reserved exclusively for the document title.
+         - **NEVER use plain \`<h1>\` (without class="doc-title") for any content section** — \`<h1>\` is reserved exclusively for the document title and carries NO chapter number.
          - All content sections (chapters, subsections, etc.) MUST start from \`<h2>\` (chapter level), \`<h3>\` (subsection), \`<h4>\` (sub-subsection), and so on.
+         - **The numbering scheme below applies starting at \`<h2>\`** — \`<h2>\` is always the FIRST numbered level (chapter), \`<h3>\` is second (section), etc.
          - Start numbering from the **first content section** using \`<h2>\`.
 
       2. **IDENTIFY SECTIONS**:
@@ -588,9 +722,10 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                - Parenthesized ASCII: "(1)", "(2)", "(一)", "(二)", etc.
                - Parenthesized full-width: "（1）", "（2）", "（一）", "（二）", etc.
              - After stripping, apply the template number, then output the clean heading text.
-             - Example: Input "一、核心原理" with decimal template → strip "一、" → apply "2." → Output \`<h2>2. 核心原理</h2>\`
-             - Example: Input "（1）误差方程" with decimal template → strip "（1）" → apply "3.4.1" → Output \`<h4>3.4.1 误差方程</h4>\`
-             - Example: Input "核心原理" (no prefix) → apply "1." → Output \`<h2>1. 核心原理</h2>\`
+             - Example (decimal-nested): Input "一、核心原理" as 2nd chapter → strip "一、" → apply "2." → Output \`<h2>2. 核心原理</h2>\`
+             - Example (decimal-nested): Input "（1）误差方程" as sub-section → strip "（1）" → apply "3.4.1" → Output \`<h4>3.4.1 误差方程</h4>\`
+             - Example (chinese-hierarchical): Input "核心原理" as 1st chapter → apply "一、" → Output \`<h2>一、 核心原理</h2>\`
+             - Example (chinese-hierarchical): Input "基本原则" as 1st section → apply "（一）" → Output \`<h3>（一） 基本原则</h3>\`
              - **NEVER output both the original numbering prefix AND the template number** — the result must have exactly one number prefix from the template.
          - **WORD AUTO-NUMBERING BUG FIX (CRITICAL)**:
              - Microsoft Word stores auto-numbering separately from the paragraph text. After conversion to HTML, list numbering information is LOST. The result is that every ordered-list item appears as "1." in the browser. YOU must detect and fix these patterns.
@@ -743,7 +878,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
       *** DYNAMIC NUMBERING RULES (OVERRIDE DEFAULTS) ***
       ${figureInstruction}
       ${tableInstruction}
-        `;
+        ` + (SYSTEM_PROMPT_SUFFIX[preset as keyof typeof SYSTEM_PROMPT_SUFFIX] ?? '');
 
 
         // 1a. Strip STRUCTURE_DATA (pre-computed heading numbers from frontend XML parser)
@@ -1270,6 +1405,11 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 cleanChunk = truncateAtRepetitionLoop(cleanChunk);
                 // Close any HTML tags left open by truncation (e.g. <li>, <td>, <ul>)
                 cleanChunk = repairUnclosedTags(cleanChunk);
+                // CORPORATE only: detect + reorder doc elements to GB/T 9704-2012 standard layout (first chunk only)
+                if (preset === 'corporate' && i === 0) {
+                    cleanChunk = detectCorporateElementClasses(cleanChunk);
+                    cleanChunk = reorderCorporateDocument(cleanChunk);
+                }
                 // Re-insert any __IMG_N__ placeholders the AI dropped (safety net)
                 cleanChunk = reinjectMissingPlaceholders(chunkContent, cleanChunk);
                 // Ensure every __IMG_N__ has a figure caption — inject generic one if missing

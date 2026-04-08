@@ -512,6 +512,10 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
     const englishTitleFont = cleanFontName(styleConfig.englishTitleFont || "Times New Roman");
     const authorFont = cleanFontName(styleConfig.authorFont || styleConfig.fontFamily);
     const affiliationFont = cleanFontName(styleConfig.affiliationFont || styleConfig.fontFamily);
+    const abstractCnFont = cleanFontName(styleConfig.abstractFont || styleConfig.fontFamily);
+    const abstractEnFont = cleanFontName(styleConfig.englishAbstractFont || "Times New Roman");
+    const abstractCnSize = getHalfPtSize(styleConfig.abstractSize || styleConfig.baseSize);
+    const abstractEnSize = getHalfPtSize(styleConfig.englishAbstractSize || styleConfig.abstractSize || styleConfig.baseSize);
 
     const h1Font = styleConfig.h1Font ? cleanFontName(styleConfig.h1Font) : headingFont;
     const h2Font = styleConfig.h2Font ? cleanFontName(styleConfig.h2Font) : headingFont;
@@ -677,16 +681,21 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         let afterTwips = 240;
         let fontName = headingFont;
 
+        // GB/T 9704-2012: fixed 28pt line height is the CORPORATE indicator
+        const isCorporate = styleConfig.lineHeight?.includes('pt');
+        const corporateLine28 = 560; // 28pt × 20 = 560 twips (EXACT)
         if (level === 1) {
-            size = getHalfPtSize(styleConfig.h1Size); align = mapAlignment(styleConfig.h1Align); headingLevel = HeadingLevel.HEADING_1; beforeTwips = getSpacingTwips(`1${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h1Size)); afterTwips = getSpacingTwips(`1${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h1Size)); indent = getIndentConfig(styleConfig.h1Indent, getPtSize(styleConfig.h1Size)); bold = styleConfig.h1Bold; italics = styleConfig.h1Italic; fontName = h1Font;
+            size = getHalfPtSize(styleConfig.h1Size); align = mapAlignment(styleConfig.h1Align); headingLevel = HeadingLevel.HEADING_1; beforeTwips = isCorporate ? corporateLine28 : getSpacingTwips(`1${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h1Size)); afterTwips = isCorporate ? 0 : getSpacingTwips(`1${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h1Size)); indent = getIndentConfig(styleConfig.h1Indent, getPtSize(styleConfig.h1Size)); bold = styleConfig.h1Bold; italics = styleConfig.h1Italic; fontName = h1Font;
         } else if (level === 2) {
-            size = getHalfPtSize(styleConfig.h2Size); align = mapAlignment(styleConfig.h2Align); headingLevel = HeadingLevel.HEADING_2; beforeTwips = getSpacingTwips(`0.8${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h2Size)); afterTwips = getSpacingTwips(`0.5${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h2Size)); indent = getIndentConfig(styleConfig.h2Indent, getPtSize(styleConfig.h2Size)); bold = styleConfig.h2Bold; italics = styleConfig.h2Italic; fontName = h2Font;
+            size = getHalfPtSize(styleConfig.h2Size); align = mapAlignment(styleConfig.h2Align); headingLevel = HeadingLevel.HEADING_2; beforeTwips = isCorporate ? corporateLine28 : getSpacingTwips(`0.8${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h2Size)); afterTwips = isCorporate ? 0 : getSpacingTwips(`0.5${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h2Size)); indent = getIndentConfig(styleConfig.h2Indent, getPtSize(styleConfig.h2Size)); bold = styleConfig.h2Bold; italics = styleConfig.h2Italic; fontName = h2Font;
         } else if (level === 3) {
-            size = getHalfPtSize(styleConfig.h3Size); headingLevel = HeadingLevel.HEADING_3; beforeTwips = 200; afterTwips = 100; indent = getIndentConfig(styleConfig.h3Indent, getPtSize(styleConfig.h3Size)); bold = styleConfig.h3Bold; italics = styleConfig.h3Italic; fontName = h3Font;
+            size = getHalfPtSize(styleConfig.h3Size); headingLevel = HeadingLevel.HEADING_3; beforeTwips = isCorporate ? 0 : 200; afterTwips = isCorporate ? 0 : 100; indent = getIndentConfig(styleConfig.h3Indent, getPtSize(styleConfig.h3Size)); bold = styleConfig.h3Bold; italics = styleConfig.h3Italic; fontName = h3Font;
         } else {
-            size = getHalfPtSize(styleConfig.h4Size); headingLevel = level === 4 ? HeadingLevel.HEADING_4 : level === 5 ? HeadingLevel.HEADING_5 : HeadingLevel.HEADING_6; beforeTwips = 150; afterTwips = 80; indent = getIndentConfig(styleConfig.h4Indent, getPtSize(styleConfig.h4Size)); bold = styleConfig.h4Bold; italics = styleConfig.h4Italic; fontName = h4Font;
+            size = getHalfPtSize(styleConfig.h4Size); headingLevel = level === 4 ? HeadingLevel.HEADING_4 : level === 5 ? HeadingLevel.HEADING_5 : HeadingLevel.HEADING_6; beforeTwips = isCorporate ? 0 : 150; afterTwips = isCorporate ? 0 : 80; indent = getIndentConfig(styleConfig.h4Indent, getPtSize(styleConfig.h4Size)); bold = styleConfig.h4Bold; italics = styleConfig.h4Italic; fontName = h4Font;
         }
-        return new Paragraph({ heading: headingLevel, alignment: align, spacing: { before: beforeTwips, after: afterTwips }, indent: indent, children: [new TextRun({ text: text, font: makeFont(fontName), color: primaryColor, bold: bold, italics: italics, size: size })] });
+        // For CORPORATE, apply fixed 28pt line height to headings too
+        const headingLine = isCorporate ? { line: corporateLine28, lineRule: LineRuleType.EXACT } : {};
+        return new Paragraph({ heading: headingLevel, alignment: align, spacing: { before: beforeTwips, after: afterTwips, ...headingLine }, indent: indent, children: [new TextRun({ text: text, font: makeFont(fontName), color: primaryColor, bold: bold, italics: italics, size: size })] });
     };
 
     interface TableContext { inTable: boolean; inHeader: boolean; }
@@ -870,7 +879,17 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 return;
             }
 
-            if (tagName === 'HR') return;
+            if (tagName === 'HR') {
+                // doc-divider: render as a thick red bottom-border paragraph (公文红色横线)
+                if (el.classList.contains('doc-divider')) {
+                    elements.push(new Paragraph({
+                        border: { bottom: { style: BorderStyle.SINGLE, size: 18, color: "CC0000", space: 4 } },
+                        spacing: { before: 120, after: 120 },
+                        children: []
+                    }));
+                }
+                return;
+            }
 
             if (text.includes("image-placeholder") || (text.startsWith(i18n.t('generator.figure', '图')) && text.length < 50 && !tagName.startsWith('H'))) {
                 elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.figureAlign), spacing: { before: 240, after: 240 }, children: [new TextRun({ text: text, font: makeFont(figureFont), size: getHalfPtSize(styleConfig.figureSize), color: "000000" })] }));
@@ -891,11 +910,49 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 return;
             }
 
+            if (className.includes('doc-issuer')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 240, after: 120 }, children: [new TextRun({ text: text, font: makeFont('"SimHei", sans-serif'), color: "CC0000", bold: true, size: 52 })] })); return; }
+            if (className.includes('doc-ref-number')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 80, after: 80 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), color: "000000" })] })); return; }
+            if (className.includes('doc-classification')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 60 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), bold: true, color: "CC0000" })] })); return; }
+            if (className.includes('doc-urgency')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 60 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), bold: true, color: "CC0000" })] })); return; }
+            if (className.includes('doc-addressee')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 240, after: 120 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), bold: true, color: "000000" })] })); return; }
+            if (className.includes('doc-signature')) { elements.push(new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 480, after: 80 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), bold: true, color: "000000" })] })); return; }
+            if (className.includes('doc-date')) { elements.push(new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 80, after: 80 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), color: "000000" })] })); return; }
+            if (className.includes('doc-seal')) { elements.push(new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 60, after: 60 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), color: "CC0000" })] })); return; }
+            if (className.includes('doc-note')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 240, after: 60 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize('12pt'), color: "666666" })] })); return; }
+            if (className.includes('doc-attachment')) { elements.push(...processNodes(el.childNodes, undefined, tableContext, AlignmentType.LEFT)); return; }
             if (className.includes('doc-title')) { elements.push(new Paragraph({ heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER, spacing: { before: 240, after: 120 }, children: [new TextRun({ text: text, font: makeFont(headingFont), color: primaryColor, bold: true, size: 44 })] })); return; }
             if (className.includes('doc-title-en')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 240 }, children: [new TextRun({ text: text, font: makeFont(englishTitleFont), color: primaryColor, bold: true, size: getHalfPtSize(styleConfig.englishTitleSize || '14pt') })] })); return; }
             if (className.includes('author-info')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 100 }, children: [new TextRun({ text: text, font: makeFont(authorFont), size: getHalfPtSize(styleConfig.authorSize || '16pt'), color: "000000" })] })); return; }
             if (className.includes('affiliation')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 50, after: 200 }, children: [new TextRun({ text: text, font: makeFont(affiliationFont), size: getHalfPtSize(styleConfig.affiliationSize || '9pt'), color: "000000" })] })); return; }
-            if (className.includes('abstract-cn') || className.includes('abstract-en')) { elements.push(...processNodes(el.childNodes, undefined, tableContext, currentAlign)); return; }
+            if (className.includes('abstract-cn') || className.includes('abstract-en')) {
+                const isEnAbs = className.includes('abstract-en');
+                const absFont = isEnAbs ? abstractEnFont : abstractCnFont;
+                const absSz = isEnAbs ? abstractEnSize : abstractCnSize;
+                Array.from(el.childNodes).forEach(child => {
+                    if (child.nodeType === Node.ELEMENT_NODE) {
+                        const p = child as HTMLElement;
+                        const runs: TextRun[] = [];
+                        p.childNodes.forEach(inline => {
+                            const t = inline.textContent || '';
+                            if (!t) return;
+                            const inlineTag = (inline as HTMLElement).tagName || '';
+                            const isBold = inlineTag === 'STRONG' || inlineTag === 'B';
+                            const isItalic = inlineTag === 'EM' || inlineTag === 'I';
+                            runs.push(new TextRun({ text: t, font: makeFont(absFont), size: absSz, bold: isBold, italics: isItalic }));
+                        });
+                        if (runs.length === 0 && p.textContent) {
+                            runs.push(new TextRun({ text: p.textContent, font: makeFont(absFont), size: absSz }));
+                        }
+                        if (runs.length > 0) {
+                            elements.push(new Paragraph({ alignment: currentAlign, indent: { firstLine: 0 }, spacing: { before: 0, after: 60 }, children: runs }));
+                        }
+                    } else if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').trim()) {
+                        elements.push(new Paragraph({ alignment: currentAlign, indent: { firstLine: 0 }, spacing: { before: 0, after: 60 }, children: [new TextRun({ text: child.textContent || '', font: makeFont(absFont), size: absSz })] }));
+                    }
+                });
+                return;
+            }
+            if (className.includes('keywords')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 120 }, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(cleanFontName(styleConfig.abstractFont || styleConfig.fontFamily)), size: getHalfPtSize(styleConfig.abstractSize || styleConfig.baseSize), color: "000000" })] })); return; }
             if (className.includes('table-caption') || tagName === 'CAPTION' || (tagName === 'P' && text.startsWith(i18n.t('generator.table', '表')) && text.length < 40 && !tableContext.inTable)) { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: true, color: "000000" })] })); return; }
 
             if (tagName === 'H1') elements.push(createHeading(text, 1));
@@ -1043,11 +1100,13 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 const contentNodesBody: Node[] = [];
                 let inContent = false;
 
+                const journalHeaderClsBody = ['doc-title', 'doc-title-en', 'author-info', 'affiliation', 'abstract-cn', 'abstract-en', 'keywords'];
                 bodyNodes.forEach(node => {
                     if (inContent) { contentNodesBody.push(node); return; }
                     if (node.nodeType === Node.ELEMENT_NODE) {
                         const el = node as HTMLElement;
-                        if (el.tagName === 'H1' && !el.className.includes('doc-title')) {
+                        const isHeaderEl = journalHeaderClsBody.some(c => el.className?.includes(c));
+                        if (!isHeaderEl && (el.tagName === 'H2' || el.tagName === 'H1' && !el.className.includes('doc-title'))) {
                             inContent = true;
                             contentNodesBody.push(node);
                             return;
@@ -1095,11 +1154,15 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             const contentNodes: Node[] = [];
             let inBody = false;
 
+            // Journal header = title/author/affiliation/abstract/keywords (single column)
+            // Journal body starts at first H2 section heading (double column)
+            const journalHeaderClasses = ['doc-title', 'doc-title-en', 'author-info', 'affiliation', 'abstract-cn', 'abstract-en', 'keywords'];
             xmlDoc.body.childNodes.forEach(node => {
                 if (inBody) { contentNodes.push(node); return; }
                 if (node.nodeType === Node.ELEMENT_NODE) {
                     const el = node as HTMLElement;
-                    if (el.tagName === 'H1' && !el.className.includes('doc-title')) {
+                    const isHeaderEl = journalHeaderClasses.some(c => el.className?.includes(c));
+                    if (!isHeaderEl && (el.tagName === 'H2' || el.tagName === 'H1' && !el.className.includes('doc-title'))) {
                         inBody = true;
                         contentNodes.push(node);
                         return;

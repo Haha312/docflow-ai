@@ -166,7 +166,7 @@ export const PRESETS: PresetConfig[] = [
       h6Italic: true,
       h6Indent: '0',
 
-      lineHeight: '1', // 默认1倍行距
+      lineHeight: '1.3', // 期刊正文行距约1.3倍
 
       h1Align: 'left',
       h2Align: 'left',
@@ -206,11 +206,11 @@ export const PRESETS: PresetConfig[] = [
       tableFont: '"SimSun", serif',
       tableSize: '9pt', // 表内：小5号
       tableCaptionAlign: 'center',
-      generateToc: true,
+      generateToc: false, // 期刊不需要目录
       tableCaptionFont: '"SimHei", sans-serif', // 表题：黑体
       tableCaptionSize: '9pt', // 小5号
 
-      columns: 2 // Enable Two-Column layout
+      columns: 2 // 双栏排版
     }
   },
   {
@@ -306,7 +306,7 @@ export const PRESETS: PresetConfig[] = [
       h6Italic: false,
       h6Indent: '0',
 
-      lineHeight: '1.8',
+      lineHeight: '28pt', // GB/T 9704-2012 固定行距28磅
 
       h1Align: 'justify',
       h2Align: 'left',
@@ -334,7 +334,7 @@ export const PRESETS: PresetConfig[] = [
       tableCaptionFont: '"SimHei", sans-serif',
       tableCaptionSize: '14pt', // 四号
       columns: 1,
-      generateToc: true
+      generateToc: false
     }
   },
   {
