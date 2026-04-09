@@ -87,6 +87,9 @@ export interface StyleConfig {
   englishAbstractFont?: string; // 英文摘要字体
   englishAbstractSize?: string; // 英文摘要字号
 
+  keywordsFont?: string;  // 关键词字体
+  keywordsSize?: string;  // 关键词字号
+
   // Figure/Chart Configuration
   figureNumbering: FigureNumberingStyle;
   figureFont: string;

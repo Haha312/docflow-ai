@@ -197,6 +197,9 @@ export const PRESETS: PresetConfig[] = [
       englishAbstractFont: '"Times New Roman", serif', // 英文摘要：Times New Roman
       englishAbstractSize: '10.5pt', // 英文摘要：5号
 
+      keywordsFont: '"SimSun", serif', // 关键词：小5号宋体
+      keywordsSize: '9pt',            // 小5号
+
       figureNumbering: 'sequential',
       figureFont: '"SimSun", serif', // 图注：小5号 (9pt)
       figureSize: '9pt',

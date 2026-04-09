@@ -198,64 +198,67 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                             </div>
 
                             <div className="bg-zinc-50/50 rounded-xl border border-zinc-200/60 p-5 space-y-5">
-                                <div className="max-w-md">
-                                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-2">{t('styles.heading_numbering_style')}</span>
-                                    <div className="relative">
-                                        <select
-                                            value={config.headingNumbering}
-                                            onChange={(e) => handleChange('headingNumbering', e.target.value as NumberingStyle)}
-                                            className="w-full text-sm p-3 pr-8 border border-zinc-200 rounded-lg bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all appearance-none"
-                                        >
-                                            <option value="none">{t('styles.num_none')}</option>
-                                            <option value="chinese-hierarchical">{t('styles.num_chinese')}</option>
-                                            <option value="decimal-nested">{t('styles.num_decimal_nested')}</option>
-                                            <option value="decimal">{t('styles.num_decimal')}</option>
-                                            <option value="chapter">{t('styles.num_chapter')}</option>
-                                        </select>
-                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-zinc-500">
-                                            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                                {/* 编号风格 + 目录开关：同行排列，消除右侧空白 */}
+                                <div className="flex items-end gap-6">
+                                    <div className="flex-1">
+                                        <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-2">{t('styles.heading_numbering_style')}</span>
+                                        <div className="relative">
+                                            <select
+                                                value={config.headingNumbering}
+                                                onChange={(e) => handleChange('headingNumbering', e.target.value as NumberingStyle)}
+                                                className="w-full text-sm p-3 pr-8 border border-zinc-200 rounded-lg bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all appearance-none"
+                                            >
+                                                <option value="none">{t('styles.num_none')}</option>
+                                                <option value="chinese-hierarchical">{t('styles.num_chinese')}</option>
+                                                <option value="decimal-nested">{t('styles.num_decimal_nested')}</option>
+                                                <option value="decimal">{t('styles.num_decimal')}</option>
+                                                <option value="chapter">{t('styles.num_chapter')}</option>
+                                            </select>
+                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-zinc-500">
+                                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                                            </div>
                                         </div>
                                     </div>
+                                    {/* 目录开关贴右，与编号选择器同行 */}
+                                    {!isCorporate && !isJournal && (
+                                        <div className="flex items-center gap-3 pb-3 shrink-0">
+                                            <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('styles.generate_toc', '导出时生成目录')}</span>
+                                            <button
+                                                onClick={() => handleChange('generateToc', !config.generateToc)}
+                                                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${config.generateToc ? 'bg-indigo-600' : 'bg-zinc-200'}`}
+                                                role="switch"
+                                                aria-checked={!!config.generateToc}
+                                                title={t('styles.generate_toc_desc', '下载 .docx 时自动在正文前插入目录页')}
+                                            >
+                                                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${config.generateToc ? 'translate-x-4' : 'translate-x-0'}`} />
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
 
-                                {/* 生成目录开关 — 公文/期刊不需要目录 */}
-                                {!isCorporate && !isJournal && (
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">{t('styles.generate_toc', '导出时生成目录')}</span>
-                                        <button
-                                            onClick={() => handleChange('generateToc', !config.generateToc)}
-                                            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${config.generateToc ? 'bg-indigo-600' : 'bg-zinc-200'}`}
-                                            role="switch"
-                                            aria-checked={!!config.generateToc}
-                                            title={t('styles.generate_toc_desc', '下载 .docx 时自动在正文前插入目录页')}
-                                        >
-                                            <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${config.generateToc ? 'translate-x-4' : 'translate-x-0'}`} />
-                                        </button>
-                                    </div>
-                                )}
-
+                                {/* 对齐与缩进：按预设类型选用合适列数，避免空格 */}
                                 {isCorporate ? (
-                                    /* 公文：格式固定，只保留正文对齐和首行缩进 */
+                                    <div className="grid grid-cols-2 gap-6">
+                                        {renderSelect(t('styles.align_body'), config.bodyAlign, (v) => handleChange('bodyAlign', v), ALIGNMENT_OPTIONS)}
+                                        {renderSelect(t('styles.indent_body'), config.textIndent, (v) => handleChange('textIndent', v), TEXT_INDENT_OPTIONS)}
+                                    </div>
+                                ) : isJournal ? (
+                                    /* 期刊：仅正文对齐与缩进，2列 */
                                     <div className="grid grid-cols-2 gap-6">
                                         {renderSelect(t('styles.align_body'), config.bodyAlign, (v) => handleChange('bodyAlign', v), ALIGNMENT_OPTIONS)}
                                         {renderSelect(t('styles.indent_body'), config.textIndent, (v) => handleChange('textIndent', v), TEXT_INDENT_OPTIONS)}
                                     </div>
                                 ) : (
+                                    /* 其他：8项 → 4列×2行，满格 */
                                     <div className="grid grid-cols-4 gap-6">
                                         {renderSelect(t('styles.align_h1'), config.h1Align, (v) => handleChange('h1Align', v), ALIGNMENT_OPTIONS)}
                                         {renderSelect(t('styles.align_h2'), config.h2Align, (v) => handleChange('h2Align', v), ALIGNMENT_OPTIONS)}
                                         {renderSelect(t('styles.indent_h1'), config.h1Indent, (v) => handleChange('h1Indent', v), TEXT_INDENT_OPTIONS)}
                                         {renderSelect(t('styles.indent_h2'), config.h2Indent, (v) => handleChange('h2Indent', v), TEXT_INDENT_OPTIONS)}
-
                                         {renderSelect(t('styles.align_body'), config.bodyAlign, (v) => handleChange('bodyAlign', v), ALIGNMENT_OPTIONS)}
                                         {renderSelect(t('styles.indent_body'), config.textIndent, (v) => handleChange('textIndent', v), TEXT_INDENT_OPTIONS)}
-
-                                        {!isJournal && (
-                                            <>
-                                                {renderSelect(t('styles.indent_h3'), config.h3Indent, (v) => handleChange('h3Indent', v), TEXT_INDENT_OPTIONS)}
-                                                {renderSelect(t('styles.indent_h4'), config.h4Indent, (v) => handleChange('h4Indent', v), TEXT_INDENT_OPTIONS)}
-                                            </>
-                                        )}
+                                        {renderSelect(t('styles.indent_h3'), config.h3Indent, (v) => handleChange('h3Indent', v), TEXT_INDENT_OPTIONS)}
+                                        {renderSelect(t('styles.indent_h4'), config.h4Indent, (v) => handleChange('h4Indent', v), TEXT_INDENT_OPTIONS)}
                                     </div>
                                 )}
                             </div>
@@ -265,8 +268,70 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                         <div className={!isCorporate && !isJournal ? "grid grid-cols-2 gap-8 items-start" : "space-y-8"}>
 
                             {isJournal ? (
-                                /* ── Journal Row 1: Typography (left) | Journal Config (right) ── */
+                                /* ── Journal Row 1: Journal Config (left) | Typography (right) ── */
                                 <div className="grid grid-cols-2 gap-8 items-start">
+                                    {/* Journal Config */}
+                                    <section className="space-y-4">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="p-1.5 bg-blue-100/50 rounded-lg text-blue-600">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path></svg>
+                                            </div>
+                                            <h4 className="font-bold text-blue-900">{t('styles.journal_config')}</h4>
+                                        </div>
+                                        <div className="bg-blue-50/30 p-5 rounded-xl border border-blue-100/60 space-y-4">
+                                            {/* 双栏/单栏切换 */}
+                                            <div className="flex items-center justify-between pb-3 border-b border-blue-200/50">
+                                                <span className="text-xs font-bold text-blue-800/70 uppercase tracking-wider">{t('styles.columns_layout', '版面分栏')}</span>
+                                                <div className="flex rounded-lg border border-blue-200 overflow-hidden text-xs font-medium">
+                                                    <button
+                                                        onClick={() => handleChange('columns', 1 as unknown as string)}
+                                                        className={`px-3 py-1.5 transition-colors ${(config.columns ?? 2) === 1 ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 hover:bg-blue-50'}`}
+                                                    >
+                                                        {t('styles.columns_single', '单栏')}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleChange('columns', 2 as unknown as string)}
+                                                        className={`px-3 py-1.5 transition-colors ${(config.columns ?? 2) === 2 ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 hover:bg-blue-50'}`}
+                                                    >
+                                                        {t('styles.columns_double', '双栏')}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {renderSelect(t('styles.en_title_font'), config.englishTitleFont, (v) => handleChange('englishTitleFont', v), FONT_FAMILY_OPTIONS)}
+                                                {renderSelect(t('styles.en_title_size'), config.englishTitleSize, (v) => handleChange('englishTitleSize', v), FONT_SIZE_OPTIONS)}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {renderSelect(t('styles.author_font'), config.authorFont, (v) => handleChange('authorFont', v), FONT_FAMILY_OPTIONS)}
+                                                {renderSelect(t('styles.author_size'), config.authorSize, (v) => handleChange('authorSize', v), FONT_SIZE_OPTIONS)}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {renderSelect(t('styles.affil_font'), config.affiliationFont, (v) => handleChange('affiliationFont', v), FONT_FAMILY_OPTIONS)}
+                                                {renderSelect(t('styles.affil_size'), config.affiliationSize, (v) => handleChange('affiliationSize', v), FONT_SIZE_OPTIONS)}
+                                            </div>
+                                            <div className="pt-3 border-t border-blue-200/50">
+                                                <span className="text-xs font-bold text-blue-800/70 block mb-3">{t('styles.abstract_settings')}</span>
+                                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                                    {renderSelect(t('styles.zh_abs_font'), config.abstractFont, (v) => handleChange('abstractFont', v), FONT_FAMILY_OPTIONS)}
+                                                    {renderSelect(t('styles.zh_abs_size'), config.abstractSize, (v) => handleChange('abstractSize', v), FONT_SIZE_OPTIONS)}
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {renderSelect(t('styles.en_abs_font'), config.englishAbstractFont, (v) => handleChange('englishAbstractFont', v), FONT_FAMILY_OPTIONS)}
+                                                    {renderSelect(t('styles.en_abs_size'), config.englishAbstractSize, (v) => handleChange('englishAbstractSize', v), FONT_SIZE_OPTIONS)}
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-3 border-t border-blue-200/50">
+                                                <span className="text-xs font-bold text-blue-800/70 block mb-3">{t('styles.keywords_settings', '关键词设置')}</span>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {renderSelect(t('styles.keywords_font', '关键词字体'), config.keywordsFont, (v) => handleChange('keywordsFont', v), FONT_FAMILY_OPTIONS)}
+                                                    {renderSelect(t('styles.keywords_size', '关键词字号'), config.keywordsSize, (v) => handleChange('keywordsSize', v), FONT_SIZE_OPTIONS)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+
                                     {/* Typography */}
                                     <section className="space-y-4">
                                         <div className="flex items-center gap-3 mb-2">
@@ -297,40 +362,9 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                                     />
                                                 </div>
                                             </div>
-                                        </div>
-                                    </section>
-
-                                    {/* Journal Config */}
-                                    <section className="space-y-4">
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <div className="p-1.5 bg-blue-100/50 rounded-lg text-blue-600">
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path></svg>
-                                            </div>
-                                            <h4 className="font-bold text-blue-900">{t('styles.journal_config')}</h4>
-                                        </div>
-                                        <div className="bg-blue-50/30 p-5 rounded-xl border border-blue-100/60 space-y-4">
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {renderSelect(t('styles.en_title_font'), config.englishTitleFont, (v) => handleChange('englishTitleFont', v), FONT_FAMILY_OPTIONS)}
-                                                {renderSelect(t('styles.en_title_size'), config.englishTitleSize, (v) => handleChange('englishTitleSize', v), FONT_SIZE_OPTIONS)}
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {renderSelect(t('styles.author_font'), config.authorFont, (v) => handleChange('authorFont', v), FONT_FAMILY_OPTIONS)}
-                                                {renderSelect(t('styles.author_size'), config.authorSize, (v) => handleChange('authorSize', v), FONT_SIZE_OPTIONS)}
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {renderSelect(t('styles.affil_font'), config.affiliationFont, (v) => handleChange('affiliationFont', v), FONT_FAMILY_OPTIONS)}
-                                                {renderSelect(t('styles.affil_size'), config.affiliationSize, (v) => handleChange('affiliationSize', v), FONT_SIZE_OPTIONS)}
-                                            </div>
-                                            <div className="pt-3 border-t border-blue-200/50">
-                                                <span className="text-xs font-bold text-blue-800/70 block mb-3">{t('styles.abstract_settings')}</span>
-                                                <div className="grid grid-cols-2 gap-3 mb-3">
-                                                    {renderSelect(t('styles.zh_abs_font'), config.abstractFont, (v) => handleChange('abstractFont', v), FONT_FAMILY_OPTIONS)}
-                                                    {renderSelect(t('styles.zh_abs_size'), config.abstractSize, (v) => handleChange('abstractSize', v), FONT_SIZE_OPTIONS)}
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    {renderSelect(t('styles.en_abs_font'), config.englishAbstractFont, (v) => handleChange('englishAbstractFont', v), FONT_FAMILY_OPTIONS)}
-                                                    {renderSelect(t('styles.en_abs_size'), config.englishAbstractSize, (v) => handleChange('englishAbstractSize', v), FONT_SIZE_OPTIONS)}
-                                                </div>
+                                            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-zinc-100">
+                                                {renderSelect(t('styles.space_before'), config.spacingBefore, (v) => handleChange('spacingBefore', v), SPACING_OPTIONS)}
+                                                {renderSelect(t('styles.space_after'), config.spacingAfter, (v) => handleChange('spacingAfter', v), SPACING_OPTIONS)}
                                             </div>
                                         </div>
                                     </section>

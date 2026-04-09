@@ -10,8 +10,8 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm.cmd",
-      "runtimeArgs": ["run", "dev"],
-      "cwd": "D:/docuflow-ai/frontend",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3000"],
+      "cwd": "frontend",
       "port": 3000
     },
     {

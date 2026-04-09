@@ -515,6 +515,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
     const abstractCnFont = cleanFontName(styleConfig.abstractFont || styleConfig.fontFamily);
     const abstractEnFont = cleanFontName(styleConfig.englishAbstractFont || "Times New Roman");
     const abstractCnSize = getHalfPtSize(styleConfig.abstractSize || styleConfig.baseSize);
+    const keywordsFont = cleanFontName(styleConfig.keywordsFont || styleConfig.abstractFont || styleConfig.fontFamily);
     const abstractEnSize = getHalfPtSize(styleConfig.englishAbstractSize || styleConfig.abstractSize || styleConfig.baseSize);
 
     const h1Font = styleConfig.h1Font ? cleanFontName(styleConfig.h1Font) : headingFont;
@@ -952,7 +953,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 });
                 return;
             }
-            if (className.includes('keywords')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 120 }, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(cleanFontName(styleConfig.abstractFont || styleConfig.fontFamily)), size: getHalfPtSize(styleConfig.abstractSize || styleConfig.baseSize), color: "000000" })] })); return; }
+            if (className.includes('keywords')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 120 }, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(keywordsFont), size: getHalfPtSize(styleConfig.keywordsSize || styleConfig.abstractSize || styleConfig.baseSize), color: "000000" })] })); return; }
             if (className.includes('table-caption') || tagName === 'CAPTION' || (tagName === 'P' && text.startsWith(i18n.t('generator.table', '表')) && text.length < 40 && !tableContext.inTable)) { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: true, color: "000000" })] })); return; }
 
             if (tagName === 'H1') elements.push(createHeading(text, 1));
