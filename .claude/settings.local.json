@@ -84,7 +84,10 @@
       "Bash(\"C:/Program Files/nodejs/node.exe\" \"D:/docuflow-ai/backend/test-reorder.mjs\")",
       "Bash(where node:*)",
       "Bash(del \"D:\\\\docuflow-ai\\\\backend\\\\test-reorder.mjs\")",
-      "Bash(find D:/docuflow-ai/backend/src -type f -name *.ts)"
+      "Bash(find D:/docuflow-ai/backend/src -type f -name *.ts)",
+      "WebSearch",
+      "WebFetch(domain:www.nppa.gov.cn)",
+      "WebFetch(domain:zhuanlan.zhihu.com)"
     ]
   }
 }

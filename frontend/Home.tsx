@@ -469,6 +469,16 @@ function Home() {
           docxReadyHtml = docxReadyHtml.substring(0, formulaMarkerIdx);
         }
         if (Object.keys(imageMap).length > 0) {
+          // Pass 1: 修复 AI 输出的 src="__IMG_N__" 格式
+          docxReadyHtml = docxReadyHtml.replace(/src="(__IMG_\d+__)"/gi, (_m, placeholder) => {
+            const stored = imageMap[placeholder];
+            if (stored) {
+              const srcMatch = stored.match(/src="([^"]*)"/i);
+              if (srcMatch) return `src="${srcMatch[1]}"`;
+            }
+            return _m;
+          });
+          // Pass 2: 独立 token → 完整 img 标签
           docxReadyHtml = docxReadyHtml.replace(/__IMG_\d+__/g, (match) => imageMap[match] || match);
         }
       }
@@ -478,6 +488,46 @@ function Home() {
           /(<h[1-6](?![^>]*doc-title)[^>]*>)/i,
           '<h1 class="toc-placeholder">目录</h1>\n$1'
         );
+      }
+      // 期刊双栏：重新计算分割点并插入 journal-split 标记
+      if (activeStyle.columns && activeStyle.columns > 1) {
+        // 扫描用原始 outputText（无 base64）；若用户编辑过则退回 docxReadyHtml（已还原图片）
+        const rawHtmlForScan = (isContentEdited ? docxReadyHtml : outputText
+          .replace(/```html/gi, '').replace(/```/g, ''))
+          .replace(/<hr\b[^>]*class=["'][^"']*journal-split[^"']*["'][^>]*\/?>/gi, '');
+
+        const tmpScan = document.createElement('div');
+        tmpScan.innerHTML = rawHtmlForScan;
+        const topChildren = Array.from(tmpScan.children);
+        const scanMax = Math.min(topChildren.length, 15);
+        let lastMetaIdx2 = -1;
+        for (let i = 0; i < scanMax; i++) {
+          const el = topChildren[i] as HTMLElement;
+          const cls = el.className || '';
+          // 跳过纯图片段落（只有 img 没有文字）
+          const textOnly = (el.textContent?.trim() || '');
+          if (!textOnly && el.querySelector('img')) continue;
+          const firstLine = textOnly.split('\n')[0].trim();
+          if (
+            cls.includes('abstract') || cls.includes('keywords') ||
+            /^(摘\s*要|关键词|Abstract|Keywords|KEY\s*WORDS|Key\s*words)/i.test(firstLine)
+          ) { lastMetaIdx2 = i; }
+        }
+
+        // 在最终 HTML 里删除 AI 乱插的 HR，再在正确位置插入
+        docxReadyHtml = docxReadyHtml.replace(/<hr\b[^>]*class=["'][^"']*journal-split[^"']*["'][^>]*\/?>/gi, '');
+        if (lastMetaIdx2 >= 0) {
+          // 用已还原图片的 HTML 做 DOM，在对应位置插 HR
+          const tmpFinal = document.createElement('div');
+          tmpFinal.innerHTML = docxReadyHtml;
+          const finalChildren = Array.from(tmpFinal.children);
+          if (lastMetaIdx2 < finalChildren.length - 1) {
+            const hr = document.createElement('hr');
+            hr.className = 'journal-split';
+            finalChildren[lastMetaIdx2].after(hr);
+            docxReadyHtml = tmpFinal.innerHTML;
+          }
+        }
       }
       const blob = await generateDocx(docxReadyHtml, activeStyle);
       const url = URL.createObjectURL(blob);
@@ -581,6 +631,17 @@ function Home() {
 
     // 2. Restore Image Placeholders
     if (Object.keys(imageMap).length > 0) {
+      // Pass 1: AI 有时输出 <img src="__IMG_N__"> 而不是独立 token
+      // 把 src 属性里的占位符替换为真实 base64 src，避免整个 img 标签被塞进 src 属性
+      processedText = processedText.replace(/src="(__IMG_\d+__)"/gi, (_m, placeholder) => {
+        const stored = imageMap[placeholder];
+        if (stored) {
+          const srcMatch = stored.match(/src="([^"]*)"/i);
+          if (srcMatch) return `src="${srcMatch[1]}"`;
+        }
+        return _m;
+      });
+      // Pass 2: 独立的 __IMG_N__ token → 替换为完整 <img> 标签
       processedText = processedText.replace(/__IMG_\d+__/g, (match) => {
         return imageMap[match] || match;
       });

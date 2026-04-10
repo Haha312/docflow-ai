@@ -233,8 +233,13 @@ router.post('/users/:id', authenticate, requireAdmin, async (req: AuthRequest, r
         const userId = String(req.params.id || '');
         const { subscriptionStatus, additionalDays } = req.body;
 
+        const VALID_STATUSES = ['FREE', 'PLUS', 'PRO', 'ULTRA'];
         const data: any = {};
-        if (subscriptionStatus) {
+        if (subscriptionStatus !== undefined) {
+            if (!VALID_STATUSES.includes(subscriptionStatus)) {
+                res.status(400).json({ error: `Invalid subscriptionStatus. Must be one of: ${VALID_STATUSES.join(', ')}` });
+                return;
+            }
             data.subscriptionStatus = subscriptionStatus;
         }
 

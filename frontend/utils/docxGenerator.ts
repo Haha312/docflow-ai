@@ -621,8 +621,8 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                         // 智能缩放逻辑:
                         // 1. "不要压缩": 尽量保持原图大小
                         // 2. "两端对齐": 意味着图片应该尽可能占满宽度 (最大不超过页边距)
-                        // A4 纸通常可用宽度约 600-650px (EMU换算)
-                        const MAX_PAGE_WIDTH = 650;
+                        // 双栏时限制在单栏宽度，单栏时用完整可打印宽度
+                        const MAX_PAGE_WIDTH = (styleConfig.columns && styleConfig.columns > 1) ? 288 : 600;
 
                         let finalWidth = width;
                         let finalHeight = height;
@@ -664,6 +664,17 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 if (tag === 'U') nextStyle.isUnderline = true;
                 if (tag === 'SUP') nextStyle.isSup = true;
                 if (tag === 'SUB') nextStyle.isSub = true;
+                // <code> 内联代码：切换为等宽字体，其他样式继承
+                if (tag === 'CODE') {
+                    const codeFont = { ascii: 'Courier New', hAnsi: 'Courier New', eastAsia: 'Courier New', cs: 'Courier New' };
+                    const codeSize = Math.round(baseSize * 0.9); // 代码字号略小一档
+                    el.childNodes.forEach(c => {
+                        if (c.nodeType === Node.TEXT_NODE && c.textContent) {
+                            runs.push(new TextRun({ text: c.textContent, font: codeFont, size: codeSize, bold: nextStyle.isBold, italics: nextStyle.isItalic, color: '1a1a1a' }));
+                        }
+                    });
+                    return;
+                }
                 el.childNodes.forEach(c => traverse(c, nextStyle));
             }
         };
@@ -682,17 +693,35 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         let afterTwips = 240;
         let fontName = headingFont;
 
-        // GB/T 9704-2012: fixed 28pt line height is the CORPORATE indicator
-        const isCorporate = styleConfig.lineHeight?.includes('pt');
-        const corporateLine28 = 560; // 28pt × 20 = 560 twips (EXACT)
+        // GB/T 9704-2012 公文格式：通过标题编号风格识别（公文独有 chinese-hierarchical）
+        // 不能用 lineHeight.includes('pt') 检测，否则出版物使用固定磅值行距时会误判
+        const isCorporate = styleConfig.headingNumbering === 'chinese-hierarchical';
+        const corporateLine28 = 560; // 28pt × 20 = 560 twips (EXACT, GB/T 9704-2012)
+        // 出版物：章节式标题需要更大留白，让章节换感更明显
+        const isChapterStyle = styleConfig.headingNumbering === 'chapter';
+        const linesUnit = i18n.t('generator.lines', '行');
         if (level === 1) {
-            size = getHalfPtSize(styleConfig.h1Size); align = mapAlignment(styleConfig.h1Align); headingLevel = HeadingLevel.HEADING_1; beforeTwips = isCorporate ? corporateLine28 : getSpacingTwips(`1${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h1Size)); afterTwips = isCorporate ? 0 : getSpacingTwips(`1${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h1Size)); indent = getIndentConfig(styleConfig.h1Indent, getPtSize(styleConfig.h1Size)); bold = styleConfig.h1Bold; italics = styleConfig.h1Italic; fontName = h1Font;
+            size = getHalfPtSize(styleConfig.h1Size); align = mapAlignment(styleConfig.h1Align); headingLevel = HeadingLevel.HEADING_1;
+            // 章节式（出版物）: 章标题前2行、后1行，营造翻篇感；其他场景保持1行
+            beforeTwips = isCorporate ? corporateLine28 : isChapterStyle ? getSpacingTwips(`2${linesUnit}`, getPtSize(styleConfig.h1Size)) : getSpacingTwips(`1${linesUnit}`, getPtSize(styleConfig.h1Size));
+            afterTwips = isCorporate ? 0 : isChapterStyle ? getSpacingTwips(`1${linesUnit}`, getPtSize(styleConfig.h1Size)) : getSpacingTwips(`1${linesUnit}`, getPtSize(styleConfig.h1Size));
+            indent = getIndentConfig(styleConfig.h1Indent, getPtSize(styleConfig.h1Size)); bold = styleConfig.h1Bold; italics = styleConfig.h1Italic; fontName = h1Font;
         } else if (level === 2) {
-            size = getHalfPtSize(styleConfig.h2Size); align = mapAlignment(styleConfig.h2Align); headingLevel = HeadingLevel.HEADING_2; beforeTwips = isCorporate ? corporateLine28 : getSpacingTwips(`0.8${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h2Size)); afterTwips = isCorporate ? 0 : getSpacingTwips(`0.5${i18n.t('generator.lines', '行')}`, getPtSize(styleConfig.h2Size)); indent = getIndentConfig(styleConfig.h2Indent, getPtSize(styleConfig.h2Size)); bold = styleConfig.h2Bold; italics = styleConfig.h2Italic; fontName = h2Font;
+            size = getHalfPtSize(styleConfig.h2Size); align = mapAlignment(styleConfig.h2Align); headingLevel = HeadingLevel.HEADING_2;
+            beforeTwips = isCorporate ? corporateLine28 : getSpacingTwips(`0.8${linesUnit}`, getPtSize(styleConfig.h2Size));
+            afterTwips = isCorporate ? 0 : getSpacingTwips(`0.5${linesUnit}`, getPtSize(styleConfig.h2Size));
+            indent = getIndentConfig(styleConfig.h2Indent, getPtSize(styleConfig.h2Size)); bold = styleConfig.h2Bold; italics = styleConfig.h2Italic; fontName = h2Font;
         } else if (level === 3) {
-            size = getHalfPtSize(styleConfig.h3Size); headingLevel = HeadingLevel.HEADING_3; beforeTwips = isCorporate ? 0 : 200; afterTwips = isCorporate ? 0 : 100; indent = getIndentConfig(styleConfig.h3Indent, getPtSize(styleConfig.h3Size)); bold = styleConfig.h3Bold; italics = styleConfig.h3Italic; fontName = h3Font;
+            size = getHalfPtSize(styleConfig.h3Size); headingLevel = HeadingLevel.HEADING_3;
+            // H3 改为相对字号的比例间距，避免在大字号下留白过小
+            beforeTwips = isCorporate ? 0 : getSpacingTwips(`0.5${linesUnit}`, getPtSize(styleConfig.h3Size));
+            afterTwips = isCorporate ? 0 : getSpacingTwips(`0.3${linesUnit}`, getPtSize(styleConfig.h3Size));
+            indent = getIndentConfig(styleConfig.h3Indent, getPtSize(styleConfig.h3Size)); bold = styleConfig.h3Bold; italics = styleConfig.h3Italic; fontName = h3Font;
         } else {
-            size = getHalfPtSize(styleConfig.h4Size); headingLevel = level === 4 ? HeadingLevel.HEADING_4 : level === 5 ? HeadingLevel.HEADING_5 : HeadingLevel.HEADING_6; beforeTwips = isCorporate ? 0 : 150; afterTwips = isCorporate ? 0 : 80; indent = getIndentConfig(styleConfig.h4Indent, getPtSize(styleConfig.h4Size)); bold = styleConfig.h4Bold; italics = styleConfig.h4Italic; fontName = h4Font;
+            size = getHalfPtSize(styleConfig.h4Size); headingLevel = level === 4 ? HeadingLevel.HEADING_4 : level === 5 ? HeadingLevel.HEADING_5 : HeadingLevel.HEADING_6;
+            beforeTwips = isCorporate ? 0 : getSpacingTwips(`0.4${linesUnit}`, getPtSize(styleConfig.h4Size));
+            afterTwips = isCorporate ? 0 : getSpacingTwips(`0.2${linesUnit}`, getPtSize(styleConfig.h4Size));
+            indent = getIndentConfig(styleConfig.h4Indent, getPtSize(styleConfig.h4Size)); bold = styleConfig.h4Bold; italics = styleConfig.h4Italic; fontName = h4Font;
         }
         // For CORPORATE, apply fixed 28pt line height to headings too
         const headingLine = isCorporate ? { line: corporateLine28, lineRule: LineRuleType.EXACT } : {};
@@ -741,17 +770,32 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
 
                     let paragraph = createBodyParagraph(inlineBuffer, tableContext, blockAlign);
                     if (listContext) {
+                        const listFontSizePt = getPtSize(styleConfig.baseSize);
+                        // hanging indent：bullet/数字占 1 字符宽，正文从第 2 字符开始
+                        const hangingTwips = Math.round(listFontSizePt * 20); // 1 字符 ≈ 1em = 1×字号
+                        const leftTwips = hangingTwips * 2; // 整体缩进 2 字符，首行回退 1 字符
                         if (listContext.type === 'ol') {
                             const first = inlineBuffer[0];
                             if (first.nodeType === Node.TEXT_NODE && first.textContent && !/^(\d+|[a-zA-Z])[\.\u3001]/.test(first.textContent.trim())) {
-                                first.textContent = `${listContext.counter?.value || 1}. ${first.textContent.trimStart()}`; 
+                                first.textContent = `${listContext.counter?.value || 1}. ${first.textContent.trimStart()}`;
                             }
                             if (listContext.counter) listContext.counter.value++;
                         } else {
                             const first = inlineBuffer[0];
                             if (first.nodeType === Node.TEXT_NODE && first.textContent) { first.textContent = `• ${first.textContent.trimStart()}`; }
                         }
-                        paragraph = createBodyParagraph(inlineBuffer, tableContext, blockAlign);
+                        // 重新生成带 hanging indent 的段落
+                        const tempContainer2 = document.createElement('div');
+                        inlineBuffer.forEach(n => tempContainer2.appendChild(n.cloneNode(true)));
+                        const listFont = makeFont(bodyFont);
+                        const listSize = getHalfPtSize(styleConfig.baseSize);
+                        const listRuns = getRichTextRuns(tempContainer2, listFont, listSize, '000000');
+                        paragraph = new Paragraph({
+                            alignment: mapAlignment(styleConfig.bodyAlign),
+                            spacing: { before: 0, after: Math.round(getSpacingTwips(styleConfig.spacingAfter, listFontSizePt) * 0.5), line: lineValue, lineRule: lineRule },
+                            indent: { left: leftTwips, hanging: hangingTwips },
+                            children: listRuns
+                        });
                     }
                     elements.push(paragraph);
                 }
@@ -773,6 +817,24 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 currentAlign = el.style.textAlign;
             } else if (el.getAttribute('align')) {
                 currentAlign = el.getAttribute('align') || undefined;
+            }
+
+            // <pre> 代码块：等宽字体 + 浅灰背景 + 保留换行（每行一个 Paragraph）
+            if (tagName === 'PRE') {
+                const codeFont = { ascii: 'Courier New', hAnsi: 'Courier New', eastAsia: 'Courier New', cs: 'Courier New' };
+                const codeSizeHp = Math.round(getHalfPtSize(styleConfig.baseSize) * 0.9); // 略小一档
+                const rawText = el.innerText || el.textContent || '';
+                // 去掉首尾空行，按换行分割
+                const lines = rawText.replace(/^\n/, '').replace(/\n$/, '').split('\n');
+                lines.forEach((line, idx) => {
+                    elements.push(new Paragraph({
+                        spacing: { before: idx === 0 ? 200 : 0, after: idx === lines.length - 1 ? 200 : 0 },
+                        indent: { left: 240, right: 240 }, // 左右留出缩进模拟内边距
+                        shading: { fill: 'F3F4F6', color: 'auto' } as any,
+                        children: [new TextRun({ text: line || ' ', font: codeFont, size: codeSizeHp, color: '1f2937' })]
+                    }));
+                });
+                return;
             }
 
             if (tagName === 'TABLE') {
@@ -827,7 +889,8 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                         // If we have width but no height (and detection failed), we assume 4:3 or keep default
                     }
 
-                    const MAX_PAGE_WIDTH = 650; // Printable area width
+                    // 双栏时图片限制在单栏宽度（约 288px），单栏时用完整可打印宽度（约 600px）
+                    const MAX_PAGE_WIDTH = (styleConfig.columns && styleConfig.columns > 1) ? 288 : 600;
                     let finalWidth = width;
                     let finalHeight = height;
 
@@ -871,10 +934,25 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                         }));
                     }
                 } else {
-                    console.warn('⚠️ Image not in base64 format');
+                    // 图片非 base64（AI 生成的占位图），渲染为带边框的占位段落
+                    const altText = el.getAttribute('alt') || i18n.t('generator.image', '图片');
+                    const boxWidth = (styleConfig.columns && styleConfig.columns > 1) ? 220 : 460;
                     elements.push(new Paragraph({
                         alignment: AlignmentType.CENTER,
-                        children: [new TextRun({ text: `[${i18n.t('generator.image', '图片')}]`, font: makeFont(bodyFont), size: getHalfPtSize(styleConfig.baseSize) })]
+                        spacing: { before: 120, after: 60 },
+                        border: {
+                            top: { style: BorderStyle.SINGLE, size: 4, color: 'AAAAAA', space: 4 },
+                            bottom: { style: BorderStyle.SINGLE, size: 4, color: 'AAAAAA', space: 4 },
+                            left: { style: BorderStyle.SINGLE, size: 4, color: 'AAAAAA', space: 4 },
+                            right: { style: BorderStyle.SINGLE, size: 4, color: 'AAAAAA', space: 4 },
+                        },
+                        children: [new TextRun({
+                            text: `[ ${altText} ]`,
+                            font: makeFont(bodyFont),
+                            size: getHalfPtSize(styleConfig.baseSize),
+                            color: '888888',
+                            italics: true
+                        })]
                     }));
                 }
                 return;
@@ -1042,6 +1120,62 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         }
     });
 
+    // ===== 期刊通栏/双栏分割辅助函数 =====
+    // 策略1：<hr class="journal-split"> 精确标记（AI 按新指令生成时走此路径）
+    // 策略2：<div class="journal-header"> / <div class="journal-body"> wrapper
+    // 策略3（兜底）：扫描全文，找最后一个摘要/关键词元素，其后第一个正文标题即为分割点
+    function splitJournalContent(nodes: Node[]): { hdr: Node[], body: Node[] } {
+        // 策略1：仅接受带 journal-split class 的 HR（避免误判 AI 输出的装饰性 <hr>）
+        const hrIdx = nodes.findIndex(n =>
+            n.nodeType === Node.ELEMENT_NODE &&
+            (n as HTMLElement).tagName === 'HR' &&
+            (n as HTMLElement).className?.includes('journal-split')
+        );
+        if (hrIdx >= 0) {
+            return { hdr: nodes.slice(0, hrIdx), body: nodes.slice(hrIdx + 1) };
+        }
+
+        // 策略2：wrapper div
+        const jHdr = nodes.find(n =>
+            n.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).className?.includes('journal-header')
+        ) as HTMLElement | undefined;
+        const jBody = nodes.find(n =>
+            n.nodeType === Node.ELEMENT_NODE && (n as HTMLElement).className?.includes('journal-body')
+        ) as HTMLElement | undefined;
+        if (jHdr && jBody) {
+            return { hdr: Array.from(jHdr.childNodes), body: Array.from(jBody.childNodes) };
+        }
+
+        // 策略3：只扫前 12 个顶层节点（期刊 header 元素不超过 10 个）
+        // 用 firstLine.startsWith 而非 txt.includes，避免正文中提到"摘要/关键词"导致误判
+        const hdrCls = ['doc-title', 'doc-title-en', 'author-info', 'affiliation', 'abstract-cn', 'abstract-en', 'keywords'];
+        const scanLimit = Math.min(nodes.length, 12);
+        let lastMetaIdx = -1;
+        for (let i = 0; i < scanLimit; i++) {
+            const node = nodes[i];
+            if (node.nodeType !== Node.ELEMENT_NODE) continue;
+            const el = node as HTMLElement;
+            const cls = el.className || '';
+            const firstLine = (el.textContent?.trim() || '').split('\n')[0].trim();
+            if (
+                cls.includes('abstract') || cls.includes('keywords') ||
+                /^(摘\s*要|关键词|Abstract|Keywords|KEY\s*WORDS|Key\s*words)/i.test(firstLine)
+            ) { lastMetaIdx = i; }
+        }
+        if (lastMetaIdx >= 0) {
+            for (let i = lastMetaIdx + 1; i < nodes.length; i++) {
+                const node = nodes[i];
+                if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                const el = node as HTMLElement;
+                if (/^H[1-3]$/.test(el.tagName) && !hdrCls.some(c => (el.className || '').includes(c))) {
+                    return { hdr: nodes.slice(0, i), body: nodes.slice(i) };
+                }
+            }
+        }
+        // 兜底：找不到分割点则全部单栏
+        return { hdr: nodes, body: [] };
+    }
+
     // ===== 构建多节文档 =====
     let sections = [];
     const isJournalLayout = styleConfig.columns && styleConfig.columns > 1;
@@ -1096,25 +1230,8 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             const bodyElements = processNodes(bodyNodes as unknown as NodeList);
 
             if (isJournalLayout) {
-                // 期刊多栏布局
-                const headerNodesBody: Node[] = [];
-                const contentNodesBody: Node[] = [];
-                let inContent = false;
-
-                const journalHeaderClsBody = ['doc-title', 'doc-title-en', 'author-info', 'affiliation', 'abstract-cn', 'abstract-en', 'keywords'];
-                bodyNodes.forEach(node => {
-                    if (inContent) { contentNodesBody.push(node); return; }
-                    if (node.nodeType === Node.ELEMENT_NODE) {
-                        const el = node as HTMLElement;
-                        const isHeaderEl = journalHeaderClsBody.some(c => el.className?.includes(c));
-                        if (!isHeaderEl && (el.tagName === 'H2' || el.tagName === 'H1' && !el.className.includes('doc-title'))) {
-                            inContent = true;
-                            contentNodesBody.push(node);
-                            return;
-                        }
-                    }
-                    headerNodesBody.push(node);
-                });
+                // 期刊多栏布局：通栏（题目/作者/摘要/关键词）+ 双栏（正文）
+                const { hdr: hdrNodes, body: bodyNodes2 } = splitJournalContent(Array.from(bodyNodes as unknown as Node[]));
 
                 sections.push({
                     properties: {
@@ -1123,7 +1240,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                         pageNumberFormatType: NumberFormat.DECIMAL,
                         pageNumberStart: 1
                     },
-                    children: processNodes(headerNodesBody as unknown as NodeList),
+                    children: processNodes(hdrNodes as unknown as NodeList),
                     footers: { default: createBodyFooter() }
                 });
                 sections.push({
@@ -1131,7 +1248,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                         type: SectionType.CONTINUOUS,
                         column: { count: styleConfig.columns, space: 425 }
                     },
-                    children: processNodes(contentNodesBody as unknown as NodeList),
+                    children: processNodes(bodyNodes2 as unknown as NodeList),
                     footers: { default: createBodyFooter() }
                 });
             } else {
@@ -1151,30 +1268,11 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         const allElements = processNodes(xmlDoc.body.childNodes);
 
         if (isJournalLayout) {
-            const headerNodes: Node[] = [];
-            const contentNodes: Node[] = [];
-            let inBody = false;
-
-            // Journal header = title/author/affiliation/abstract/keywords (single column)
-            // Journal body starts at first H2 section heading (double column)
-            const journalHeaderClasses = ['doc-title', 'doc-title-en', 'author-info', 'affiliation', 'abstract-cn', 'abstract-en', 'keywords'];
-            xmlDoc.body.childNodes.forEach(node => {
-                if (inBody) { contentNodes.push(node); return; }
-                if (node.nodeType === Node.ELEMENT_NODE) {
-                    const el = node as HTMLElement;
-                    const isHeaderEl = journalHeaderClasses.some(c => el.className?.includes(c));
-                    if (!isHeaderEl && (el.tagName === 'H2' || el.tagName === 'H1' && !el.className.includes('doc-title'))) {
-                        inBody = true;
-                        contentNodes.push(node);
-                        return;
-                    }
-                }
-                headerNodes.push(node);
-            });
+            const { hdr: hdrNodes2, body: bodyNodes3 } = splitJournalContent(Array.from(xmlDoc.body.childNodes));
 
             sections = [
-                { properties: { column: { count: 1 }, type: SectionType.CONTINUOUS }, children: processNodes(headerNodes as unknown as NodeList), footers: { default: createBodyFooter() } },
-                { properties: { column: { count: styleConfig.columns, space: 425 }, type: SectionType.CONTINUOUS }, children: processNodes(contentNodes as unknown as NodeList), footers: { default: createBodyFooter() } }
+                { properties: { column: { count: 1 }, type: SectionType.CONTINUOUS }, children: processNodes(hdrNodes2 as unknown as NodeList), footers: { default: createBodyFooter() } },
+                { properties: { column: { count: styleConfig.columns, space: 425 }, type: SectionType.CONTINUOUS }, children: processNodes(bodyNodes3 as unknown as NodeList), footers: { default: createBodyFooter() } }
             ];
         } else {
             sections = [{

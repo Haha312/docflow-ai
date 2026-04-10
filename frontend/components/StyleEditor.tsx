@@ -23,6 +23,8 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
     // Use presetId (enum value) for reliable detection regardless of display language
     const isJournal = presetId === 'ACADEMIC_JOURNAL' || presetTitle.includes("学术期刊") || presetTitle.includes("Journal");
     const isCorporate = presetId === 'CORPORATE' || presetTitle.includes("商务公文") || presetTitle.includes("Corporate");
+    const isCreative = presetId === 'CREATIVE' || presetTitle.includes("出版物") || presetTitle.includes("Creative");
+    const isMinimalist = presetId === 'MINIMALIST' || presetTitle.includes("互联网文档") || presetTitle.includes("Minimalist");
 
     const handleChange = (key: keyof StyleConfig, value: string | boolean) => {
         onUpdate({ ...config, [key]: value });
@@ -408,7 +410,8 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                                 <div>
                                                     <span className="text-xs text-zinc-500 block mb-1.5">
                                                         {t('styles.line_height')}
-                                                        {isCorporate && <span className="ml-1 text-zinc-400 font-normal normal-case">（默认 28磅 / GB/T 9704）</span>}
+                                                        {isCorporate && <span className="ml-1 text-zinc-400 font-normal normal-case">（固定 28磅 / GB/T 9704-2012）</span>}
+                                                        {isCreative && <span className="ml-1 text-zinc-400 font-normal normal-case">（固定 18磅 / 人民文学出版社规范）</span>}
                                                     </span>
                                                     <input
                                                         type="text"
@@ -418,26 +421,36 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                                     />
                                                 </div>
                                             </div>
-                                        </div>
-                                    </section>
-
-                                    {/* Spacing — not for corporate */}
-                                    {!isCorporate && (
-                                        <section className="space-y-4">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className="p-1.5 bg-indigo-100/50 rounded-lg text-indigo-600">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v18"></path><rect x="6" y="8" width="12" height="8" rx="1"></rect></svg>
-                                                </div>
-                                                <h4 className="font-bold text-zinc-900">{t('styles.paragraph_spacing')}</h4>
-                                            </div>
-                                            <div className="bg-zinc-50/50 rounded-xl border border-zinc-200/60 p-5">
-                                                <div className="grid grid-cols-2 gap-4">
+                                            {/* 段落间距 + 标题颜色（出版物/互联网文档）并入排版区，节省空间 */}
+                                            {!isCorporate && (
+                                                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-zinc-100">
                                                     {renderSelect(t('styles.space_before'), config.spacingBefore, (v) => handleChange('spacingBefore', v), SPACING_OPTIONS)}
                                                     {renderSelect(t('styles.space_after'), config.spacingAfter, (v) => handleChange('spacingAfter', v), SPACING_OPTIONS)}
                                                 </div>
-                                            </div>
-                                        </section>
-                                    )}
+                                            )}
+                                            {(isCreative || isMinimalist) && (
+                                                <div className="pt-2 border-t border-zinc-100">
+                                                    <span className="text-xs text-zinc-500 block mb-1.5">{t('styles.heading_color', '标题颜色')}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="color"
+                                                            value={config.primaryColor || '#000000'}
+                                                            onChange={(e) => handleChange('primaryColor', e.target.value)}
+                                                            className="h-9 w-12 cursor-pointer rounded-md border border-zinc-200 bg-white p-1 shrink-0"
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            value={config.primaryColor || '#000000'}
+                                                            onChange={(e) => handleChange('primaryColor', e.target.value)}
+                                                            className="flex-1 text-sm p-2.5 border border-zinc-200 rounded-lg bg-zinc-50 focus:border-indigo-500 outline-none font-mono"
+                                                            placeholder="#000000"
+                                                            maxLength={7}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </section>
                                 </div>
                             )}
 

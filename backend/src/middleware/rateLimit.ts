@@ -3,8 +3,8 @@ import { AuthRequest } from '../types';
 import { errorResponse } from '../utils/response';
 import prisma from '../config/database';
 
-// 管理员邮箱（唯一可访问后台的账号）
-const ADMIN_EMAIL = 'admin@docuflow.ai';
+// Fallback admin emails if SystemConfig is unavailable
+const DEFAULT_ADMIN_EMAILS = ['admin@docuflow.ai', 'hanhaha312@gmail.com'];
 
 const TIER_LIMITS = {
     'FREE': 3,      // 终身3次免费
@@ -34,8 +34,15 @@ export const checkRateLimit = async (
             return;
         }
 
-        // 管理员账号不限次数
-        if (user.email === ADMIN_EMAIL) {
+        // 管理员账号不限次数 — check DB first, fallback to hardcoded list
+        let adminEmails = DEFAULT_ADMIN_EMAILS;
+        try {
+            const config = await prisma.systemConfig.findUnique({ where: { key: 'ADMIN_EMAILS' } });
+            if (config?.value) {
+                adminEmails = config.value.split(',').map((e: string) => e.trim().toLowerCase());
+            }
+        } catch { /* SystemConfig may not exist */ }
+        if (adminEmails.includes(user.email.toLowerCase())) {
             next();
             return;
         }
@@ -72,6 +79,7 @@ export const checkRateLimit = async (
             const usageCount = await prisma.usageLog.count({
                 where: {
                     userId: user.id,
+                    actionType: 'generate_document',
                     createdAt: { gte: monthStart }
                 }
             });
@@ -101,5 +109,5 @@ export const checkRateLimit = async (
  * 检查是否为管理员
  */
 export const isAdmin = (email: string): boolean => {
-    return email === ADMIN_EMAIL;
+    return DEFAULT_ADMIN_EMAILS.includes(email.toLowerCase());
 };

@@ -71,11 +71,15 @@ const respondWechatXml = (res: Response, ok: boolean, msg = 'OK') => {
 
 async function applyPaidOrder(
     orderId: string,
-    userId: string,
+    _webhookUserId: string,
     planType: string
 ): Promise<void> {
     const existing = await prisma.order.findUnique({ where: { id: orderId } });
     if (!existing) return;
+
+    // Always use the userId stored in the order at creation time (authenticated context).
+    // Never trust userId from passback_params / attach — those are user-controlled fields.
+    const userId = existing.userId;
 
     const plan = PRICING[planType] || PRICING[existing.planType];
     if (!plan) return;
