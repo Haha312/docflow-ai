@@ -26,11 +26,8 @@ const getTextCount = (html: string) => {
 };
 
 const MODEL_OPTIONS = [
-  { key: 'gemini-flash', name: 'Gemini Flash',  descKey: 'home.model_fast' },
-  { key: 'gemini-pro',   name: 'Gemini 3 Pro',  descKey: 'home.model_quality' },
-  { key: 'doubao',       name: '豆包 Doubao',    descKey: 'home.model_bytedance' },
-  { key: 'deepseek',     name: 'DeepSeek V3',   descKey: 'home.model_deepseek' },
-  { key: 'qwen-max',     name: 'Qwen Max',       descKey: 'home.model_qwen' },
+  { key: 'deepseek',     name: 'DeepSeek V3',   descKey: 'home.model_deepseek', paidOnly: false },
+  { key: 'gemini-flash', name: 'Gemini Flash',  descKey: 'home.model_fast',     paidOnly: true  },
 ] as const;
 
 // A4 page dimensions at 96 dpi (297mm × 96 / 25.4 ≈ 1122px)
@@ -46,7 +43,7 @@ function Home() {
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
   const [selectedPreset, setSelectedPreset] = useState<DocPreset>(DocPreset.ACADEMIC);
   const [selectedModel, setSelectedModel] = useState<string>(
-    () => localStorage.getItem('docuflow_selected_model') ?? 'gemini-pro'
+    () => localStorage.getItem('docuflow_selected_model') ?? 'deepseek'
   );
   const [isModelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -164,6 +161,14 @@ function Home() {
   useEffect(() => {
     localStorage.setItem('docuflow_selected_model', selectedModel);
   }, [selectedModel]);
+
+  // FREE 用户只能使用 DeepSeek，自动修正非法选择
+  const isFreeUser = !user || user.subscriptionStatus === 'FREE';
+  useEffect(() => {
+    if (isFreeUser && selectedModel !== 'deepseek') {
+      setSelectedModel('deepseek');
+    }
+  }, [isFreeUser, selectedModel]);
 
 
   useEffect(() => {
@@ -1078,26 +1083,39 @@ function Home() {
                   </button>
                   {isModelDropdownOpen && (
                     <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
-                      {MODEL_OPTIONS.map(opt => (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          onClick={() => { setSelectedModel(opt.key); setModelDropdownOpen(false); }}
-                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors text-left ${selectedModel === opt.key ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-                        >
-                          <span className={`font-medium ${selectedModel === opt.key ? 'text-gray-900' : 'text-gray-700'}`}>
-                            {opt.name}
-                          </span>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs text-gray-400">{t(opt.descKey)}</span>
-                            {selectedModel === opt.key && (
-                              <svg className="w-3.5 h-3.5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path d="M20 6L9 17l-5-5" />
-                              </svg>
-                            )}
-                          </div>
-                        </button>
-                      ))}
+                      {MODEL_OPTIONS.map(opt => {
+                        const locked = opt.paidOnly && isFreeUser;
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => {
+                              if (locked) {
+                                setModelDropdownOpen(false);
+                                setShowPricingModal(true);
+                              } else {
+                                setSelectedModel(opt.key);
+                                setModelDropdownOpen(false);
+                              }
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors text-left ${locked ? 'opacity-60 cursor-not-allowed' : selectedModel === opt.key ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+                          >
+                            <span className={`font-medium ${selectedModel === opt.key && !locked ? 'text-gray-900' : 'text-gray-700'}`}>
+                              {opt.name}
+                            </span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs text-gray-400">{t(opt.descKey)}</span>
+                              {locked ? (
+                                <span className="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 py-0.5">Pro</span>
+                              ) : selectedModel === opt.key ? (
+                                <svg className="w-3.5 h-3.5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                  <path d="M20 6L9 17l-5-5" />
+                                </svg>
+                              ) : null}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
