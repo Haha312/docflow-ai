@@ -678,6 +678,13 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             return;
         }
 
+        // Validate modelKey against the registered whitelist before any downstream lookup.
+        const SUPPORTED_MODEL_KEYS = ['gemini-flash', 'gemini-pro', 'doubao', 'deepseek', 'qwen-max'];
+        if (requestedModelKey && !SUPPORTED_MODEL_KEYS.includes(requestedModelKey)) {
+            res.status(400).json(errorResponse(`不支持的模型: ${requestedModelKey}`, 400));
+            return;
+        }
+
         // 获取用户等级与配置
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
 

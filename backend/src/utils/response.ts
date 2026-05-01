@@ -30,8 +30,13 @@ export const isValidEmail = (email: string): boolean => {
 };
 
 /**
- * 验证密码强度 (至少6位)
+ * 验证密码强度: 至少 8 位,且至少包含字母 + 数字两类字符。
+ * 长度上限 128 防止 bcrypt 截断带来的混淆。
  */
 export const isValidPassword = (password: string): boolean => {
-    return password.length >= 6;
+    if (typeof password !== 'string') return false;
+    if (password.length < 8 || password.length > 128) return false;
+    const hasLetter = /[A-Za-z]/.test(password);
+    const hasDigit = /\d/.test(password);
+    return hasLetter && hasDigit;
 };

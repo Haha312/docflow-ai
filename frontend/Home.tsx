@@ -33,6 +33,17 @@ const MODEL_OPTIONS = [
   { key: 'qwen-max',     name: 'Qwen Max',       descKey: 'home.model_qwen' },
 ] as const;
 
+const DEFAULT_MODEL_KEY = 'gemini-pro';
+const MODEL_KEYS = MODEL_OPTIONS.map(m => m.key) as readonly string[];
+
+const readPersistedModel = (): string => {
+  try {
+    const stored = localStorage.getItem('docuflow_selected_model');
+    if (stored && MODEL_KEYS.includes(stored)) return stored;
+  } catch { /* ignore localStorage access errors */ }
+  return DEFAULT_MODEL_KEY;
+};
+
 // A4 page dimensions at 96 dpi (297mm × 96 / 25.4 ≈ 1122px)
 const A4_HEIGHT_PX = 1122;
 // Top + bottom padding of the paper div (each side = 80px)
@@ -45,9 +56,7 @@ function Home() {
   const [inputText, setInputText] = useState<string>('');
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
   const [selectedPreset, setSelectedPreset] = useState<DocPreset>(DocPreset.ACADEMIC);
-  const [selectedModel, setSelectedModel] = useState<string>(
-    () => localStorage.getItem('docuflow_selected_model') ?? 'gemini-pro'
-  );
+  const [selectedModel, setSelectedModel] = useState<string>(readPersistedModel);
   const [isModelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);

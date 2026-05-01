@@ -5,17 +5,29 @@ import { AuthRequest } from '../types';
 
 const router = express.Router();
 
+const parseAdminEmails = (raw: string | undefined): string[] =>
+    (raw || '')
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+
 // Middleware to check for Admin
 const requireAdmin = async (req: AuthRequest, res: Response, next: express.NextFunction) => {
     try {
-        // Read admin emails from SystemConfig, fallback to hardcoded default
-        let adminEmails = ['admin@docuflow.ai', 'hanhaha312@gmail.com'];
+        // Priority: SystemConfig.ADMIN_EMAILS -> env ADMIN_EMAILS
+        let adminEmails = parseAdminEmails(process.env.ADMIN_EMAILS);
         try {
             const config = await prisma.systemConfig.findUnique({ where: { key: 'ADMIN_EMAILS' } });
             if (config?.value) {
-                adminEmails = config.value.split(',').map((e: string) => e.trim().toLowerCase());
+                adminEmails = parseAdminEmails(config.value);
             }
         } catch { /* SystemConfig may not exist yet */ }
+
+        if (adminEmails.length === 0) {
+            console.warn('[admin] No admin emails configured; denying access. Set ADMIN_EMAILS env or SystemConfig.ADMIN_EMAILS.');
+            res.status(403).json({ error: 'Access Denied: Admins Only' });
+            return;
+        }
 
         if (!req.user || !adminEmails.includes(req.user.email.toLowerCase())) {
             res.status(403).json({ error: 'Access Denied: Admins Only' });

@@ -8,8 +8,10 @@ import userRoutes from './routes/user';
 import documentRoutes from './routes/document';
 import adminRoutes from './routes/admin';
 import { errorResponse } from './utils/response';
+import { validateEnv } from './config/env';
 
 dotenv.config();
+validateEnv();
 
 console.log('DocuFlow Backend Restarting...');
 if (process.env.NODE_ENV !== 'production') {
@@ -33,8 +35,9 @@ const corsOptions = {
 
         const normalizedOrigin = origin.replace(/\/+$/, '');
         if (allowedOrigins.size === 0) {
-            // Without an explicit whitelist, only allow all in non-production envs.
-            return callback(null, process.env.NODE_ENV !== 'production');
+            // No whitelist configured: reject all browser origins to avoid
+            // accidentally exposing the API. Configure CORS_ORIGINS / FRONTEND_URL.
+            return callback(null, false);
         }
 
         return callback(null, allowedOrigins.has(normalizedOrigin));
