@@ -533,41 +533,17 @@ const hasSameBodyHallucination = (text: string): boolean => {
     return sameCount >= 5;
 };
 
-const estimateSafeChunkSize = (modelKey: string | undefined, userTier: keyof typeof TIER_LIMITS): number => {
-    const baselineByModel: Record<string, number> = {
-        'gemini-flash': 12000,
-        'gemini-pro': 16000,
-        'doubao': 9000,
-        'deepseek': 6000,
-        'qwen-max': 6000
-    };
-    const base = baselineByModel[modelKey || ''] || 12000;
-    const tierFactor = userTier === 'ULTRA' ? 1.35 : 1.0;
-    return Math.max(4000, Math.floor(base * tierFactor));
-};
-
-
-
 import { TIER_LIMITS } from '../config/tierConfig';
 import { splitContentBySemantics, extractFirstHeading, compressChunksByCoverage } from '../utils/chunking';
+import {
+    isSupportedModelKey,
+    getModelConfig,
+    estimateSafeChunkSize,
+} from '../config/models';
 
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3-pro-preview';
 const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 50));
 
-interface ModelConfig { apiKey: string; baseUrl: string; modelId: string; needsProxy?: boolean; maxOutputTokens?: number; }
-
-function getModelConfig(modelKey: string, dbConfig: Record<string, string>): ModelConfig | null {
-    const geminiKey  = dbConfig['GOOGLE_API_KEY']        || process.env.GOOGLE_API_KEY        || '';
-    const geminiBase = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '';
-    const registry: Record<string, ModelConfig> = {
-        'gemini-flash': { apiKey: geminiKey,  baseUrl: geminiBase, modelId: 'gemini-2.0-flash',                          needsProxy: true,  maxOutputTokens: 16000 },
-        'gemini-pro':   { apiKey: geminiKey,  baseUrl: geminiBase, modelId: process.env.GEMINI_MODEL || 'gemini-3-pro-preview', needsProxy: true,  maxOutputTokens: 32000 },
-        'doubao':       { apiKey: process.env.DOUBAO_API_KEY   || '', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',        modelId: process.env.DOUBAO_ENDPOINT_ID || '', needsProxy: false, maxOutputTokens: 8192 },
-        'deepseek':     { apiKey: process.env.DEEPSEEK_API_KEY || '', baseUrl: 'https://api.deepseek.com/v1',                     modelId: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro', needsProxy: false, maxOutputTokens: 8192 },
-        'qwen-max':     { apiKey: process.env.DASHSCOPE_API_KEY || '', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', modelId: 'qwen-max',                        needsProxy: false, maxOutputTokens: 8192 },
-    };
-    return registry[modelKey] ?? null;
-}
 let activeGenerations = 0;
 
 const tryAcquireGenerationSlot = (): boolean => {
@@ -679,8 +655,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         }
 
         // Validate modelKey against the registered whitelist before any downstream lookup.
-        const SUPPORTED_MODEL_KEYS = ['gemini-flash', 'gemini-pro', 'doubao', 'deepseek', 'qwen-max'];
-        if (requestedModelKey && !SUPPORTED_MODEL_KEYS.includes(requestedModelKey)) {
+        if (requestedModelKey && !isSupportedModelKey(requestedModelKey)) {
             res.status(400).json(errorResponse(`不支持的模型: ${requestedModelKey}`, 400));
             return;
         }

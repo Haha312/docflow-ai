@@ -16,32 +16,13 @@ import { generateDocx } from './utils/docxGenerator';
 import { useAuth } from './contexts/AuthContext';
 import systemLogo from './image/image.jpg';
 // useTypewriter removed: SSE stream is already incremental, no need for secondary typing animation
-import { PRESETS } from './constants';
+import { PRESETS, MODEL_OPTIONS, readPersistedModel } from './constants';
 import { DocPreset, AIState, StyleConfig } from './types';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
 const getTextCount = (html: string) => {
   return html.replace(/<[^>]+>/g, '').replace(/\s/g, '').length;
-};
-
-const MODEL_OPTIONS = [
-  { key: 'gemini-flash', name: 'Gemini Flash',  descKey: 'home.model_fast' },
-  { key: 'gemini-pro',   name: 'Gemini 3 Pro',  descKey: 'home.model_quality' },
-  { key: 'doubao',       name: '豆包 Doubao',    descKey: 'home.model_bytedance' },
-  { key: 'deepseek',     name: 'DeepSeek V4 Pro', descKey: 'home.model_deepseek' },
-  { key: 'qwen-max',     name: 'Qwen Max',       descKey: 'home.model_qwen' },
-] as const;
-
-const DEFAULT_MODEL_KEY = 'gemini-pro';
-const MODEL_KEYS = MODEL_OPTIONS.map(m => m.key) as readonly string[];
-
-const readPersistedModel = (): string => {
-  try {
-    const stored = localStorage.getItem('docuflow_selected_model');
-    if (stored && MODEL_KEYS.includes(stored)) return stored;
-  } catch { /* ignore localStorage access errors */ }
-  return DEFAULT_MODEL_KEY;
 };
 
 // A4 page dimensions at 96 dpi (297mm × 96 / 25.4 ≈ 1122px)

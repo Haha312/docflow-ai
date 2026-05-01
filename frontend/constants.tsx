@@ -425,3 +425,32 @@ export const PRESETS: PresetConfig[] = [
     }
   }
 ];
+
+export interface ModelOption {
+  key: string;
+  name: string;
+  descKey: string;
+}
+
+export const MODEL_OPTIONS: readonly ModelOption[] = [
+  { key: 'gemini-flash', name: 'Gemini Flash',    descKey: 'home.model_fast' },
+  { key: 'gemini-pro',   name: 'Gemini 3 Pro',    descKey: 'home.model_quality' },
+  { key: 'doubao',       name: '豆包 Doubao',      descKey: 'home.model_bytedance' },
+  { key: 'deepseek',     name: 'DeepSeek V4 Pro', descKey: 'home.model_deepseek' },
+  { key: 'qwen-max',     name: 'Qwen Max',        descKey: 'home.model_qwen' },
+] as const;
+
+export const DEFAULT_MODEL_KEY = 'gemini-pro';
+
+const MODEL_KEY_SET = new Set(MODEL_OPTIONS.map((m) => m.key));
+
+export const isSupportedModelKey = (key: string | null | undefined): boolean =>
+  !!key && MODEL_KEY_SET.has(key);
+
+export const readPersistedModel = (storage: Storage = localStorage): string => {
+  try {
+    const stored = storage.getItem('docuflow_selected_model');
+    if (isSupportedModelKey(stored)) return stored as string;
+  } catch { /* ignore localStorage access errors */ }
+  return DEFAULT_MODEL_KEY;
+};
