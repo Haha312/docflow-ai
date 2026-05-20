@@ -14,6 +14,7 @@ const svgCaptcha = require('svg-captcha');
 const router = Router();
 
 import { TIER_LIMITS } from '../config/tierConfig';
+import { isAdminEmail } from '../utils/adminEmails';
 
 /**
  * POST /api/auth/register
@@ -190,13 +191,15 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
 
         const limit = TIER_LIMITS[userTier] || 10;
         const remainingQuota = Math.max(0, limit - usageCount);
+        const isAdmin = await isAdminEmail(user.email);
 
         res.json(successResponse({
             user: {
                 id: user.id,
                 email: user.email,
                 subscriptionStatus: user.subscriptionStatus,
-                subscriptionEndDate: user.subscriptionEndDate
+                subscriptionEndDate: user.subscriptionEndDate,
+                isAdmin
             },
             remainingQuota: remainingQuota
         }, '获取用户信息成功'));

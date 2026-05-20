@@ -44,7 +44,6 @@ interface AdminStats {
     presetStats: PresetStat[];
 }
 
-const ADMIN_EMAIL = 'admin@docuflow.ai';
 
 // Translating dynamically inside the component is better because PRESET_NAMES and TIER_LABELS
 // are used directly from constants. We'll change these to functions or inline maps depending on use.
@@ -147,7 +146,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
     useEffect(() => {
         if (!isLoading) {
-            if (!isAuthenticated || user?.email?.toLowerCase() !== ADMIN_EMAIL) {
+            if (!isAuthenticated || !user?.isAdmin) {
                 if (onClose) onClose();
                 else navigate('/');
             } else {

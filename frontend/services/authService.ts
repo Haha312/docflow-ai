@@ -19,6 +19,7 @@ export interface User {
     email: string;
     subscriptionStatus: 'FREE' | 'PLUS' | 'PRO' | 'ULTRA';
     subscriptionEndDate?: string;
+    isAdmin?: boolean;
 }
 
 export interface AuthResponse {

@@ -11,7 +11,9 @@
         "prisma:generate": "prisma generate",
         "prisma:migrate": "prisma migrate dev",
         "prisma:studio": "prisma studio",
-        "setup": "node scripts/setup.js"
+        "setup": "node scripts/setup.js",
+        "test": "vitest run",
+        "test:watch": "vitest"
     },
     "keywords": [
         "docuflow",
@@ -46,9 +48,13 @@
         "@types/jsonwebtoken": "^9.0.7",
         "@types/node": "^22.14.0",
         "@types/nodemailer": "^7.0.9",
+        "@types/supertest": "^7.2.0",
+        "@vitest/coverage-v8": "^4.1.6",
         "node-fetch": "^2.7.0",
         "prisma": "^6.2.0",
+        "supertest": "^7.2.2",
         "tsx": "^4.19.2",
-        "typescript": "^5.8.2"
+        "typescript": "^5.8.2",
+        "vitest": "^4.1.6"
     }
 }

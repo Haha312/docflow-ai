@@ -2,9 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../types';
 import { errorResponse } from '../utils/response';
 import prisma from '../config/database';
-
-// Fallback admin emails if SystemConfig is unavailable
-const DEFAULT_ADMIN_EMAILS = ['admin@docuflow.ai', 'hanhaha312@gmail.com'];
+import { getAdminEmails } from '../utils/adminEmails';
 
 const TIER_LIMITS = {
     'FREE': 3,      // 终身3次免费
@@ -34,14 +32,7 @@ export const checkRateLimit = async (
             return;
         }
 
-        // 管理员账号不限次数 — check DB first, fallback to hardcoded list
-        let adminEmails = DEFAULT_ADMIN_EMAILS;
-        try {
-            const config = await prisma.systemConfig.findUnique({ where: { key: 'ADMIN_EMAILS' } });
-            if (config?.value) {
-                adminEmails = config.value.split(',').map((e: string) => e.trim().toLowerCase());
-            }
-        } catch { /* SystemConfig may not exist */ }
+        const adminEmails = await getAdminEmails();
         if (adminEmails.includes(user.email.toLowerCase())) {
             next();
             return;
@@ -105,9 +96,4 @@ export const checkRateLimit = async (
     }
 };
 
-/**
- * 检查是否为管理员
- */
-export const isAdmin = (email: string): boolean => {
-    return DEFAULT_ADMIN_EMAILS.includes(email.toLowerCase());
-};
+export { isAdminEmail as isAdmin } from '../utils/adminEmails';

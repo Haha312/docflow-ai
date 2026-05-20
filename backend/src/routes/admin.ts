@@ -2,21 +2,13 @@ import express, { Response } from 'express';
 import prisma from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest } from '../types';
+import { getAdminEmails } from '../utils/adminEmails';
 
 const router = express.Router();
 
-// Middleware to check for Admin
 const requireAdmin = async (req: AuthRequest, res: Response, next: express.NextFunction) => {
     try {
-        // Read admin emails from SystemConfig, fallback to hardcoded default
-        let adminEmails = ['admin@docuflow.ai', 'hanhaha312@gmail.com'];
-        try {
-            const config = await prisma.systemConfig.findUnique({ where: { key: 'ADMIN_EMAILS' } });
-            if (config?.value) {
-                adminEmails = config.value.split(',').map((e: string) => e.trim().toLowerCase());
-            }
-        } catch { /* SystemConfig may not exist yet */ }
-
+        const adminEmails = await getAdminEmails();
         if (!req.user || !adminEmails.includes(req.user.email.toLowerCase())) {
             res.status(403).json({ error: 'Access Denied: Admins Only' });
             return;
