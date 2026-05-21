@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { OrderHistory } from './OrderHistory';
 import { DocumentList } from './DocumentList';
+import { cancelSubscription } from '../services/backendApiService';
 import { useTranslation } from 'react-i18next';
 
 interface UserProfileModalProps {
@@ -10,10 +11,27 @@ interface UserProfileModalProps {
 }
 
 export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
-  const { user, remainingQuota, logout } = useAuth();
+  const { user, remainingQuota, logout, refreshUser } = useAuth();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'profile' | 'documents' | 'orders'>('profile');
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState('');
+
+  const handleCancelSubscription = async () => {
+    setIsCancelling(true);
+    setCancelError('');
+    try {
+      await cancelSubscription();
+      await refreshUser();
+      setConfirmCancel(false);
+    } catch (e: any) {
+      setCancelError(e.message || t('profile.cancel_failed', '取消订阅失败,请重试'));
+    } finally {
+      setIsCancelling(false);
+    }
+  };
 
   if (!isOpen || !user) return null;
 
@@ -101,6 +119,46 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                   </div>
                 )}
               </div>
+
+              {/* Cancel subscription (only for paid users) */}
+              {isPro && (
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  {confirmCancel ? (
+                    <>
+                      <p className="text-sm text-gray-700 mb-3">
+                        {t('profile.cancel_warning', '取消订阅后账号立即降级为免费版,本月剩余权益将作废。如需退款剩余天数请联系客服。')}
+                      </p>
+                      {cancelError && (
+                        <p className="text-sm text-red-600 mb-3">{cancelError}</p>
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          disabled={isCancelling}
+                          onClick={() => { setConfirmCancel(false); setCancelError(''); }}
+                          className="flex-1 py-2.5 bg-gray-50 border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-100 transition-colors disabled:opacity-50"
+                        >
+                          {t('common.cancel', '取消')}
+                        </button>
+                        <button
+                          disabled={isCancelling}
+                          onClick={handleCancelSubscription}
+                          className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 transition-colors disabled:opacity-50"
+                        >
+                          {isCancelling ? t('common.processing', '处理中...') : t('profile.cancel_confirm', '确认取消订阅')}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmCancel(true)}
+                      className="w-full text-left text-sm text-gray-600 hover:text-red-600 transition-colors"
+                    >
+                      {t('profile.cancel_subscription', '取消订阅')}
+                      <span className="text-xs text-gray-400 ml-2">{t('profile.cancel_subscription_hint', '(立即降级,放弃剩余天数)')}</span>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {confirmLogout ? (
                 <div className="flex gap-2">

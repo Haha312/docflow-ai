@@ -76,6 +76,7 @@ function Home() {
   const [downloadHighlight, setDownloadHighlight] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
+  const [pricingReason, setPricingReason] = useState<'quota' | undefined>(undefined);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   const { isAuthenticated, user, refreshUser } = useAuth();
@@ -422,8 +423,10 @@ function Home() {
 
     } catch (err: any) {
       if (err.message === 'QUOTA_EXCEEDED') {
-        setAiState({ isThinking: false, error: t('home.quota_exceeded', "免费额度已用尽，升级 Pro 享受更多生成次数"), stopMessage: null, progressStep: '', progress: 0 });
-        setTimeout(() => setShowPricingModal(true), 1000);
+        // Clear inline error — the upgrade modal now carries the messaging + CTA
+        setAiState({ isThinking: false, error: null, stopMessage: null, progressStep: '', progress: 0 });
+        setPricingReason('quota');
+        setShowPricingModal(true);
       } else if (err.message === 'LOGIN_REQUIRED') {
         setAiState({ isThinking: false, error: t('home.login_required', "登录已失效,请重新登录"), stopMessage: null, progressStep: '', progress: 0 });
         setTimeout(() => setShowAuthModal(true), 1000);
@@ -1529,7 +1532,14 @@ function Home() {
       />
       <ProductRequirements isOpen={showPRD} onClose={() => setShowPRD(false)} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
-      <PricingModal isOpen={showPricingModal} onClose={() => setShowPricingModal(false)} />
+      <PricingModal
+        isOpen={showPricingModal}
+        onClose={() => {
+          setShowPricingModal(false);
+          setPricingReason(undefined);
+        }}
+        reason={pricingReason}
+      />
       <UserProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
 
       {/* Toast Notification */}

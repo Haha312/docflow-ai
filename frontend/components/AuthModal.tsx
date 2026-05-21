@@ -9,7 +9,7 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -45,9 +45,9 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Load Captcha when switching to register
+  // Load Captcha when switching to register OR forgot (both need email verification)
   React.useEffect(() => {
-    if (isOpen && mode === 'register') {
+    if (isOpen && (mode === 'register' || mode === 'forgot')) {
       refreshCaptcha();
     }
   }, [isOpen, mode]);
@@ -103,28 +103,45 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     try {
       if (mode === 'login') {
         await login(email, password);
-      } else {
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        onClose();
+        setEmail('');
+        setPassword('');
+        setCaptchaInput('');
+        setEmailCode('');
+        setCountdown(0);
+      } else if (mode === 'register') {
         await register(email, password, emailCode);
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        onClose();
+        setEmail('');
+        setPassword('');
+        setCaptchaInput('');
+        setEmailCode('');
+        setCountdown(0);
+      } else {
+        // forgot password flow
+        await authService.resetPassword(email, emailCode, password);
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        // After reset, switch back to login with email pre-filled, prompt user
+        setMode('login');
+        setPassword('');
+        setCaptchaInput('');
+        setEmailCode('');
+        setCountdown(0);
+        setError(t('auth.reset_success_login', '密码已重置,请用新密码登录'));
       }
-      // Only close after confirmed success
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      onClose();
-      setEmail('');
-      setPassword('');
-      setCaptchaInput('');
-      setEmailCode('');
-      setCountdown(0);
     } catch (err: any) {
       setError(err.message || t('auth.error_operation_failed', '操作失败,请重试'));
-      // On register failure, refresh captcha for next attempt
-      if (mode === 'register') refreshCaptcha();
+      // On register/forgot failure, refresh captcha for next attempt
+      if (mode === 'register' || mode === 'forgot') refreshCaptcha();
     } finally {
       setIsLoading(false);
     }
   };
 
-  const switchMode = () => {
-    setMode(mode === 'login' ? 'register' : 'login');
+  const switchMode = (next: 'login' | 'register' | 'forgot') => {
+    setMode(next);
     setError('');
     setEmail('');
     setPassword('');
@@ -157,8 +174,16 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               </svg>
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">{mode === 'login' ? t('auth.welcome_back', '欢迎回来') : t('auth.create_account', '创建账号')}</h2>
-              <p className="text-sm text-gray-500">{mode === 'login' ? t('auth.login_to_continue', '登录以继续使用') : t('auth.register_to_start', '注册开始使用')}</p>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {mode === 'login' && t('auth.welcome_back', '欢迎回来')}
+                {mode === 'register' && t('auth.create_account', '创建账号')}
+                {mode === 'forgot' && t('auth.forgot_title', '重置密码')}
+              </h2>
+              <p className="text-sm text-gray-500">
+                {mode === 'login' && t('auth.login_to_continue', '登录以继续使用')}
+                {mode === 'register' && t('auth.register_to_start', '注册开始使用')}
+                {mode === 'forgot' && t('auth.forgot_subtitle', '验证邮箱后即可设置新密码')}
+              </p>
             </div>
           </div>
         </div>
@@ -183,9 +208,21 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
-                {t('auth.password', '密码')}
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  {mode === 'forgot' ? t('auth.new_password', '新密码') : t('auth.password', '密码')}
+                </label>
+                {mode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => switchMode('forgot')}
+                    disabled={isLoading}
+                    className="text-xs text-gray-500 hover:text-gray-900 underline-offset-2 hover:underline disabled:text-gray-300"
+                  >
+                    {t('auth.forgot_password', '忘记密码?')}
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <input
                   id="password"
@@ -213,7 +250,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               </div>
             </div>
 
-            {mode === 'register' && (
+            {(mode === 'register' || mode === 'forgot') && (
               <>
                 {/* Captcha */}
                 <div>
@@ -286,34 +323,52 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   {t('auth.processing', '处理中...')}
                 </span>
               ) : (
-                mode === 'login' ? t('auth.login_btn', '登录') : t('auth.create_account', '创建账号')
+                <>
+                  {mode === 'login' && t('auth.login_btn', '登录')}
+                  {mode === 'register' && t('auth.create_account', '创建账号')}
+                  {mode === 'forgot' && t('auth.reset_password_btn', '重置密码')}
+                </>
               )}
             </button>
           </form>
 
           <div className="mt-6 pt-6 border-t border-gray-100 text-center text-sm text-gray-500">
-            {mode === 'login' ? (
+            {mode === 'login' && (
               <p>
                 {t('auth.no_account', '还没有账号? ')}
                 <button
                   type="button"
-                  onClick={switchMode}
+                  onClick={() => switchMode('register')}
                   disabled={isLoading}
                   className="text-gray-900 font-medium hover:underline disabled:text-gray-400"
                 >
                   {t('auth.register_now', '立即注册')}
                 </button>
               </p>
-            ) : (
+            )}
+            {mode === 'register' && (
               <p>
                 {t('auth.has_account', '已有账号? ')}
                 <button
                   type="button"
-                  onClick={switchMode}
+                  onClick={() => switchMode('login')}
                   disabled={isLoading}
                   className="text-gray-900 font-medium hover:underline disabled:text-gray-400"
                 >
                   {t('auth.login_now', '立即登录')}
+                </button>
+              </p>
+            )}
+            {mode === 'forgot' && (
+              <p>
+                {t('auth.remember_password', '想起密码了? ')}
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  disabled={isLoading}
+                  className="text-gray-900 font-medium hover:underline disabled:text-gray-400"
+                >
+                  {t('auth.back_to_login', '返回登录')}
                 </button>
               </p>
             )}

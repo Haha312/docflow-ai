@@ -30,7 +30,7 @@ export const authenticate = async (
             throw new Error('JWT_SECRET 未配置');
         }
 
-        const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+        const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as JwtPayload;
 
         // 从数据库获取用户信息
         const user = await prisma.user.findUnique({

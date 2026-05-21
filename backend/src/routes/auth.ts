@@ -126,7 +126,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         const token = jwt.sign(
             { userId: user.id, email: user.email },
             jwtSecret,
-            { expiresIn: '24h' }
+            { expiresIn: '24h', algorithm: 'HS256' }
         );
 
         res.json(successResponse({
@@ -295,6 +295,62 @@ router.post('/send-verify-code', async (req: Request, res: Response): Promise<vo
     } catch (error) {
         console.error('Send Email Code error:', error);
         res.status(500).json(errorResponse('AUTH_SEND_CODE_FAILED', 500));
+    }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * 重置密码:复用 send-verify-code 已经发到邮箱的 6 位验证码。
+ * 出于安全考虑,即使邮箱不存在也返回成功 — 不向请求方泄露"哪些邮箱有账号"。
+ */
+router.post('/reset-password', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { email, code, newPassword } = req.body as {
+            email?: string;
+            code?: string;
+            newPassword?: string;
+        };
+
+        if (!email || !code || !newPassword) {
+            res.status(400).json(errorResponse('AUTH_MISSING_FIELDS', 400));
+            return;
+        }
+
+        if (!isValidEmail(email)) {
+            res.status(400).json(errorResponse('AUTH_INVALID_EMAIL', 400));
+            return;
+        }
+
+        if (!isValidPassword(newPassword)) {
+            res.status(400).json(errorResponse('AUTH_WEAK_PASSWORD', 400));
+            return;
+        }
+
+        // 验证邮箱验证码 (与注册流程复用同一个 Redis key)
+        const storedCode = await redis.get(`email:code:${email}`);
+        if (!storedCode || storedCode !== code) {
+            res.status(400).json(errorResponse('AUTH_INVALID_CODE', 400));
+            return;
+        }
+
+        // 查找用户 — 不存在也按"成功"处理(避免账号枚举),但实际不改任何数据
+        const user = await prisma.user.findUnique({ where: { email } });
+
+        if (user) {
+            const passwordHash = await bcrypt.hash(newPassword, 12);
+            await prisma.user.update({
+                where: { id: user.id },
+                data: { passwordHash },
+            });
+        }
+
+        // 验证码用完即删
+        await redis.del(`email:code:${email}`);
+
+        res.json(successResponse(null, '密码已重置,请使用新密码登录'));
+    } catch (error) {
+        console.error('Reset password error:', error);
+        res.status(500).json(errorResponse('AUTH_RESET_FAILED', 500));
     }
 });
 

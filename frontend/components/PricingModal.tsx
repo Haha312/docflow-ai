@@ -10,16 +10,23 @@ import { QRCodeCanvas } from 'qrcode.react';
 interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * Why the modal was opened. When `reason === 'quota'` the modal shows a prominent
+   * "free quota exhausted" banner at the top and defaults to monthly billing
+   * (lower decision friction).
+   */
+  reason?: 'quota';
 }
 
 type PaymentMethod = 'alipay' | 'wechat';
 type BillingCycle = 'monthly' | 'yearly';
 type Tier = 'plus' | 'pro' | 'ultra';
 
-export function PricingModal({ isOpen, onClose }: PricingModalProps) {
+export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
   const { user, refreshUser } = useAuth();
   const { t } = useTranslation();
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>('yearly');
+  // When triggered by quota exhaustion, default to monthly (lower decision friction)
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>(reason === 'quota' ? 'monthly' : 'yearly');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('alipay');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -439,6 +446,29 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
         {/* ================= STEP 1: PLANS VIEW ================= */}
         {step === 'plans' && (
           <>
+            {/* Quota exhausted banner (only when triggered by quota error) */}
+            {reason === 'quota' && (
+              <div className="px-8 pt-6 pb-0">
+                <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 px-5 py-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-amber-900 text-sm">
+                      {t('pricing.quota_banner_title', '免费额度已用尽')}
+                    </p>
+                    <p className="text-amber-800 text-xs mt-0.5">
+                      {t('pricing.quota_banner_subtitle', '升级会员立即解锁,从 Plus ¥29/月 起,可随时取消')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Header */}
             <div className="px-8 pt-10 pb-6 relative">
               <button

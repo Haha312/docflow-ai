@@ -101,6 +101,51 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
     }
 });
 
+// 更新文档 (用户编辑保存)
+router.put('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user!.id;
+        const id = String(req.params.id || '');
+        const { title, content, preset, wordCount } = req.body as {
+            title?: string;
+            content?: string;
+            preset?: string;
+            wordCount?: number;
+        };
+
+        // 至少要传一个字段
+        if (title === undefined && content === undefined && preset === undefined && wordCount === undefined) {
+            res.status(400).json(errorResponse('至少需要更新一个字段', 400));
+            return;
+        }
+
+        const existing = await prisma.document.findUnique({ where: { id } });
+        if (!existing) {
+            res.status(404).json(errorResponse('文档不存在', 404));
+            return;
+        }
+        if (existing.userId !== userId) {
+            res.status(403).json(errorResponse('无权修改该文档', 403));
+            return;
+        }
+
+        const updated = await prisma.document.update({
+            where: { id },
+            data: {
+                ...(title !== undefined && { title }),
+                ...(content !== undefined && { content }),
+                ...(preset !== undefined && { preset }),
+                ...(wordCount !== undefined && { wordCount }),
+            },
+        });
+
+        res.json(successResponse(updated));
+    } catch (error) {
+        console.error('更新文档失败:', error);
+        res.status(500).json(errorResponse('更新文档失败', 500));
+    }
+});
+
 // 删除文档
 router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
     try {

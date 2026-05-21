@@ -4,11 +4,18 @@ const crypto = require('crypto');
 
 console.log('🚀 DocuFlow AI Backend Setup\n');
 
+const envPath = path.join(__dirname, '../.env');
+
+if (fs.existsSync(envPath)) {
+    console.log('⚠️  .env 已存在,跳过生成。如需重建,请先删除 backend/.env');
+    process.exit(0);
+}
+
 // 生成随机 JWT Secret
 const jwtSecret = crypto.randomBytes(32).toString('hex');
 
-// 读取前端的 API Key
-let geminiApiKey = '';
+// 尝试从前端 .env.local 读取 Gemini API Key
+let geminiApiKey = 'your_gemini_api_key_here';
 const frontendEnvPath = path.join(__dirname, '../../.env.local');
 
 if (fs.existsSync(frontendEnvPath)) {
@@ -20,39 +27,45 @@ if (fs.existsSync(frontendEnvPath)) {
     }
 }
 
-if (!geminiApiKey) {
+if (geminiApiKey === 'your_gemini_api_key_here') {
     console.log('⚠️  未找到前端 API Key,请手动配置 GOOGLE_API_KEY');
-    geminiApiKey = 'your_gemini_api_key_here';
 }
 
-// 创建 .env 文件
-const envContent = `# 数据库配置 (SQLite 本地文件)
-DATABASE_URL="file:./dev.db"
+const envContent = `# ============ 数据库 (Supabase PostgreSQL) ============
+# !! 必填 !! 从 Supabase Dashboard → Settings → Database → Connection string → URI
+# 使用 "Direct connection" (端口 5432),把 [YOUR-PASSWORD] 替换为你设置的数据库密码
+DATABASE_URL="postgresql://postgres:[YOUR-PASSWORD]@db.xxxxxxxxxxxx.supabase.co:5432/postgres?sslmode=require"
 
-# Google Gemini API Key (从前端自动复制)
+# ============ AI 模型 ============
 GOOGLE_API_KEY=${geminiApiKey}
+GEMINI_MODEL=gemini-3-pro-preview
 
-# JWT 密钥 (自动生成的随机字符串)
+# ============ 鉴权 ============
 JWT_SECRET=${jwtSecret}
+ADMIN_EMAILS=admin@docuflow.ai
 
-# Stripe 配置 (可选,暂时留空)
+# ============ 支付 (可选) ============
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
+ALIPAY_APP_ID=
+ALIPAY_PRIVATE_KEY=
+ALIPAY_PUBLIC_KEY=
+ALIPAY_GATEWAY=https://openapi.alipay.com/gateway.do
 
-# 服务器配置
+# ============ 服务器 ============
 PORT=3001
 NODE_ENV=development
-
-# 前端地址 (用于 CORS)
+BACKEND_URL=http://localhost:3001
 FRONTEND_URL=http://localhost:5173
 `;
 
-const envPath = path.join(__dirname, '../.env');
 fs.writeFileSync(envPath, envContent);
 
-console.log('✅ 已创建 .env 文件');
+console.log('✅ 已创建 backend/.env');
 console.log('✅ JWT_SECRET 已自动生成');
 console.log('\n📋 下一步:');
-console.log('  1. npm install');
-console.log('  2. npx prisma migrate dev --name init');
-console.log('  3. npm run dev\n');
+console.log('  1. 编辑 backend/.env,把 DATABASE_URL 替换为你的 Supabase 连接串');
+console.log('  2. npm install');
+console.log('  3. npx prisma migrate deploy        # 应用数据库迁移');
+console.log('  4. node scripts/seed-admin.js       # 创建管理员账号');
+console.log('  5. npm run dev                      # 启动后端\n');

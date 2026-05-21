@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import pinoHttp from 'pino-http';
 import authRoutes from './routes/auth';
 import generateRoutes from './routes/generate';
 import paymentRoutes from './routes/payment';
@@ -8,6 +9,7 @@ import userRoutes from './routes/user';
 import documentRoutes from './routes/document';
 import adminRoutes from './routes/admin';
 import { errorResponse } from './utils/response';
+import logger from './utils/logger';
 
 dotenv.config();
 
@@ -51,12 +53,21 @@ app.use('/api/payment/webhook/wechat', express.text({ type: '*/*' }));
 app.use(express.json({ limit: BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 
-if (process.env.NODE_ENV === 'development') {
-    app.use((req: Request, _res: Response, next: NextFunction) => {
-        console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-        next();
-    });
-}
+// Structured request logging (replaces ad-hoc console.log)
+app.use(
+    pinoHttp({
+        logger,
+        autoLogging: {
+            // Don't log health checks — they spam the logs
+            ignore: (req) => req.url === '/health',
+        },
+        customLogLevel: (_req, res, err) => {
+            if (err || res.statusCode >= 500) return 'error';
+            if (res.statusCode >= 400) return 'warn';
+            return 'info';
+        },
+    })
+);
 
 app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -84,8 +95,10 @@ app.use((_req: Request, res: Response) => {
     res.status(404).json(errorResponse('接口不存在', 404));
 });
 
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('Unhandled error:', err);
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+    // req.log is attached by pino-http and includes request context (method, url, requestId)
+    (req as Request & { log?: typeof logger }).log?.error({ err }, 'Unhandled error');
+    logger.error({ err }, 'Unhandled error (no request context)');
     res.status(500).json(errorResponse('服务器内部错误', 500));
 });
 

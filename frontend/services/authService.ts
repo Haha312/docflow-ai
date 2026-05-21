@@ -100,6 +100,19 @@ class AuthService {
         return data.data;
     }
 
+    // 重置密码 (复用 send-verify-code 已经发到邮箱的 6 位验证码)
+    async resetPassword(email: string, code: string, newPassword: string): Promise<void> {
+        const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, code, newPassword }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || i18n.t('errors.reset_password_failed', '密码重置失败'));
+        }
+    }
+
     // 用户登录
     async login(email: string, password: string): Promise<AuthResponse> {
         const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
