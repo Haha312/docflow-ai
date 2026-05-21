@@ -21,12 +21,21 @@
         "no_account": "Don't have an account? ",
         "register_now": "Register now",
         "has_account": "Already have an account? ",
-        "login_now": "Log in now"
+        "login_now": "Log in now",
+        "forgot_password": "Forgot password?",
+        "forgot_title": "Reset password",
+        "forgot_subtitle": "Verify your email to set a new password",
+        "new_password": "New password",
+        "reset_password_btn": "Reset password",
+        "reset_success_login": "Password reset. Please log in with your new password.",
+        "remember_password": "Remembered your password? ",
+        "back_to_login": "Back to login"
     },
     "common": {
         "confirm": "Confirm",
         "cancel": "Cancel",
-        "close": "Close"
+        "close": "Close",
+        "processing": "Processing..."
     },
     "nav": {
         "login": "Log in",
@@ -179,7 +188,9 @@
         "ultra_f5": "1-on-1 dedicated manager",
         "wechat_qr": "WeChat QR Code",
         "alipay_qr": "Alipay QR Code",
-        "secure_payment": "SSL Secure Payment Encrypted"
+        "secure_payment": "SSL Secure Payment Encrypted",
+        "quota_banner_title": "Free quota exhausted",
+        "quota_banner_subtitle": "Upgrade now to unlock more. Plus starts at $4.99/month, cancel anytime."
     },
     "generator": {
         "lines": "lines",
@@ -204,7 +215,11 @@
         "register_failed": "Registration failed",
         "login_failed": "Login failed",
         "not_logged_in": "Not logged in",
-        "fetch_user_failed": "Failed to fetch user info"
+        "fetch_user_failed": "Failed to fetch user info",
+        "reset_password_failed": "Password reset failed",
+        "cancel_subscription_failed": "Failed to cancel subscription",
+        "save_doc_failed": "Failed to save document",
+        "update_doc_failed": "Failed to update document"
     },
     "backend_errors": {
         "AUTH_MISSING_FIELDS": "Email, password and verification code are required",
@@ -334,7 +349,12 @@
         "yearly_plan": "Yearly Plan",
         "paid": "Paid",
         "pending": "Pending",
-        "failed": "Failed"
+        "failed": "Failed",
+        "cancel_subscription": "Cancel subscription",
+        "cancel_subscription_hint": "(downgrade immediately, forfeit remaining days)",
+        "cancel_warning": "Cancelling will immediately downgrade your account to Free. Remaining benefits will be forfeited. For a prorated refund please contact support.",
+        "cancel_confirm": "Confirm cancellation",
+        "cancel_failed": "Cancellation failed, please retry"
     },
     "styles": {
         "title": "Advanced Style Options",

@@ -21,12 +21,21 @@
         "no_account": "还没有账号? ",
         "register_now": "立即注册",
         "has_account": "已有账号? ",
-        "login_now": "立即登录"
+        "login_now": "立即登录",
+        "forgot_password": "忘记密码?",
+        "forgot_title": "重置密码",
+        "forgot_subtitle": "验证邮箱后即可设置新密码",
+        "new_password": "新密码",
+        "reset_password_btn": "重置密码",
+        "reset_success_login": "密码已重置,请用新密码登录",
+        "remember_password": "想起密码了? ",
+        "back_to_login": "返回登录"
     },
     "common": {
         "confirm": "确定",
         "cancel": "取消",
-        "close": "关闭"
+        "close": "关闭",
+        "processing": "处理中..."
     },
     "nav": {
         "login": "登录",
@@ -181,7 +190,9 @@
         "ultra_f3": "优先体验创新实验室功能",
         "ultra_f4": "专属 API 接口对接支持",
         "ultra_f5": "1对1 专属客户经理服务",
-        "secure_payment": "SSL 安全加密支付"
+        "secure_payment": "SSL 安全加密支付",
+        "quota_banner_title": "免费额度已用尽",
+        "quota_banner_subtitle": "升级会员立即解锁,从 Plus ¥29/月 起,可随时取消"
     },
     "generator": {
         "lines": "行",
@@ -206,7 +217,11 @@
         "register_failed": "注册失败",
         "login_failed": "登录失败",
         "not_logged_in": "未登录",
-        "fetch_user_failed": "获取用户信息失败"
+        "fetch_user_failed": "获取用户信息失败",
+        "reset_password_failed": "密码重置失败",
+        "cancel_subscription_failed": "取消订阅失败",
+        "save_doc_failed": "保存文档失败",
+        "update_doc_failed": "更新文档失败"
     },
     "backend_errors": {
         "AUTH_MISSING_FIELDS": "邮箱、密码和验证码不能为空",
@@ -336,7 +351,12 @@
         "yearly_plan": "年度会员",
         "paid": "已支付",
         "pending": "待支付",
-        "failed": "失败"
+        "failed": "失败",
+        "cancel_subscription": "取消订阅",
+        "cancel_subscription_hint": "(立即降级,放弃剩余天数)",
+        "cancel_warning": "取消订阅后账号立即降级为免费版,本月剩余权益将作废。如需退款剩余天数请联系客服。",
+        "cancel_confirm": "确认取消订阅",
+        "cancel_failed": "取消订阅失败,请重试"
     },
     "styles": {
         "title": "高级排版配置",
