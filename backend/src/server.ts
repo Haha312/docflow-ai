@@ -32,9 +32,10 @@ const corsOptions = {
         if (!origin) return callback(null, true);
 
         const normalizedOrigin = origin.replace(/\/+$/, '');
-        if (allowedOrigins.size === 0) {
-            // Without an explicit whitelist, only allow all in non-production envs.
-            return callback(null, process.env.NODE_ENV !== 'production');
+
+        // In development with no explicit whitelist, allow all localhost origins
+        if (allowedOrigins.size === 0 && process.env.NODE_ENV !== 'production') {
+            return callback(null, /^https?:\/\/localhost(:\d+)?$/.test(normalizedOrigin));
         }
 
         return callback(null, allowedOrigins.has(normalizedOrigin));
