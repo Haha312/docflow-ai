@@ -111,7 +111,11 @@
         "model_quality": "高质量",
         "model_bytedance": "字节跳动",
         "model_deepseek": "深度求索",
-        "model_qwen": "通义千问"
+        "model_qwen": "通义千问",
+        "save_to_cloud": "保存到云",
+        "update_to_cloud": "更新到云",
+        "saving": "保存中...",
+        "saved": "已保存到云"
     },
     "pricing": {
         "success_title": "支付成功！",
@@ -221,7 +225,8 @@
         "reset_password_failed": "密码重置失败",
         "cancel_subscription_failed": "取消订阅失败",
         "save_doc_failed": "保存文档失败",
-        "update_doc_failed": "更新文档失败"
+        "update_doc_failed": "更新文档失败",
+        "refund_failed": "退款失败"
     },
     "backend_errors": {
         "AUTH_MISSING_FIELDS": "邮箱、密码和验证码不能为空",
@@ -356,7 +361,14 @@
         "cancel_subscription_hint": "(立即降级,放弃剩余天数)",
         "cancel_warning": "取消订阅后账号立即降级为免费版,本月剩余权益将作废。如需退款剩余天数请联系客服。",
         "cancel_confirm": "确认取消订阅",
-        "cancel_failed": "取消订阅失败,请重试"
+        "cancel_failed": "取消订阅失败,请重试",
+        "action": "操作",
+        "open_document": "打开",
+        "open_failed": "无法打开文档,请稍后重试",
+        "request_refund": "申请退款",
+        "refund_warning": "申请退款将全额退还该笔订单(1-3 个工作日内到账),账号立即降级为免费版,剩余会员天数作废。退款成功后不可撤销。是否继续?",
+        "refund_success": "退款申请已提交,款项将在 1-3 个工作日内退回原支付账户",
+        "refund_failed": "退款失败"
     },
     "styles": {
         "title": "高级排版配置",

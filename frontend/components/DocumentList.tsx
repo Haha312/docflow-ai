@@ -14,7 +14,23 @@ interface Document {
   createdAt: string;
 }
 
-export function DocumentList() {
+export interface OpenableDocument {
+  id: string;
+  title: string;
+  content: string;
+  preset: string;
+  wordCount?: number | null;
+}
+
+interface DocumentListProps {
+  /**
+   * 父组件提供时,文档列表会显示"打开"按钮 — 点击会拉取文档完整内容并通过此回调传回。
+   * 用于把历史文档加载回主编辑器。
+   */
+  onOpenDocument?: (doc: OpenableDocument) => void;
+}
+
+export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
   const { confirm, ConfirmDialogComponent } = useConfirmDialog();
   const { t } = useTranslation();
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -22,6 +38,7 @@ export function DocumentList() {
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   useEffect(() => {
     loadDocuments();
@@ -70,6 +87,26 @@ export function DocumentList() {
     } catch (err) {
       console.error('Download failed', err);
       alert(t('profile.download_failed'));
+    }
+  };
+
+  const handleOpen = async (doc: Document) => {
+    if (!onOpenDocument || openingId) return;
+    setOpeningId(doc.id);
+    try {
+      const full = await getDocument(doc.id);
+      onOpenDocument({
+        id: full.id,
+        title: full.title,
+        content: full.content,
+        preset: full.preset,
+        wordCount: full.wordCount,
+      });
+    } catch (err) {
+      console.error('Open document failed', err);
+      setError(t('profile.open_failed', '无法打开文档,请稍后重试'));
+    } finally {
+      setOpeningId(null);
     }
   };
 
@@ -132,6 +169,20 @@ export function DocumentList() {
               </div>
             </div>
             <div className="doc-actions">
+              {onOpenDocument && (
+                <button
+                  className="icon-btn open"
+                  onClick={() => handleOpen(doc)}
+                  disabled={openingId === doc.id}
+                  title={t('profile.open_document', '打开')}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                  </svg>
+                </button>
+              )}
               <button
                 className="icon-btn download"
                 onClick={() => handleDownload(doc)}
@@ -264,6 +315,16 @@ export function DocumentList() {
         .icon-btn.delete:hover {
           background: #fee2e2;
           color: #dc2626;
+        }
+
+        .icon-btn.open:hover {
+          background: #dbeafe;
+          color: #2563eb;
+        }
+
+        .icon-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .loading, .error, .empty {

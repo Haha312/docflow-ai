@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { OrderHistory } from './OrderHistory';
-import { DocumentList } from './DocumentList';
+import { DocumentList, OpenableDocument } from './DocumentList';
 import { cancelSubscription } from '../services/backendApiService';
 import { useTranslation } from 'react-i18next';
 
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * 父组件提供时,文档历史列表会显示"打开"按钮;点击后此回调被触发,
+   * 同时 Modal 自动关闭(把控制权交回主页面)。
+   */
+  onOpenDocument?: (doc: OpenableDocument) => void;
 }
 
-export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
+export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfileModalProps) {
   const { user, remainingQuota, logout, refreshUser } = useAuth();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'profile' | 'documents' | 'orders'>('profile');
@@ -191,7 +196,11 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
             </div>
           )}
 
-          {activeTab === 'documents' && <DocumentList />}
+          {activeTab === 'documents' && (
+            <DocumentList
+              onOpenDocument={onOpenDocument ? (doc) => { onOpenDocument(doc); onClose(); } : undefined}
+            />
+          )}
           {activeTab === 'orders' && <OrderHistory />}
         </div>
       </div>

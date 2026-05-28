@@ -215,6 +215,23 @@ export async function saveDocument(payload: {
     return data.data;
 }
 
+// 申请退款 (后端会调用支付宝/微信退款 API,成功后立即降级用户为 FREE)
+export async function requestRefund(orderId: string, reason?: string): Promise<void> {
+    const token = authService.getToken();
+    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
+
+    const response = await fetch(`${API_BASE_URL}/api/payment/refund/${encodeURIComponent(orderId)}`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(reason ? { reason } : {}),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || i18n.t('errors.refund_failed', '退款失败'));
+}
+
 // 更新已有文档 (用户在前端编辑后保存)
 export async function updateDocument(
     id: string,

@@ -10,6 +10,7 @@ import documentRoutes from './routes/document';
 import adminRoutes from './routes/admin';
 import { errorResponse } from './utils/response';
 import logger from './utils/logger';
+import { startPaymentReconciliationJob } from './services/paymentReconciliation';
 
 dotenv.config();
 
@@ -113,6 +114,9 @@ if (!process.env.VERCEL) {
         console.log(`Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
         console.log(`Health check: http://localhost:${PORT}/health`);
         console.log('================================\n');
+
+        // Background jobs (single-instance only — needs a Redis lock if scaled horizontally)
+        startPaymentReconciliationJob();
     });
 }
 

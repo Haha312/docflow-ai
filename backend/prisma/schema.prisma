@@ -76,4 +76,7 @@ enum OrderStatus {
   PENDING
   PAID
   FAILED
+  EXPIRED
+  REFUNDING
+  REFUNDED
 }

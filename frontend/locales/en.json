@@ -111,7 +111,11 @@
         "model_quality": "High Quality",
         "model_bytedance": "ByteDance",
         "model_deepseek": "DeepSeek",
-        "model_qwen": "Qwen"
+        "model_qwen": "Qwen",
+        "save_to_cloud": "Save to Cloud",
+        "update_to_cloud": "Update in Cloud",
+        "saving": "Saving...",
+        "saved": "Saved to cloud"
     },
     "pricing": {
         "success_title": "Payment Successful!",
@@ -219,7 +223,8 @@
         "reset_password_failed": "Password reset failed",
         "cancel_subscription_failed": "Failed to cancel subscription",
         "save_doc_failed": "Failed to save document",
-        "update_doc_failed": "Failed to update document"
+        "update_doc_failed": "Failed to update document",
+        "refund_failed": "Refund failed"
     },
     "backend_errors": {
         "AUTH_MISSING_FIELDS": "Email, password and verification code are required",
@@ -354,7 +359,14 @@
         "cancel_subscription_hint": "(downgrade immediately, forfeit remaining days)",
         "cancel_warning": "Cancelling will immediately downgrade your account to Free. Remaining benefits will be forfeited. For a prorated refund please contact support.",
         "cancel_confirm": "Confirm cancellation",
-        "cancel_failed": "Cancellation failed, please retry"
+        "cancel_failed": "Cancellation failed, please retry",
+        "action": "Actions",
+        "open_document": "Open",
+        "open_failed": "Failed to open document, please retry",
+        "request_refund": "Request refund",
+        "refund_warning": "Requesting a refund will fully refund this order (1-3 business days), immediately downgrade your account to Free, and forfeit remaining membership days. This action cannot be undone. Continue?",
+        "refund_success": "Refund requested. Funds will return to your original payment account within 1-3 business days.",
+        "refund_failed": "Refund failed"
     },
     "styles": {
         "title": "Advanced Style Options",

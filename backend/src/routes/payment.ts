@@ -9,8 +9,20 @@ import { successResponse, errorResponse } from '../utils/response';
 import { authenticate } from '../middleware/auth';
 import prisma from '../config/database';
 import { getTierFromPlanType } from '../config/tierConfig';
+import { isAdmin } from '../utils/admin';
+import { getAlipayClient } from '../utils/alipayClient';
+import { wechatRefund } from '../utils/wechatPay';
+import redis from '../utils/redis';
 
 const router = Router();
+
+// 推断订单使用的支付方式 — 创建订单时按前缀写入,这里按前缀反推
+const inferPaymentMethod = (orderId: string): 'alipay' | 'wechat' | 'qrcode' | 'unknown' => {
+    if (orderId.startsWith('DOCUFLOW_')) return 'alipay';
+    if (orderId.startsWith('WX_')) return 'wechat';
+    if (orderId.startsWith('QR_')) return 'qrcode';
+    return 'unknown';
+};
 
 const PRICING: Record<string, { amountUSD: number; amountCNY: number; duration: number; title: string }> = {
     plus_monthly: { amountUSD: 4.99, amountCNY: 29, duration: 30, title: 'Plus (Monthly)' },
@@ -337,6 +349,19 @@ router.all('/webhook/alipay', async (req: Request, res: Response): Promise<void>
             return;
         }
 
+        // 重放保护:支付宝的 notify_id 每次回调都是唯一的,缓存 24h 避免重复处理
+        const notifyId = params.notify_id;
+        if (notifyId) {
+            const replayKey = `webhook:alipay:notify_id:${notifyId}`;
+            const seen = await redis.get(replayKey);
+            if (seen) {
+                console.warn(`[alipay webhook] duplicate notify_id=${notifyId}, skipping`);
+                res.send('success'); // 仍然返回 success,告诉支付宝不要再重试
+                return;
+            }
+            await redis.set(replayKey, '1', 'EX', 86400);
+        }
+
         const tradeStatus = params.trade_status;
         const outTradeNo = params.out_trade_no;
         if (tradeStatus === 'TRADE_SUCCESS' || tradeStatus === 'TRADE_FINISHED') {
@@ -372,7 +397,11 @@ router.post('/webhook/wechat', async (req: Request, res: Response): Promise<void
         const data = parseSimpleXml(rawBody);
         const receivedSign = data.sign || '';
         const calculatedSign = signWechat(data, apiKey);
-        if (!receivedSign || receivedSign !== calculatedSign) {
+        // 常量时间比较 + 长度检查,防止时序攻击
+        const signOk = receivedSign.length === calculatedSign.length
+            && receivedSign.length > 0
+            && crypto.timingSafeEqual(Buffer.from(receivedSign), Buffer.from(calculatedSign));
+        if (!signOk) {
             respondWechatXml(res, false, 'Invalid sign');
             return;
         }
@@ -380,6 +409,19 @@ router.post('/webhook/wechat', async (req: Request, res: Response): Promise<void
         if (data.return_code !== 'SUCCESS' || data.result_code !== 'SUCCESS') {
             respondWechatXml(res, true, 'IGNORE');
             return;
+        }
+
+        // 重放保护:用 transaction_id (微信支付订单号) 作为唯一标识
+        const transactionId = data.transaction_id;
+        if (transactionId) {
+            const replayKey = `webhook:wechat:transaction_id:${transactionId}`;
+            const seen = await redis.get(replayKey);
+            if (seen) {
+                console.warn(`[wechat webhook] duplicate transaction_id=${transactionId}, skipping`);
+                respondWechatXml(res, true, 'DUPLICATE');
+                return;
+            }
+            await redis.set(replayKey, '1', 'EX', 86400);
         }
 
         const outTradeNo = data.out_trade_no;
@@ -471,6 +513,145 @@ router.get('/status/:orderId', authenticate, async (req: AuthRequest, res: Respo
     } catch (error) {
         console.error('Check payment status error:', error);
         res.status(500).json(errorResponse('Failed to check payment status', 500));
+    }
+});
+
+/**
+ * POST /api/payment/refund/:orderId
+ * 申请退款。
+ *
+ * 权限:
+ *   - 用户:只能退自己的订单
+ *   - admin:可以退任何订单
+ *
+ * 行为:
+ *   1. 校验订单存在 + 状态为 PAID
+ *   2. 原子标记为 REFUNDING (防重复退款)
+ *   3. 调用支付宝/微信退款 API
+ *   4. 成功 → REFUNDED + 用户立即降级为 FREE + 写 UsageLog 备查
+ *   5. 失败 → 回滚到 PAID,返回错误给前端
+ *
+ * 注意:目前是全额退款 + 立即降级,不按"已使用天数"按比例扣除。
+ * 后续如需"按比例退款",在这里改 refundAmount 计算逻辑即可。
+ */
+router.post('/refund/:orderId', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const user = req.user;
+        if (!user) {
+            res.status(401).json(errorResponse('Unauthorized', 401));
+            return;
+        }
+
+        const orderId = String(req.params.orderId || '');
+        const order = await prisma.order.findUnique({ where: { id: orderId } });
+        if (!order) {
+            res.status(404).json(errorResponse('Order not found', 404));
+            return;
+        }
+
+        const isOrderOwner = order.userId === user.id;
+        const isAdminUser = await isAdmin(user.email);
+        if (!isOrderOwner && !isAdminUser) {
+            res.status(403).json(errorResponse('无权操作该订单', 403));
+            return;
+        }
+
+        if (order.status !== 'PAID') {
+            res.status(400).json(errorResponse(`订单当前状态为 ${order.status},无法退款`, 400));
+            return;
+        }
+
+        // 原子标记 REFUNDING,防止并发重复退款
+        const marked = await prisma.order.updateMany({
+            where: { id: orderId, status: 'PAID' },
+            data: { status: 'REFUNDING' },
+        });
+        if (marked.count === 0) {
+            res.status(409).json(errorResponse('订单状态已变化,请刷新重试', 409));
+            return;
+        }
+
+        const method = inferPaymentMethod(orderId);
+        const amountStr = Number(order.amount).toFixed(2);
+        const amountFen = Math.round(Number(order.amount) * 100);
+        let refundOk = false;
+        let refundMsg = '';
+
+        try {
+            if (method === 'alipay') {
+                const alipay = getAlipayClient();
+                if (!alipay) {
+                    refundMsg = 'Alipay not configured';
+                } else {
+                    const r = await alipay.sdk.exec('alipay.trade.refund', {
+                        bizContent: {
+                            outTradeNo: orderId,
+                            refundAmount: amountStr,
+                            outRequestNo: `REFUND_${orderId}_${Date.now()}`,
+                            refundReason: req.body?.reason || 'User initiated refund',
+                        },
+                    } as Record<string, unknown>);
+                    const code = (r as { code?: string }).code;
+                    const fundChange = (r as { fundChange?: string }).fundChange;
+                    if (code === '10000' && fundChange === 'Y') {
+                        refundOk = true;
+                    } else {
+                        refundMsg = ((r as { subMsg?: string; msg?: string }).subMsg) || ((r as { msg?: string }).msg) || 'Alipay refund failed';
+                    }
+                }
+            } else if (method === 'wechat') {
+                const r = await wechatRefund({
+                    outTradeNo: orderId,
+                    outRefundNo: `REFUND_${orderId}_${Date.now()}`.substring(0, 64),
+                    totalFeeFen: amountFen,
+                    refundFeeFen: amountFen,
+                    reason: req.body?.reason,
+                });
+                if (r.success) {
+                    refundOk = true;
+                } else {
+                    refundMsg = r.errMsg || 'WeChat refund failed';
+                }
+            } else if (method === 'qrcode') {
+                // QR 兜底订单(没有真实支付通道),只能人工对账
+                refundMsg = 'QR-only orders cannot be auto-refunded; contact support';
+            } else {
+                refundMsg = `Unknown payment method for order ${orderId}`;
+            }
+        } catch (err) {
+            refundMsg = (err as Error).message || 'refund call threw';
+        }
+
+        if (!refundOk) {
+            // 回滚: REFUNDING → PAID
+            await prisma.order.update({ where: { id: orderId }, data: { status: 'PAID' } });
+            res.status(502).json(errorResponse(`退款失败: ${refundMsg}`, 502));
+            return;
+        }
+
+        // 成功: REFUNDING → REFUNDED + 用户降级
+        await prisma.order.update({ where: { id: orderId }, data: { status: 'REFUNDED' } });
+
+        await prisma.user.update({
+            where: { id: order.userId },
+            data: { subscriptionStatus: 'FREE', subscriptionEndDate: null },
+        });
+
+        await prisma.usageLog.create({
+            data: {
+                userId: order.userId,
+                actionType: 'refund_success',
+                presetUsed: `order=${orderId}|amount=${amountStr}|by=${isAdminUser ? 'admin' : 'user'}`,
+            },
+        });
+
+        res.json(successResponse(
+            { orderId, status: 'REFUNDED' },
+            '退款已申请,款项将在 1-3 个工作日内退回原支付账户'
+        ));
+    } catch (error) {
+        console.error('Refund error:', error);
+        res.status(500).json(errorResponse('退款处理失败', 500));
     }
 });
 

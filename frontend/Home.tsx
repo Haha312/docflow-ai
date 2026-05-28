@@ -11,7 +11,7 @@ import { PricingModal } from './components/PricingModal';
 import { UserInfo } from './components/UserInfo';
 import { UserProfileModal } from './components/UserProfileModal';
 import { useConfirmDialog } from './components/ConfirmDialog';
-import { generateDocumentViaBackend } from './services/backendApiService';
+import { generateDocumentViaBackend, saveDocument, updateDocument } from './services/backendApiService';
 import { generateDocx } from './utils/docxGenerator';
 import { useAuth } from './contexts/AuthContext';
 import systemLogo from './image/image.jpg';
@@ -78,6 +78,8 @@ function Home() {
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [pricingReason, setPricingReason] = useState<'quota' | undefined>(undefined);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
+  const [isSavingToCloud, setIsSavingToCloud] = useState(false);
 
   const { isAuthenticated, user, refreshUser } = useAuth();
   const previewContainerRef = useRef<HTMLDivElement>(null);
@@ -311,6 +313,8 @@ function Home() {
     setAiState({ isThinking: true, error: null, stopMessage: null, progressStep: t('home.analyzing', '正在分析文档结构...'), progress: 0 });
     setOutputText('');
     setImageMap({});
+    // 开始新一轮生成 → 清空"已保存的文档 id",下次保存会触发 POST 而非 PUT (防止覆盖旧文档)
+    setCurrentDocumentId(null);
 
     // ── 客户端预处理：在发送给后端之前完成，避免传输大量 base64 图片数据 ──
     // 1. 提取图片：把 <img ...> 替换为 __IMG_N__ 占位符（与后端 imageUtils 逻辑一致）
@@ -440,6 +444,37 @@ function Home() {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
+    }
+  };
+
+  // Save current document to cloud (Supabase). First save → POST (新建);
+  // subsequent saves with the same currentDocumentId → PUT (覆盖更新)。
+  // 取内容时优先用用户在前端编辑后的 DOM 内容,否则用 outputText。
+  const handleSaveToCloud = async () => {
+    if (!outputText || !isAuthenticated || isSavingToCloud) return;
+    setIsSavingToCloud(true);
+    try {
+      const html = isContentEdited && previewContentRef.current
+        ? previewContentRef.current.innerHTML
+        : outputText;
+      const title = (inputFileName || 'Untitled').replace(/\.[^.]+$/, '') || 'Untitled';
+      const wordCount = getTextCount(html);
+      const payload = { title, content: html, preset: String(selectedPreset), wordCount };
+
+      if (currentDocumentId) {
+        await updateDocument(currentDocumentId, payload);
+      } else {
+        const { id } = await saveDocument(payload);
+        setCurrentDocumentId(id);
+      }
+      // Reuse existing toast mechanism for "saved" feedback
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 2000);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : t('errors.save_doc_failed', '保存文档失败');
+      setAiState(prev => ({ ...prev, error: msg }));
+    } finally {
+      setIsSavingToCloud(false);
     }
   };
 
@@ -1211,6 +1246,23 @@ function Home() {
               <div className="flex items-center gap-2">
                 {outputText && !aiState.isThinking && (
                   <>
+                    {isAuthenticated && (
+                      <button
+                        onClick={handleSaveToCloud}
+                        disabled={isSavingToCloud}
+                        className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-all border border-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                        title={currentDocumentId ? t('home.update_to_cloud', '更新到云') : t('home.save_to_cloud', '保存到云')}
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                          <polyline points="17 8 12 3 7 8"></polyline>
+                          <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        {isSavingToCloud
+                          ? t('home.saving', '保存中...')
+                          : (currentDocumentId ? t('home.update_to_cloud', '更新到云') : t('home.save_to_cloud', '保存到云'))}
+                      </button>
+                    )}
                     <button
                       onClick={() => { handleDownload(); setDownloadHighlight(false); }}
                       className={`flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all shadow-sm ${downloadHighlight ? 'ring-2 ring-offset-2 ring-green-400 scale-105' : 'ring-0 scale-100'}`}
@@ -1540,7 +1592,24 @@ function Home() {
         }}
         reason={pricingReason}
       />
-      <UserProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
+      <UserProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        onOpenDocument={(doc) => {
+          // 把历史文档加载回主编辑器
+          setOutputText(doc.content);
+          // 关键:同步 textBufferRef,否则后续 SSE flush 可能用旧 buffer 冲掉
+          textBufferRef.current = doc.content;
+          setCurrentDocumentId(doc.id);
+          if (doc.title) setInputFileName(`${doc.title}.docx`);
+          setIsContentEdited(false);
+          setViewMode('preview');
+          // preset 安全转换:只在它是合法 DocPreset 时才 set
+          if (Object.values(DocPreset).includes(doc.preset as DocPreset)) {
+            setSelectedPreset(doc.preset as DocPreset);
+          }
+        }}
+      />
 
       {/* Toast Notification */}
       {showToast && (
