@@ -646,6 +646,16 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
     let generationSlotAcquired = false;
     let requestedModelKey: string | undefined;
 
+    // 检测客户端是否中途断开 (用户关闭浏览器/切换页面/点取消):若已断开,
+    // 跳过 UsageLog 创建,不扣用户额度。req.on('close') 在响应正常结束后也会触发,
+    // 因此用 flag 而不是 abort,正常完成路径下 flag 仍为 false 不影响。
+    let clientClosed = false;
+    req.on('close', () => {
+        if (!res.writableEnded) {
+            clientClosed = true;
+        }
+    });
+
     try {
         const user = req.user;
         if (!user) {
@@ -1486,6 +1496,12 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             const outputTokens = Math.ceil(fullRestoredText.length / 3);
             finalReportedTokens = inputTokens + outputTokens;
             console.log(`[WARN] Using estimated tokens instead of API reported tokens.`);
+        }
+
+        // 客户端已断开 → 跳过 UsageLog 创建,不扣用户额度
+        if (clientClosed) {
+            console.log(`[abort] client closed before completion, skipping UsageLog for user ${user.id}`);
+            return;
         }
 
         // 记录使用日志

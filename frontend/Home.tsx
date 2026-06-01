@@ -1188,8 +1188,22 @@ function Home() {
                 )}
 
                 {aiState.error && (
-                  <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg">
-                    <p className="text-xs text-red-600">{aiState.error}</p>
+                  <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg flex items-center justify-between gap-3">
+                    <p className="text-xs text-red-600 flex-1 min-w-0">{aiState.error}</p>
+                    {inputText && (
+                      <button
+                        onClick={handleProcess}
+                        disabled={aiState.isThinking}
+                        className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-600 text-xs font-medium rounded-lg hover:bg-red-50 hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="23 4 23 10 17 10"></polyline>
+                          <polyline points="1 20 1 14 7 14"></polyline>
+                          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                        {t('home.retry_generate', '重新生成')}
+                      </button>
+                    )}
                   </div>
                 )}
                 {aiState.stopMessage && !aiState.error && (
@@ -1623,6 +1637,13 @@ function Home() {
 
       {/* Custom Confirm Dialog */}
       {ConfirmDialogComponent}
+
+      {/* 极简 footer (固定右下角,不影响布局) */}
+      <div className="fixed bottom-2 right-4 text-[10px] text-gray-400 z-30 flex items-center gap-1.5 pointer-events-auto">
+        <a href="/terms" target="_blank" rel="noopener" className="hover:text-gray-600 transition-colors">{t('footer.terms', '用户协议')}</a>
+        <span>·</span>
+        <a href="/privacy" target="_blank" rel="noopener" className="hover:text-gray-600 transition-colors">{t('footer.privacy', '隐私政策')}</a>
+      </div>
     </div>
   );
 }

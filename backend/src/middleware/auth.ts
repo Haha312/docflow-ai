@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { AuthRequest, JwtPayload } from '../types';
 import { errorResponse } from '../utils/response';
 import prisma from '../config/database';
+import redis from '../utils/redis';
 
 /**
  * JWT 认证中间件
@@ -31,6 +32,13 @@ export const authenticate = async (
         }
 
         const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as JwtPayload;
+
+        // 检查 token 是否已被吊销(账号删除后 Redis 标 banned 24h,阻止残留 JWT 访问其他端点)
+        const banned = await redis.get(`banned:${decoded.userId}`);
+        if (banned) {
+            res.status(401).json(errorResponse('AUTH_INVALID_TOKEN', 401));
+            return;
+        }
 
         // 从数据库获取用户信息
         const user = await prisma.user.findUnique({

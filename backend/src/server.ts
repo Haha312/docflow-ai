@@ -11,6 +11,7 @@ import adminRoutes from './routes/admin';
 import { errorResponse } from './utils/response';
 import logger from './utils/logger';
 import { startPaymentReconciliationJob } from './services/paymentReconciliation';
+import { startRenewalReminderJob } from './services/renewalReminderJob';
 
 dotenv.config();
 
@@ -70,10 +71,35 @@ app.use(
     })
 );
 
+// Content-Security-Policy allowlist。
+// 生产用硬模式;开发用 Report-Only 以避免挡 Vite HMR / Supabase WebSocket。
+// 若用户群在欧盟,可改成更严格的 nonce-based 配置。
+const CSP_BASE = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self' https://*.supabase.co https://generativelanguage.googleapis.com https://api.openai.com",
+].join('; ');
+const CSP_DEV_EXTRA = "; connect-src 'self' https://*.supabase.co https://generativelanguage.googleapis.com https://api.openai.com ws://localhost:* http://localhost:*";
+
 app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    if (process.env.NODE_ENV === 'production') {
+        res.setHeader('Content-Security-Policy', CSP_BASE);
+        // 仅 HTTPS 部署后启用 HSTS;若未启用 HTTPS 会让所有用户被锁定 https://
+        if (process.env.ENABLE_HSTS === 'true') {
+            res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+        }
+    } else {
+        // Dev 用 Report-Only 模式,违规只 console 警告,不阻断
+        res.setHeader('Content-Security-Policy-Report-Only', CSP_BASE + CSP_DEV_EXTRA);
+    }
     next();
 });
 
@@ -117,6 +143,7 @@ if (!process.env.VERCEL) {
 
         // Background jobs (single-instance only — needs a Redis lock if scaled horizontally)
         startPaymentReconciliationJob();
+        startRenewalReminderJob();
     });
 }
 

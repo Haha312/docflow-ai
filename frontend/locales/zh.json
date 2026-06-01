@@ -29,7 +29,15 @@
         "reset_password_btn": "重置密码",
         "reset_success_login": "密码已重置,请用新密码登录",
         "remember_password": "想起密码了? ",
-        "back_to_login": "返回登录"
+        "back_to_login": "返回登录",
+        "agree_prefix": "我已阅读并同意 ",
+        "terms": "用户协议",
+        "agree_and": " 和 ",
+        "privacy": "隐私政策"
+    },
+    "footer": {
+        "terms": "用户协议",
+        "privacy": "隐私政策"
     },
     "common": {
         "confirm": "确定",
@@ -115,7 +123,8 @@
         "save_to_cloud": "保存到云",
         "update_to_cloud": "更新到云",
         "saving": "保存中...",
-        "saved": "已保存到云"
+        "saved": "已保存到云",
+        "retry_generate": "重新生成"
     },
     "pricing": {
         "success_title": "支付成功！",
@@ -226,7 +235,10 @@
         "cancel_subscription_failed": "取消订阅失败",
         "save_doc_failed": "保存文档失败",
         "update_doc_failed": "更新文档失败",
-        "refund_failed": "退款失败"
+        "refund_failed": "退款失败",
+        "change_password_failed": "密码修改失败",
+        "change_email_failed": "邮箱修改失败",
+        "delete_account_failed": "账号删除失败"
     },
     "backend_errors": {
         "AUTH_MISSING_FIELDS": "邮箱、密码和验证码不能为空",
@@ -250,7 +262,14 @@
         "AUTH_CAPTCHA_WRONG": "图形验证码错误",
         "AUTH_RATE_LIMIT": "发送太频繁，请稍后再试",
         "AUTH_EMAIL_SEND_FAILED": "邮件发送失败，请稍后重试",
-        "AUTH_SEND_CODE_FAILED": "发送失败"
+        "AUTH_SEND_CODE_FAILED": "发送失败",
+        "AUTH_OLD_PASSWORD_WRONG": "当前密码错误",
+        "AUTH_PASSWORD_UNCHANGED": "新密码不能与旧密码相同",
+        "AUTH_EMAIL_UNCHANGED": "新邮箱不能与当前邮箱相同",
+        "AUTH_CHANGE_PASSWORD_FAILED": "密码修改失败",
+        "AUTH_CHANGE_EMAIL_FAILED": "邮箱修改失败",
+        "AUTH_DELETE_NOT_CONFIRMED": "请输入密码并输入 DELETE 确认",
+        "AUTH_DELETE_ACCOUNT_FAILED": "账号删除失败"
     },
     "admin": {
         "title": "DocFlow Admin",
@@ -357,6 +376,24 @@
         "paid": "已支付",
         "pending": "待支付",
         "failed": "失败",
+        "days_left": "剩余 {{n}} 天",
+        "account_management": "账户管理",
+        "change_password": "修改密码",
+        "old_password": "当前密码",
+        "current_password": "当前密码",
+        "new_password_min": "新密码 (至少 6 位)",
+        "password_changed": "密码已修改",
+        "change_email": "修改邮箱",
+        "new_email": "新邮箱地址",
+        "send_code_to_new_email": "发送验证码",
+        "code_sent_to": "验证码已发到 {{email}}",
+        "email_code_sent": "验证码已发到新邮箱",
+        "email_changed": "邮箱已更新",
+        "delete_account": "删除账号",
+        "delete_account_warning": "此操作不可撤销!所有文档、订单、使用记录将被永久删除。",
+        "delete_confirm_placeholder": "输入 DELETE 确认",
+        "delete_account_confirm": "永久删除账号",
+        "account_deleted": "账号已删除",
         "cancel_subscription": "取消订阅",
         "cancel_subscription_hint": "(立即降级,放弃剩余天数)",
         "cancel_warning": "取消订阅后账号立即降级为免费版,本月剩余权益将作废。如需退款剩余天数请联系客服。",

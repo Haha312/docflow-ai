@@ -29,7 +29,15 @@
         "reset_password_btn": "Reset password",
         "reset_success_login": "Password reset. Please log in with your new password.",
         "remember_password": "Remembered your password? ",
-        "back_to_login": "Back to login"
+        "back_to_login": "Back to login",
+        "agree_prefix": "I have read and agree to the ",
+        "terms": "Terms of Service",
+        "agree_and": " and ",
+        "privacy": "Privacy Policy"
+    },
+    "footer": {
+        "terms": "Terms",
+        "privacy": "Privacy"
     },
     "common": {
         "confirm": "Confirm",
@@ -115,7 +123,8 @@
         "save_to_cloud": "Save to Cloud",
         "update_to_cloud": "Update in Cloud",
         "saving": "Saving...",
-        "saved": "Saved to cloud"
+        "saved": "Saved to cloud",
+        "retry_generate": "Retry"
     },
     "pricing": {
         "success_title": "Payment Successful!",
@@ -224,7 +233,10 @@
         "cancel_subscription_failed": "Failed to cancel subscription",
         "save_doc_failed": "Failed to save document",
         "update_doc_failed": "Failed to update document",
-        "refund_failed": "Refund failed"
+        "refund_failed": "Refund failed",
+        "change_password_failed": "Failed to change password",
+        "change_email_failed": "Failed to change email",
+        "delete_account_failed": "Failed to delete account"
     },
     "backend_errors": {
         "AUTH_MISSING_FIELDS": "Email, password and verification code are required",
@@ -248,7 +260,14 @@
         "AUTH_CAPTCHA_WRONG": "Incorrect captcha",
         "AUTH_RATE_LIMIT": "Sending too frequently, please wait",
         "AUTH_EMAIL_SEND_FAILED": "Failed to send email, please try again",
-        "AUTH_SEND_CODE_FAILED": "Failed to send verification code"
+        "AUTH_SEND_CODE_FAILED": "Failed to send verification code",
+        "AUTH_OLD_PASSWORD_WRONG": "Current password is incorrect",
+        "AUTH_PASSWORD_UNCHANGED": "New password must differ from old password",
+        "AUTH_EMAIL_UNCHANGED": "New email must differ from current email",
+        "AUTH_CHANGE_PASSWORD_FAILED": "Failed to change password",
+        "AUTH_CHANGE_EMAIL_FAILED": "Failed to change email",
+        "AUTH_DELETE_NOT_CONFIRMED": "Please provide password and type DELETE to confirm",
+        "AUTH_DELETE_ACCOUNT_FAILED": "Failed to delete account"
     },
     "admin": {
         "title": "DocFlow Admin",
@@ -355,6 +374,24 @@
         "paid": "Paid",
         "pending": "Pending",
         "failed": "Failed",
+        "days_left": "{{n}} days left",
+        "account_management": "Account management",
+        "change_password": "Change password",
+        "old_password": "Current password",
+        "current_password": "Current password",
+        "new_password_min": "New password (min 6 chars)",
+        "password_changed": "Password changed",
+        "change_email": "Change email",
+        "new_email": "New email address",
+        "send_code_to_new_email": "Send verification code",
+        "code_sent_to": "Code sent to {{email}}",
+        "email_code_sent": "Code sent to new email",
+        "email_changed": "Email updated",
+        "delete_account": "Delete account",
+        "delete_account_warning": "This action cannot be undone! All documents, orders and usage logs will be permanently deleted.",
+        "delete_confirm_placeholder": "Type DELETE to confirm",
+        "delete_account_confirm": "Permanently delete account",
+        "account_deleted": "Account deleted",
         "cancel_subscription": "Cancel subscription",
         "cancel_subscription_hint": "(downgrade immediately, forfeit remaining days)",
         "cancel_warning": "Cancelling will immediately downgrade your account to Free. Remaining benefits will be forfeited. For a prorated refund please contact support.",

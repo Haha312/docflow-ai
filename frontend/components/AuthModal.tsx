@@ -16,6 +16,9 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // 注册时是否同意用户协议+隐私政策
+  const [agreedTerms, setAgreedTerms] = useState(false);
+
   // Registration States
   const [captchaImage, setCaptchaImage] = useState('');
   const [captchaSessionId, setCaptchaSessionId] = useState('');
@@ -302,6 +305,24 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               </>
             )}
 
+            {mode === 'register' && (
+              <label className="flex items-start gap-2 text-xs text-gray-600 select-none cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={agreedTerms}
+                  onChange={(e) => setAgreedTerms(e.target.checked)}
+                  disabled={isLoading}
+                  className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-gray-900 focus:ring-gray-900 focus:ring-offset-0"
+                />
+                <span>
+                  {t('auth.agree_prefix', '我已阅读并同意 ')}
+                  <a href="/terms" target="_blank" rel="noopener" className="text-gray-900 underline hover:text-gray-700">{t('auth.terms', '用户协议')}</a>
+                  {t('auth.agree_and', ' 和 ')}
+                  <a href="/privacy" target="_blank" rel="noopener" className="text-gray-900 underline hover:text-gray-700">{t('auth.privacy', '隐私政策')}</a>
+                </span>
+              </label>
+            )}
+
             {error && (
               <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -311,7 +332,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || (mode === 'register' && !agreedTerms)}
               className="w-full py-3 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (

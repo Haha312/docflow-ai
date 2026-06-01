@@ -17,6 +17,51 @@ const transporter = nodemailer.createTransport({
     }
 });
 
+/**
+ * 续费提醒邮件 (会员到期前 7/3/1 天发送)。复用同一个 transporter。
+ */
+export const sendRenewalReminder = async (
+    to: string,
+    daysLeft: number,
+    planName: string,
+    expiryDate: Date
+): Promise<boolean> => {
+    if (!process.env.SMTP_HOST && !process.env.SMTP_USER) {
+        console.log(`[MOCK EMAIL] Renewal reminder to ${to}: ${daysLeft} days left for ${planName}`);
+        return true;
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || '').split(',')[0] || 'https://docuflow.ai';
+    const upgradeUrl = `${frontendUrl}/?upgrade=1`;
+    const expiryStr = expiryDate.toISOString().split('T')[0];
+
+    try {
+        const info = await transporter.sendMail({
+            from: process.env.SMTP_FROM || '"DocFlow AI" <no-reply@docuflow.ai>',
+            to,
+            subject: `DocFlow AI - 您的 ${planName} 会员还有 ${daysLeft} 天到期`,
+            text: `您的 ${planName} 会员将于 ${expiryStr} 到期 (剩余 ${daysLeft} 天)。立即续费以保持完整权益:${upgradeUrl}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 560px; margin: 0 auto;">
+                    <h2 style="color: #000;">DocFlow AI</h2>
+                    <p>您好,</p>
+                    <p>您的 <strong>${planName}</strong> 会员将于 <strong>${expiryStr}</strong> 到期(剩余 <strong style="color:#dc2626;">${daysLeft}</strong> 天)。</p>
+                    <p>到期后账号将自动降级为免费版,文档生成次数将受限。立即续费,保持完整权益。</p>
+                    <p style="margin: 30px 0;">
+                        <a href="${upgradeUrl}" style="background:#4F46E5;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:600;">立即续费</a>
+                    </p>
+                    <p style="font-size:12px;color:#888;">如已续费或暂不需要,请忽略此邮件。</p>
+                </div>
+            `,
+        });
+        console.log('Renewal reminder sent: %s', info.messageId);
+        return true;
+    } catch (error) {
+        console.error('Error sending renewal reminder:', error);
+        return false;
+    }
+};
+
 export const sendVerificationEmail = async (to: string, code: string): Promise<boolean> => {
     // If no real SMTP config, just log for dev
     if (!process.env.SMTP_HOST && !process.env.SMTP_USER) {

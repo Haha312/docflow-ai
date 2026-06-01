@@ -30,6 +30,25 @@ class MockRedis {
         return this.store.delete(key) ? 1 : 0;
     }
 
+    async incr(key: string): Promise<number> {
+        const item = this.store.get(key);
+        // 过期的 key 视为不存在
+        if (item && item.expiry && Date.now() > item.expiry) {
+            this.store.delete(key);
+        }
+        const existing = this.store.get(key);
+        const next = (existing ? parseInt(existing.value, 10) || 0 : 0) + 1;
+        this.store.set(key, { value: String(next), expiry: existing?.expiry ?? null });
+        return next;
+    }
+
+    async expire(key: string, seconds: number): Promise<number> {
+        const item = this.store.get(key);
+        if (!item) return 0;
+        item.expiry = Date.now() + seconds * 1000;
+        return 1;
+    }
+
     on(_event: string, _callback: (...args: any[]) => void): void {
         // no-op for compatibility
     }
@@ -39,6 +58,8 @@ interface RedisLike {
     get(key: string): Promise<string | null>;
     set(key: string, value: string, mode?: string, duration?: number): Promise<'OK' | string>;
     del(key: string): Promise<number>;
+    incr(key: string): Promise<number>;
+    expire(key: string, seconds: number): Promise<number>;
     on(event: string, callback: (...args: any[]) => void): void;
 }
 

@@ -140,6 +140,77 @@ class AuthService {
         this.clearToken();
     }
 
+    // 修改密码(已登录,需要旧密)
+    async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+        const token = this.getToken();
+        if (!token) throw new Error(i18n.t('errors.not_logged_in', '未登录'));
+
+        const response = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ oldPassword, newPassword }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || i18n.t('errors.change_password_failed', '密码修改失败'));
+    }
+
+    // 修改邮箱第一步:验证密码 + 发码到新邮箱
+    async requestEmailChange(password: string, newEmail: string): Promise<void> {
+        const token = this.getToken();
+        if (!token) throw new Error(i18n.t('errors.not_logged_in', '未登录'));
+
+        const response = await fetch(`${API_BASE_URL}/api/auth/change-email/request-code`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ password, newEmail }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || i18n.t('errors.change_email_failed', '邮箱修改失败'));
+    }
+
+    // 修改邮箱第二步:输入新邮箱收到的验证码
+    async confirmEmailChange(code: string): Promise<{ email: string }> {
+        const token = this.getToken();
+        if (!token) throw new Error(i18n.t('errors.not_logged_in', '未登录'));
+
+        const response = await fetch(`${API_BASE_URL}/api/auth/change-email/confirm`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ code }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || i18n.t('errors.change_email_failed', '邮箱修改失败'));
+        return data.data;
+    }
+
+    // 删除账号:需要密码 + 输 "DELETE" 字面量
+    async deleteAccount(password: string): Promise<void> {
+        const token = this.getToken();
+        if (!token) throw new Error(i18n.t('errors.not_logged_in', '未登录'));
+
+        const response = await fetch(`${API_BASE_URL}/api/auth/account`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ password, confirm: 'DELETE' }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || i18n.t('errors.delete_account_failed', '账号删除失败'));
+        // 成功后清除本地 token (旧 token 已被后端 banned)
+        this.clearToken();
+    }
+
     // 获取当前用户信息
     async getCurrentUser(): Promise<UserInfoResponse> {
         const token = this.getToken();
