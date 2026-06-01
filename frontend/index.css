@@ -1,0 +1,84 @@
+/* Tailwind CSS v4 — build-time 编译入口 */
+@import "tailwindcss";
+
+/*
+ * 项目自定义全局样式 (原来在 index.html <style> 块中)
+ * 保持与原 CDN 版本一致的视觉效果
+ */
+
+body {
+  font-family: 'Noto Sans SC', sans-serif;
+}
+
+.serif {
+  font-family: 'Noto Serif SC', serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Figure & Table captions */
+.figure-caption {
+  text-align: center;
+  font-family: inherit;
+  font-size: 0.9em;
+  color: #4b5563;
+  margin-top: 8px;
+  margin-bottom: 24px;
+  display: block;
+  width: 100%;
+}
+
+.table-caption {
+  text-align: center;
+  font-family: inherit;
+  font-weight: bold;
+  margin-bottom: 8px;
+  margin-top: 16px;
+  display: block;
+}
+
+/* Animations */
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

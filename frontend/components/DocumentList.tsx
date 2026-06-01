@@ -43,6 +43,7 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadDocuments();
@@ -163,15 +164,37 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
   };
 
   if (loading && documents.length === 0) return <div className="loading">{t('profile.loading')}</div>;
+
+  const q = searchQuery.trim().toLowerCase();
+  const filteredDocs = q
+    ? documents.filter(d =>
+        d.title.toLowerCase().includes(q) ||
+        getPresetName(d.preset).toLowerCase().includes(q)
+      )
+    : documents;
   if (error) return <div className="error">{error}</div>;
   if (documents.length === 0) return <div className="empty">{t('profile.no_doc_history')}</div>;
 
   return (
     <div className="document-list">
       {ConfirmDialogComponent}
-      <h3>{t('profile.tab_documents')}</h3>
+      <div className="doc-list-header">
+        <h3>{t('profile.tab_documents')}</h3>
+        <input
+          type="search"
+          className="doc-search"
+          placeholder={t('profile.search_docs', '搜索文档...')}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+      {filteredDocs.length === 0 && !loading && (
+        <div className="empty">
+          {searchQuery ? t('profile.no_search_results', '没有找到匹配的文档') : t('profile.no_doc_history')}
+        </div>
+      )}
       <div className="list-container">
-        {documents.map(doc => (
+        {filteredDocs.map(doc => (
           <div key={doc.id} className="doc-item">
             <div className="doc-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
@@ -286,6 +309,36 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
           font-size: 1.1rem;
           margin-bottom: 1rem;
           color: #333;
+        }
+
+        .doc-list-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 0.75rem;
+          gap: 0.75rem;
+        }
+
+        .doc-list-header h3 {
+          margin-bottom: 0;
+          flex-shrink: 0;
+        }
+
+        .doc-search {
+          flex: 1;
+          max-width: 200px;
+          padding: 5px 10px;
+          font-size: 0.8rem;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          background: #f9fafb;
+          outline: none;
+          color: #374151;
+        }
+
+        .doc-search:focus {
+          border-color: #6366f1;
+          background: white;
         }
 
         .list-container {
