@@ -6,6 +6,7 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
 import { NotFound } from './pages/NotFound';
+import { SharedDocument } from './pages/SharedDocument';
 
 function App() {
     return (
@@ -14,6 +15,7 @@ function App() {
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="/share/:token" element={<SharedDocument />} />
             <Route path="*" element={<NotFound />} />
         </Routes>
     );

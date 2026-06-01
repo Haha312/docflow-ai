@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getUserDocuments, deleteDocument, getDocument, updateDocument } from '../services/backendApiService';
+import { getUserDocuments, deleteDocument, getDocument, updateDocument, createShareLink } from '../services/backendApiService';
 import { useConfirmDialog } from './ConfirmDialog';
 import { useToast } from '../contexts/ToastContext';
 import { generateDocx } from '../utils/docxGenerator';
@@ -132,6 +132,22 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
     }
   };
 
+  const handleShare = async (doc: Document) => {
+    try {
+      const { shareToken } = await createShareLink(doc.id);
+      const url = `${window.location.origin}/share/${shareToken}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success(t('profile.share_link_copied', '分享链接已复制到剪贴板'));
+      } catch {
+        // 复制失败兜底:用 prompt 展示链接
+        window.prompt(t('profile.share_link_prompt', '复制以下链接分享:'), url);
+      }
+    } catch (err) {
+      toast.error(t('profile.share_failed', '创建分享链接失败'));
+    }
+  };
+
   const startRename = (doc: Document) => {
     setRenamingId(doc.id);
     setRenameValue(doc.title);
@@ -251,6 +267,19 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
                   </svg>
                 </button>
               )}
+              <button
+                className="icon-btn share"
+                onClick={() => handleShare(doc)}
+                title={t('profile.share_document', '分享')}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="18" cy="5" r="3"></circle>
+                  <circle cx="6" cy="12" r="3"></circle>
+                  <circle cx="18" cy="19" r="3"></circle>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                </svg>
+              </button>
               <button
                 className="icon-btn download"
                 onClick={() => handleDownload(doc)}
@@ -433,6 +462,11 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
         .icon-btn.open:hover {
           background: #dbeafe;
           color: #2563eb;
+        }
+
+        .icon-btn.share:hover {
+          background: #d1fae5;
+          color: #059669;
         }
 
         .icon-btn:disabled {

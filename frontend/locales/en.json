@@ -45,11 +45,20 @@
         "go_back": "Go back",
         "go_home": "Home"
     },
+    "shared": {
+        "invalid_link": "Invalid share link",
+        "expired": "Share link expired or does not exist",
+        "unavailable_title": "Unavailable",
+        "words": "words",
+        "create_your_own": "Make your own →",
+        "powered_by": "Generated with DocFlow AI"
+    },
     "common": {
         "confirm": "Confirm",
         "cancel": "Cancel",
         "close": "Close",
-        "processing": "Processing..."
+        "processing": "Processing...",
+        "loading": "Loading..."
     },
     "nav": {
         "login": "Log in",
@@ -130,7 +139,9 @@
         "update_to_cloud": "Update in Cloud",
         "saving": "Saving...",
         "saved": "Saved to cloud",
-        "retry_generate": "Retry"
+        "retry_generate": "Retry",
+        "eta": "About {{n}} sec remaining",
+        "eta_soon": "Almost done..."
     },
     "pricing": {
         "success_title": "Payment Successful!",
@@ -417,6 +428,10 @@
         "click_to_rename": "Double-click to rename",
         "search_docs": "Search documents...",
         "no_search_results": "No matching documents",
+        "share_document": "Share",
+        "share_link_copied": "Share link copied to clipboard",
+        "share_link_prompt": "Copy this link to share:",
+        "share_failed": "Failed to create share link",
         "open_failed": "Failed to open document, please retry",
         "request_refund": "Request refund",
         "refund_warning": "Requesting a refund will fully refund this order (1-3 business days), immediately downgrade your account to Free, and forfeit remaining membership days. This action cannot be undone. Continue?",

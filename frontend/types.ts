@@ -135,4 +135,8 @@ export interface AIState {
   stopMessage: string | null;
   progressStep: string;
   progress: number;
+  /** 预估总时长(秒),null 表示未知 */
+  estimatedSec: number | null;
+  /** 生成开始时间戳(ms) */
+  startedAt: number | null;
 }

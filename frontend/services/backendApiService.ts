@@ -197,6 +197,46 @@ export async function deleteDocument(id: string): Promise<void> {
     if (!response.ok) throw new Error(data.message || i18n.t('errors.delete_doc_failed', '删除文档失败'));
 }
 
+// 创建文档分享链接 (返回 shareToken)
+export async function createShareLink(documentId: string): Promise<{ shareToken: string }> {
+    const token = authService.getToken();
+    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
+    const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/share`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || '创建分享链接失败');
+    return data.data;
+}
+
+// 撤销文档分享链接
+export async function revokeShareLink(documentId: string): Promise<void> {
+    const token = authService.getToken();
+    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
+    const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/share`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || '撤销分享链接失败');
+}
+
+// 公开访问 — 通过 shareToken 获取文档(无需登录)
+export async function getSharedDocument(shareToken: string): Promise<{
+    id: string;
+    title: string;
+    content: string;
+    preset: string;
+    wordCount?: number | null;
+    createdAt: string;
+}> {
+    const response = await fetch(`${API_BASE_URL}/api/documents/share/${shareToken}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || '分享链接已失效');
+    return data.data;
+}
+
 // 取消订阅 (立即降级为 FREE,放弃剩余天数。退款剩余天数需联系客服)
 export async function cancelSubscription(): Promise<{ previousTier: string; previousEndDate: string | null }> {
     const token = authService.getToken();

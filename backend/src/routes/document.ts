@@ -1,8 +1,9 @@
-﻿import { Router, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import { AuthRequest } from '../types';
 import { successResponse, errorResponse } from '../utils/response';
 import { authenticate } from '../middleware/auth';
 import prisma from '../config/database';
+import crypto from 'crypto';
 
 const router = Router();
 
@@ -174,6 +175,99 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Pro
     } catch (error) {
         console.error('删除文档失败:', error);
         res.status(500).json(errorResponse('删除文档失败', 500));
+    }
+});
+
+/**
+ * POST /api/documents/:id/share
+ * 为已保存的文档生成唯一只读分享链接 token。
+ * 幂等:已有 token 则返回现有的,不会重置。
+ * 只有文档所有者才能生成分享链接。
+ */
+router.post('/:id/share', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user!.id;
+        const id = String(req.params.id || '');
+
+        const document = await prisma.document.findUnique({ where: { id } });
+        if (!document) {
+            res.status(404).json(errorResponse('文档不存在', 404));
+            return;
+        }
+        if (document.userId !== userId) {
+            res.status(403).json(errorResponse('无权分享该文档', 403));
+            return;
+        }
+
+        // 已有 token 则复用
+        if (document.shareToken) {
+            res.json(successResponse({ shareToken: document.shareToken }));
+            return;
+        }
+
+        const shareToken = crypto.randomBytes(20).toString('base64url');
+        await prisma.document.update({ where: { id }, data: { shareToken } });
+        res.json(successResponse({ shareToken }));
+    } catch (error) {
+        console.error('创建分享链接失败:', error);
+        res.status(500).json(errorResponse('创建分享链接失败', 500));
+    }
+});
+
+/**
+ * DELETE /api/documents/:id/share
+ * 撤销分享链接(清空 shareToken)。只有文档所有者才能操作。
+ */
+router.delete('/:id/share', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const userId = req.user!.id;
+        const id = String(req.params.id || '');
+
+        const document = await prisma.document.findUnique({ where: { id } });
+        if (!document) {
+            res.status(404).json(errorResponse('文档不存在', 404));
+            return;
+        }
+        if (document.userId !== userId) {
+            res.status(403).json(errorResponse('无权操作该文档', 403));
+            return;
+        }
+
+        await prisma.document.update({ where: { id }, data: { shareToken: null } });
+        res.json(successResponse({ ok: true }));
+    } catch (error) {
+        console.error('撤销分享链接失败:', error);
+        res.status(500).json(errorResponse('撤销分享链接失败', 500));
+    }
+});
+
+/**
+ * GET /api/share/:token
+ * 公开只读接口 — 任何人持 token 即可访问。不需要 Auth。
+ * 只返回展示所需字段,不返回 userId 等私密信息。
+ */
+router.get('/share/:token', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const shareToken = String(req.params.token || '');
+        if (!shareToken) {
+            res.status(400).json(errorResponse('无效的分享链接', 400));
+            return;
+        }
+
+        const document = await prisma.document.findUnique({
+            where: { shareToken },
+            select: { id: true, title: true, content: true, preset: true, wordCount: true, createdAt: true }
+        });
+
+        if (!document) {
+            res.status(404).json(errorResponse('分享链接已失效或不存在', 404));
+            return;
+        }
+
+        res.json(successResponse(document));
+    } catch (error) {
+        console.error('访问分享文档失败:', error);
+        res.status(500).json(errorResponse('访问分享文档失败', 500));
     }
 });
 

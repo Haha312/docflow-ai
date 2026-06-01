@@ -47,14 +47,15 @@ model Order {
 }
 
 model Document {
-  id        String   @id @default(uuid())
-  userId    String
-  title     String
-  content   String
-  wordCount Int?
-  preset    String
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  userId     String
+  title      String
+  content    String
+  wordCount  Int?
+  preset     String
+  createdAt  DateTime @default(now())
+  shareToken String?  @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
 }

@@ -1,0 +1,27 @@
+{
+  "name": "DocFlow AI - 智能文档排版",
+  "short_name": "DocFlow",
+  "description": "AI 驱动的文档结构识别、智能排版、一键导出 Word",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fafafa",
+  "theme_color": "#111111",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"]
+}

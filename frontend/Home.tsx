@@ -68,7 +68,9 @@ function Home() {
     error: null,
     stopMessage: null,
     progressStep: '',
-    progress: 0
+    progress: 0,
+    estimatedSec: null,
+    startedAt: null,
   });
 
   const [showPRD, setShowPRD] = useState(false);
@@ -80,6 +82,7 @@ function Home() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
   const [isSavingToCloud, setIsSavingToCloud] = useState(false);
+  const [tick, setTick] = useState(0); // 每秒递增,驱动倒计时重渲染
 
   const { isAuthenticated, user, refreshUser } = useAuth();
   const previewContainerRef = useRef<HTMLDivElement>(null);
@@ -163,6 +166,13 @@ function Home() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // 倒计时 ticker — 仅在生成中每秒更新一次
+  useEffect(() => {
+    if (!aiState.isThinking || aiState.estimatedSec === null) return;
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [aiState.isThinking, aiState.estimatedSec]);
+
   // Persist model selection across page refreshes
   useEffect(() => {
     localStorage.setItem('docuflow_selected_model', selectedModel);
@@ -210,7 +220,7 @@ function Home() {
       setInputFileName('document.txt');
       setOutputText('');
       setContentPageCount(1);
-      setAiState({ isThinking: false, error: null, progressStep: '', progress: 0 });
+      setAiState({ isThinking: false, error: null, progressStep: '', progress: 0, estimatedSec: null, startedAt: null });
     }
   };
 
@@ -310,7 +320,16 @@ function Home() {
       return;
     }
 
-    setAiState({ isThinking: true, error: null, stopMessage: null, progressStep: t('home.analyzing', '正在分析文档结构...'), progress: 0 });
+    // 按输入字数粗估生成时长:~20s/千字(经验值,不含图片处理)
+    const charCount = inputText.replace(/\s/g, '').length;
+    const estimatedSec = Math.max(15, Math.round(charCount / 1000 * 20));
+    setAiState({
+      isThinking: true, error: null, stopMessage: null,
+      progressStep: t('home.analyzing', '正在分析文档结构...'),
+      progress: 0,
+      estimatedSec,
+      startedAt: Date.now(),
+    });
     setOutputText('');
     setImageMap({});
     // 开始新一轮生成 → 清空"已保存的文档 id",下次保存会触发 POST 而非 PUT (防止覆盖旧文档)
@@ -416,7 +435,7 @@ function Home() {
         // Brief pause for React to finish rendering, then trigger KaTeX (runs when isThinking=false)
         setAiState(prev => ({ ...prev, progressStep: t('home.rendering', '正在应用排版格式...') }));
         await new Promise(r => setTimeout(r, 300));
-        setAiState({ isThinking: false, error: null, stopMessage: null, progressStep: t('home.done', '完成'), progress: 0 });
+        setAiState({ isThinking: false, error: null, stopMessage: null, progressStep: t('home.done', '完成'), progress: 0, estimatedSec: null, startedAt: null });
         setViewMode('preview'); // 生成完成后自动切换到全宽预览模式
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
@@ -428,7 +447,7 @@ function Home() {
     } catch (err: any) {
       if (err.message === 'QUOTA_EXCEEDED') {
         // Clear inline error — the upgrade modal now carries the messaging + CTA
-        setAiState({ isThinking: false, error: null, stopMessage: null, progressStep: '', progress: 0 });
+        setAiState({ isThinking: false, error: null, stopMessage: null, progressStep: '', progress: 0, estimatedSec: null, startedAt: null });
         setPricingReason('quota');
         setShowPricingModal(true);
       } else if (err.message === 'LOGIN_REQUIRED') {
@@ -438,7 +457,7 @@ function Home() {
         setAiState({ isThinking: false, error: null, stopMessage: t('home.stopped_manually', "已手动停止生成"), progressStep: '', progress: 0 });
       } else {
         console.error("Processing error:", err);
-        setAiState({ isThinking: false, error: err.message || t('home.processing_failed', "文档处理失败,请重试。"), stopMessage: null, progressStep: '', progress: 0 });
+        setAiState({ isThinking: false, error: err.message || t('home.processing_failed', "文档处理失败,请重试。"), stopMessage: null, progressStep: '', progress: 0, estimatedSec: null, startedAt: null });
       }
     } finally {
       if (abortControllerRef.current === controller) {
@@ -1178,12 +1197,25 @@ function Home() {
                 )}
 
                 {aiState.isThinking && (
-                  <div className="mt-3 flex items-center justify-center gap-2 text-xs text-gray-500">
-                    <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>{aiState.progressStep}</span>
+                  <div className="mt-3 flex flex-col items-center gap-1.5">
+                    <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+                      <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>{aiState.progressStep}</span>
+                    </div>
+                    {aiState.estimatedSec !== null && aiState.startedAt !== null && tick >= 0 && (() => {
+                      const elapsed = Math.floor((Date.now() - aiState.startedAt!) / 1000);
+                      const remaining = Math.max(0, aiState.estimatedSec! - elapsed);
+                      return remaining > 0 ? (
+                        <span className="text-[10px] text-gray-400">
+                          {t('home.eta', '预计还需约 {{n}} 秒', { n: remaining })}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-gray-400">{t('home.eta_soon', '即将完成...')}</span>
+                      );
+                    })()}
                   </div>
                 )}
 
