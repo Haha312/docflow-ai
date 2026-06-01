@@ -35,6 +35,7 @@ interface UserData {
     subscriptionEndDate: string | null;
     createdAt: string;
     usageCount: number;
+    banned?: boolean;
 }
 
 interface AdminStats {
@@ -277,6 +278,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         } catch (err) {
             console.error(err);
             setEditSaveResult('error');
+        }
+    };
+
+    const toggleBanUser = async (u: UserData) => {
+        const action = u.banned ? 'unban' : 'ban';
+        const confirmMsg = u.banned
+            ? t('admin.unban_confirm', '确定解封 {{email}}?', { email: u.email })
+            : t('admin.ban_confirm', '确定封禁 {{email}}? 用户将无法访问任何 API。', { email: u.email });
+        if (!window.confirm(confirmMsg)) return;
+        try {
+            const token = authService.getToken();
+            const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/admin/users/${u.id}/${action}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                fetchUsers();
+            }
+        } catch (err) {
+            console.error(`${action} user failed:`, err);
         }
     };
 
@@ -616,7 +637,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                         {users.map(u => (
                                             <tr key={u.id} className="hover:bg-white/[0.02]">
                                                 <td className="px-5 py-3.5 text-sm text-white/60">{formatDateOnly(u.createdAt)}</td>
-                                                <td className="px-5 py-3.5 text-sm text-white font-medium">{u.email}</td>
+                                                <td className="px-5 py-3.5 text-sm text-white font-medium">
+                                                    <span className={u.banned ? 'line-through opacity-60' : ''}>{u.email}</span>
+                                                    {u.banned && (
+                                                        <span className="ml-2 inline-block px-1.5 py-0.5 text-[10px] bg-red-500/30 text-red-300 rounded">
+                                                            {t('admin.banned_badge', '已封禁')}
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td className="px-5 py-3.5">
                                                     <span className={`inline-flex text-[10px] font-bold tracking-wider px-2 py-1 rounded uppercase ${u.subscriptionStatus === 'ULTRA' ? 'bg-purple-500/20 text-purple-400' :
                                                         u.subscriptionStatus === 'PRO' ? 'bg-blue-500/20 text-blue-400' :
@@ -632,7 +660,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 <td className="px-5 py-3.5 text-sm text-white/80 text-center font-mono">
                                                     {u.usageCount}
                                                 </td>
-                                                <td className="px-5 py-3.5 text-right">
+                                                <td className="px-5 py-3.5 text-right space-x-2">
                                                     <button
                                                         onClick={() => {
                                                             setEditStatus(u.subscriptionStatus);
@@ -641,6 +669,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                         }}
                                                         className="text-xs bg-white/[0.05] hover:bg-white/[0.1] px-3 py-1.5 rounded transition-colors text-white"
                                                     >{t('admin.edit_status')}</button>
+                                                    <button
+                                                        onClick={() => toggleBanUser(u)}
+                                                        className={`text-xs px-3 py-1.5 rounded transition-colors ${
+                                                            u.banned
+                                                                ? 'bg-green-500/20 hover:bg-green-500/30 text-green-300'
+                                                                : 'bg-red-500/20 hover:bg-red-500/30 text-red-300'
+                                                        }`}
+                                                    >
+                                                        {u.banned ? t('admin.unban', '解封') : t('admin.ban', '封禁')}
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}

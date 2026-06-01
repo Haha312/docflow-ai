@@ -9,6 +9,7 @@ import { successResponse, errorResponse } from '../utils/response';
 import { authenticate } from '../middleware/auth';
 import prisma from '../config/database';
 import { getTierFromPlanType } from '../config/tierConfig';
+import { sendPaymentSuccess } from '../services/emailService';
 import { isAdmin } from '../utils/admin';
 import { getAlipayClient } from '../utils/alipayClient';
 import { wechatRefund } from '../utils/wechatPay';
@@ -105,7 +106,7 @@ async function applyPaidOrder(
 
     const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: { subscriptionEndDate: true }
+        select: { email: true, subscriptionEndDate: true }
     });
 
     // If the user is already active, extend from current expiry; otherwise start from now.
@@ -124,6 +125,17 @@ async function applyPaidOrder(
             subscriptionEndDate: endDate
         }
     });
+
+    // 异步发送支付成功邮件 — 失败不阻断主流程(订单已 PAID + 会员已激活)
+    if (user?.email) {
+        sendPaymentSuccess(
+            user.email,
+            plan.title,
+            plan.amountCNY,
+            'CNY',
+            endDate
+        ).catch((e) => console.error('Payment success email failed (non-blocking):', e));
+    }
 }
 
 router.post('/create-checkout-session', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {

@@ -62,6 +62,56 @@ export const sendRenewalReminder = async (
     }
 };
 
+/**
+ * 支付成功确认邮件。在 webhook 把订单标记为 PAID 之后调用,失败不阻断主流程。
+ */
+export const sendPaymentSuccess = async (
+    to: string,
+    planName: string,
+    amount: number,
+    currency: string,
+    endDate: Date
+): Promise<boolean> => {
+    if (!process.env.SMTP_HOST && !process.env.SMTP_USER) {
+        console.log(`[MOCK EMAIL] Payment success to ${to}: ${planName} ${currency} ${amount}, until ${endDate.toISOString()}`);
+        return true;
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || '').split(',')[0] || 'https://docuflow.ai';
+    const endStr = endDate.toISOString().split('T')[0];
+    const amountStr = `${currency.toUpperCase()} ${amount.toFixed(2)}`;
+
+    try {
+        const info = await transporter.sendMail({
+            from: process.env.SMTP_FROM || '"DocFlow AI" <no-reply@docuflow.ai>',
+            to,
+            subject: `DocFlow AI - 您的 ${planName} 已激活`,
+            text: `感谢您的购买!您的 ${planName} 会员已激活,金额 ${amountStr},有效期至 ${endStr}。访问:${frontendUrl}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 560px; margin: 0 auto;">
+                    <h2 style="color: #000;">DocFlow AI</h2>
+                    <p>您好,</p>
+                    <p>感谢您的购买!您的 <strong>${planName}</strong> 会员已激活。</p>
+                    <table style="width:100%;margin:20px 0;border-collapse:collapse;">
+                        <tr><td style="padding:8px 0;color:#666;">订阅方案</td><td style="padding:8px 0;text-align:right;"><strong>${planName}</strong></td></tr>
+                        <tr><td style="padding:8px 0;color:#666;">金额</td><td style="padding:8px 0;text-align:right;"><strong>${amountStr}</strong></td></tr>
+                        <tr><td style="padding:8px 0;color:#666;">有效期至</td><td style="padding:8px 0;text-align:right;"><strong>${endStr}</strong></td></tr>
+                    </table>
+                    <p style="margin: 30px 0;">
+                        <a href="${frontendUrl}" style="background:#111;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:600;">开始使用</a>
+                    </p>
+                    <p style="font-size:12px;color:#888;">如需发票或对订单有疑问,请回复此邮件联系客服。</p>
+                </div>
+            `,
+        });
+        console.log('Payment success email sent: %s', info.messageId);
+        return true;
+    } catch (error) {
+        console.error('Error sending payment success email:', error);
+        return false;
+    }
+};
+
 export const sendVerificationEmail = async (to: string, code: string): Promise<boolean> => {
     // If no real SMTP config, just log for dev
     if (!process.env.SMTP_HOST && !process.env.SMTP_USER) {

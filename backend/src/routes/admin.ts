@@ -3,6 +3,7 @@ import prisma from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { isAdmin } from '../utils/admin';
+import redis from '../utils/redis';
 
 const router = express.Router();
 
@@ -189,14 +190,18 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
 
         // getting total usage logs count per user is easier through aggregate
         const enrichedUsers = await Promise.all(users.map(async u => {
-            const usageCount = await prisma.usageLog.count({ where: { userId: u.id } });
+            const [usageCount, banned] = await Promise.all([
+                prisma.usageLog.count({ where: { userId: u.id } }),
+                redis.get(`banned:${u.id}`),
+            ]);
             return {
                 id: u.id,
                 email: u.email,
                 subscriptionStatus: u.subscriptionStatus,
                 subscriptionEndDate: u.subscriptionEndDate,
                 createdAt: u.createdAt,
-                usageCount
+                usageCount,
+                banned: !!banned,
             };
         }));
 
@@ -300,6 +305,49 @@ router.post('/config', authenticate, requireAdmin, async (req: AuthRequest, res)
     } catch (error) {
         console.error('Config Update Error:', error);
         res.status(500).json({ error: 'Failed to update config' });
+    }
+});
+
+/**
+ * POST /api/admin/users/:id/ban
+ * 封禁用户:写 Redis banned:${userId} (无过期,持久封禁)。
+ * auth middleware 会拒绝其携带的 JWT,导致所有 API 401。
+ * 不删除用户数据,只阻断访问。
+ */
+router.post('/users/:id/ban', authenticate, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const id = String(req.params.id || '');
+        const target = await prisma.user.findUnique({ where: { id } });
+        if (!target) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+        // 防止 admin 误封自己
+        if (target.id === req.user!.id) {
+            res.status(400).json({ error: 'Cannot ban yourself' });
+            return;
+        }
+        // 不设过期 = 永久封禁;手动 unban 才能解
+        await redis.set(`banned:${id}`, '1');
+        res.json({ ok: true, banned: true });
+    } catch (error) {
+        console.error('Ban user failed:', error);
+        res.status(500).json({ error: 'Ban failed' });
+    }
+});
+
+/**
+ * POST /api/admin/users/:id/unban
+ * 解封用户:删除 Redis banned key。
+ */
+router.post('/users/:id/unban', authenticate, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const id = String(req.params.id || '');
+        await redis.del(`banned:${id}`);
+        res.json({ ok: true, banned: false });
+    } catch (error) {
+        console.error('Unban user failed:', error);
+        res.status(500).json({ error: 'Unban failed' });
     }
 });
 
