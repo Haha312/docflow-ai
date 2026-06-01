@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { getUserDocuments, deleteDocument, getDocument } from '../services/backendApiService';
+import { getUserDocuments, deleteDocument, getDocument, updateDocument } from '../services/backendApiService';
 import { useConfirmDialog } from './ConfirmDialog';
+import { useToast } from '../contexts/ToastContext';
 import { generateDocx } from '../utils/docxGenerator';
 import { PRESETS } from '../constants';
 import { StyleConfig } from '../types';
@@ -32,6 +33,7 @@ interface DocumentListProps {
 
 export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
   const { confirm, ConfirmDialogComponent } = useConfirmDialog();
+  const toast = useToast();
   const { t } = useTranslation();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +41,8 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   useEffect(() => {
     loadDocuments();
@@ -62,7 +66,7 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
       // 1. Fetch full document content (including HTML)
       const fullDoc = await getDocument(doc.id);
       if (!fullDoc || !fullDoc.content) {
-        alert(t('profile.doc_empty'));
+        toast.error(t('profile.doc_empty'));
         return;
       }
 
@@ -86,7 +90,7 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
 
     } catch (err) {
       console.error('Download failed', err);
-      alert(t('profile.download_failed'));
+      toast.error(t('profile.download_failed'));
     }
   };
 
@@ -120,9 +124,29 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
 
     try {
       await deleteDocument(id);
-      loadDocuments(); // 刷新列表
+      loadDocuments();
+      toast.success(t('profile.delete_success', '文档已删除'));
     } catch (err) {
-      alert(t('profile.delete_failed'));
+      toast.error(t('profile.delete_failed'));
+    }
+  };
+
+  const startRename = (doc: Document) => {
+    setRenamingId(doc.id);
+    setRenameValue(doc.title);
+  };
+
+  const commitRename = async (id: string) => {
+    const newTitle = renameValue.trim();
+    if (!newTitle) { setRenamingId(null); return; }
+    try {
+      await updateDocument(id, { title: newTitle });
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, title: newTitle } : d));
+      toast.success(t('profile.renamed', '已重命名'));
+    } catch (err) {
+      toast.error(t('profile.rename_failed', '重命名失败'));
+    } finally {
+      setRenamingId(null);
     }
   };
 
@@ -159,7 +183,28 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
               </svg>
             </div>
             <div className="doc-info">
-              <div className="doc-title">{doc.title}</div>
+              {renamingId === doc.id ? (
+                <input
+                  autoFocus
+                  className="doc-title-input"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={() => commitRename(doc.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitRename(doc.id);
+                    if (e.key === 'Escape') setRenamingId(null);
+                  }}
+                  maxLength={100}
+                />
+              ) : (
+                <div
+                  className="doc-title"
+                  title={t('profile.click_to_rename', '双击重命名')}
+                  onDoubleClick={() => startRename(doc)}
+                >
+                  {doc.title}
+                </div>
+              )}
               <div className="doc-meta">
                 <span>{getPresetName(doc.preset)}</span>
                 <span className="separator">•</span>
@@ -284,6 +329,21 @@ export function DocumentList({ onOpenDocument }: DocumentListProps = {}) {
           font-weight: 500;
           color: #111;
           margin-bottom: 0.25rem;
+          cursor: default;
+        }
+
+        .doc-title-input {
+          font-weight: 500;
+          color: #111;
+          font-size: inherit;
+          font-family: inherit;
+          border: 1px solid #6366f1;
+          border-radius: 4px;
+          padding: 1px 6px;
+          outline: none;
+          width: 100%;
+          margin-bottom: 0.25rem;
+          background: #f0f0ff;
         }
 
         .doc-meta {

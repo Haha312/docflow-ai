@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { OrderHistory } from './OrderHistory';
 import { DocumentList, OpenableDocument } from './DocumentList';
-import { cancelSubscription } from '../services/backendApiService';
+import { cancelSubscription, getUserUsage } from '../services/backendApiService';
 import { authService } from '../services/authService';
 import { useTranslation } from 'react-i18next';
 
@@ -24,6 +24,23 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
   const toast = useToast();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'profile' | 'documents' | 'orders'>('profile');
+
+  // 本月用量统计
+  const [monthlyCount, setMonthlyCount] = useState<number | null>(null);
+  const [totalTokens, setTotalTokens] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    getUserUsage(200).then((logs) => {
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthly = logs.filter(
+        (l) => l.actionType === 'generate_document' && new Date(l.createdAt) >= monthStart
+      );
+      setMonthlyCount(monthly.length);
+      setTotalTokens(monthly.reduce((sum, l) => sum + (l.tokenUsage ?? 0), 0));
+    }).catch(() => {/* 静默失败,不影响主功能 */});
+  }, [isOpen]);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -223,6 +240,27 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
                   );
                 })()}
               </div>
+
+              {/* 本月用量统计 */}
+              {monthlyCount !== null && (
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-400 mb-3">{t('profile.this_month_usage', '本月用量')}</p>
+                  <div className="flex gap-4">
+                    <div className="flex-1 text-center bg-gray-50 rounded-lg py-3">
+                      <div className="text-2xl font-bold text-gray-900">{monthlyCount}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{t('profile.generation_count', '次生成')}</div>
+                    </div>
+                    <div className="flex-1 text-center bg-gray-50 rounded-lg py-3">
+                      <div className="text-2xl font-bold text-gray-900">
+                        {totalTokens && totalTokens > 1000
+                          ? `${(totalTokens / 1000).toFixed(1)}k`
+                          : (totalTokens ?? 0)}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">{t('profile.tokens_used', 'tokens 消耗')}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* 账户管理 (修改密码 / 修改邮箱 / 删除账号) */}
               <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">

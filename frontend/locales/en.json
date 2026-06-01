@@ -39,6 +39,12 @@
         "terms": "Terms",
         "privacy": "Privacy"
     },
+    "not_found": {
+        "title": "Page not found",
+        "desc": "The page you're looking for has been moved, deleted, or never existed.",
+        "go_back": "Go back",
+        "go_home": "Home"
+    },
     "common": {
         "confirm": "Confirm",
         "cancel": "Cancel",
@@ -375,6 +381,9 @@
         "pending": "Pending",
         "failed": "Failed",
         "days_left": "{{n}} days left",
+        "this_month_usage": "This month",
+        "generation_count": "generations",
+        "tokens_used": "tokens used",
         "account_management": "Account management",
         "change_password": "Change password",
         "old_password": "Current password",
@@ -399,6 +408,10 @@
         "cancel_failed": "Cancellation failed, please retry",
         "action": "Actions",
         "open_document": "Open",
+        "delete_success": "Document deleted",
+        "renamed": "Renamed",
+        "rename_failed": "Rename failed",
+        "click_to_rename": "Double-click to rename",
         "open_failed": "Failed to open document, please retry",
         "request_refund": "Request refund",
         "refund_warning": "Requesting a refund will fully refund this order (1-3 business days), immediately downgrade your account to Free, and forfeit remaining membership days. This action cannot be undone. Continue?",

@@ -139,6 +139,25 @@ export async function getUserOrders(): Promise<any[]> {
     return data.data;
 }
 
+// 获取用户使用记录 (最近 N 条)
+export async function getUserUsage(limit = 100): Promise<Array<{
+    id: string;
+    actionType: string;
+    presetUsed: string;
+    tokenUsage: number | null;
+    createdAt: string;
+}>> {
+    const token = authService.getToken();
+    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
+
+    const response = await fetch(`${API_BASE_URL}/api/user/usage?limit=${limit}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || '获取用量记录失败');
+    return data.data;
+}
+
 // 获取用户文档列表
 export async function getUserDocuments(page = 1, pageSize = 20): Promise<{ list: any[], pagination: any }> {
     const token = authService.getToken();
