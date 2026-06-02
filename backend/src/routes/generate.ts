@@ -538,8 +538,7 @@ const estimateSafeChunkSize = (modelKey: string | undefined, userTier: keyof typ
         'gemini-flash': 12000,
         'gemini-pro': 16000,
         'doubao': 9000,
-        'deepseek': 6000,
-        'qwen-max': 6000
+        'deepseek': 6000
     };
     const base = baselineByModel[modelKey || ''] || 12000;
     const tierFactor = userTier === 'ULTRA' ? 1.35 : 1.0;
@@ -560,11 +559,10 @@ function getModelConfig(modelKey: string, dbConfig: Record<string, string>): Mod
     const geminiKey  = dbConfig['GOOGLE_API_KEY']        || process.env.GOOGLE_API_KEY        || '';
     const geminiBase = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '';
     const registry: Record<string, ModelConfig> = {
-        'gemini-flash': { apiKey: geminiKey,  baseUrl: geminiBase, modelId: 'gemini-2.0-flash',                          needsProxy: true,  maxOutputTokens: 16000 },
+        'gemini-flash': { apiKey: geminiKey,  baseUrl: geminiBase, modelId: 'gemini-2.5-flash',                                  needsProxy: true,  maxOutputTokens: 16000 },
         'gemini-pro':   { apiKey: geminiKey,  baseUrl: geminiBase, modelId: process.env.GEMINI_MODEL || 'gemini-3-pro-preview', needsProxy: true,  maxOutputTokens: 32000 },
-        'doubao':       { apiKey: process.env.DOUBAO_API_KEY   || '', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',        modelId: process.env.DOUBAO_ENDPOINT_ID || '', needsProxy: false, maxOutputTokens: 8192 },
-        'deepseek':     { apiKey: process.env.DEEPSEEK_API_KEY || '', baseUrl: 'https://api.deepseek.com/v1',                     modelId: 'deepseek-chat',                      needsProxy: false, maxOutputTokens: 8192 },
-        'qwen-max':     { apiKey: process.env.DASHSCOPE_API_KEY || '', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', modelId: 'qwen-max',                        needsProxy: false, maxOutputTokens: 8192 },
+        'doubao':       { apiKey: process.env.DOUBAO_API_KEY   || '', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',     modelId: process.env.DOUBAO_ENDPOINT_ID || '', needsProxy: false, maxOutputTokens: 8192 },
+        'deepseek':     { apiKey: process.env.DEEPSEEK_API_KEY || '', baseUrl: 'https://api.deepseek.com/v1',                  modelId: 'deepseek-chat',                      needsProxy: false, maxOutputTokens: 16384 },
     };
     return registry[modelKey] ?? null;
 }

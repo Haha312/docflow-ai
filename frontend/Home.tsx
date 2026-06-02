@@ -26,11 +26,10 @@ const getTextCount = (html: string) => {
 };
 
 const MODEL_OPTIONS = [
-  { key: 'gemini-flash', name: 'Gemini Flash',  descKey: 'home.model_fast' },
-  { key: 'gemini-pro',   name: 'Gemini 3 Pro',  descKey: 'home.model_quality' },
-  { key: 'doubao',       name: '豆包 Doubao',    descKey: 'home.model_bytedance' },
-  { key: 'deepseek',     name: 'DeepSeek V3',   descKey: 'home.model_deepseek' },
-  { key: 'qwen-max',     name: 'Qwen Max',       descKey: 'home.model_qwen' },
+  { key: 'gemini-flash', name: 'Gemini 2.5 Flash', descKey: 'home.model_fast' },
+  { key: 'gemini-pro',   name: 'Gemini 3 Pro',     descKey: 'home.model_quality' },
+  { key: 'doubao',       name: '豆包 Doubao',       descKey: 'home.model_bytedance' },
+  { key: 'deepseek',     name: 'DeepSeek V4 Pro',   descKey: 'home.model_deepseek' },
 ] as const;
 
 // A4 page dimensions at 96 dpi (297mm × 96 / 25.4 ≈ 1122px)

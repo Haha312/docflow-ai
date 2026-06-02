@@ -134,7 +134,6 @@
         "model_quality": "高质量",
         "model_bytedance": "字节跳动",
         "model_deepseek": "深度求索",
-        "model_qwen": "通义千问",
         "save_to_cloud": "保存到云",
         "update_to_cloud": "更新到云",
         "saving": "保存中...",

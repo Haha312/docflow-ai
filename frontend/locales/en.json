@@ -134,7 +134,6 @@
         "model_quality": "High Quality",
         "model_bytedance": "ByteDance",
         "model_deepseek": "DeepSeek",
-        "model_qwen": "Qwen",
         "save_to_cloud": "Save to Cloud",
         "update_to_cloud": "Update in Cloud",
         "saving": "Saving...",

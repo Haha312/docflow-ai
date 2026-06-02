@@ -188,21 +188,29 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
             })
         ]);
 
-        // getting total usage logs count per user is easier through aggregate
-        const enrichedUsers = await Promise.all(users.map(async u => {
-            const [usageCount, banned] = await Promise.all([
-                prisma.usageLog.count({ where: { userId: u.id } }),
-                redis.get(`banned:${u.id}`),
-            ]);
-            return {
-                id: u.id,
-                email: u.email,
-                subscriptionStatus: u.subscriptionStatus,
-                subscriptionEndDate: u.subscriptionEndDate,
-                createdAt: u.createdAt,
-                usageCount,
-                banned: !!banned,
-            };
+        // 批量查询 usageCount (单条 SQL groupBy 替代 N 次 count)
+        const userIds = users.map(u => u.id);
+        const [usageCounts, bannedStatuses] = await Promise.all([
+            prisma.usageLog.groupBy({
+                by: ['userId'],
+                where: { userId: { in: userIds } },
+                _count: { id: true },
+            }),
+            // 批量查 Redis banned 状态 (并行,但只 1 轮 Promise.all 而非 N 轮)
+            Promise.all(userIds.map(id => redis.get(`banned:${id}`))),
+        ]);
+
+        const usageMap = new Map(usageCounts.map(g => [g.userId, g._count.id]));
+        const bannedMap = new Map(userIds.map((id, i) => [id, !!bannedStatuses[i]]));
+
+        const enrichedUsers = users.map(u => ({
+            id: u.id,
+            email: u.email,
+            subscriptionStatus: u.subscriptionStatus,
+            subscriptionEndDate: u.subscriptionEndDate,
+            createdAt: u.createdAt,
+            usageCount: usageMap.get(u.id) ?? 0,
+            banned: bannedMap.get(u.id) ?? false,
         }));
 
         res.json({
