@@ -1218,8 +1218,12 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             const STREAM_SCAN_INTERVAL = 500;
 
             try {
-                // 检查是否使用 OpenAI Compatible 代理
-                const geminiOpenAIBaseUrl = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL;
+                // 决定走哪条路:
+                //   有 baseUrl(DeepSeek/豆包/Qwen,或配了代理的 Gemini)→ OpenAI 兼容 SDK,打各自的 baseUrl
+                //   无 baseUrl(原生官方 Gemini)→ Google 原生 SDK
+                // 注意:必须用模型自己的 useBase 判断,不能用 GEMINI_OPENAI_BASE_URL,
+                // 否则国内模型(有自己 baseUrl 但 GEMINI_OPENAI_BASE_URL 为空)会被误路由到 Google。
+                const useOpenAICompat = !!useBase;
 
                 const statusText = chunks.length > 1
                     ? `PARTIAL_GENERATING|${i + 1}|${chunks.length}`
@@ -1231,8 +1235,8 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 }, 1000);
 
                 try {
-                    if (geminiOpenAIBaseUrl) {
-                        // 使用 OpenAI Compatible Endpoint (如 hiapi.online)
+                    if (useOpenAICompat) {
+                        // 使用 OpenAI Compatible Endpoint (DeepSeek / 豆包 / Qwen / 代理 Gemini)
                         const maxTokens = modelCfg?.maxOutputTokens ?? (userTier === 'ULTRA' ? 32000 : 16000);
                         let finishReason: string | null = null;
                         let streamHallucinationDetected = false;

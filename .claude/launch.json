@@ -2,24 +2,18 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "docx-analyzer",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["docx-server.js"],
-      "port": 7788
+      "name": "backend",
+      "runtimeExecutable": "npm.cmd",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "backend",
+      "port": 3001
     },
     {
       "name": "frontend",
       "runtimeExecutable": "npm.cmd",
-      "runtimeArgs": ["run", "dev", "--", "--port", "3000"],
-      "cwd": "frontend",
-      "port": 3000
-    },
-    {
-      "name": "backend",
-      "runtimeExecutable": "npm.cmd",
       "runtimeArgs": ["run", "dev"],
-      "cwd": "D:/docuflow-ai/backend",
-      "port": 3001
+      "cwd": "frontend",
+      "port": 5173
     }
   ]
 }

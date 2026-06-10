@@ -74,15 +74,28 @@ app.use(
 // Content-Security-Policy allowlist。
 // 生产用硬模式;开发用 Report-Only 以避免挡 Vite HMR / Supabase WebSocket。
 // 若用户群在欧盟,可改成更严格的 nonce-based 配置。
-const CSP_BASE = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https:",
-    "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://*.supabase.co https://generativelanguage.googleapis.com https://api.openai.com",
-].join('; ');
-const CSP_DEV_EXTRA = "; connect-src 'self' https://*.supabase.co https://generativelanguage.googleapis.com https://api.openai.com ws://localhost:* http://localhost:*";
+//
+// connect-src 覆盖前端需要直连的服务:Supabase、各 AI 模型 API(国内模型走后端代理,
+// 所以前端只需连自己的后端,但保留这些以防未来前端直连)。dev 额外允许 localhost ws(Vite HMR)。
+const buildCsp = (isDev: boolean): string => {
+    const connectSrc = [
+        "'self'",
+        'https://*.supabase.co',
+        'https://generativelanguage.googleapis.com',
+        'https://api.deepseek.com',
+        'https://ark.cn-beijing.volces.com',
+        'https://dashscope.aliyuncs.com',
+        ...(isDev ? ['ws://localhost:*', 'http://localhost:*'] : []),
+    ].join(' ');
+    return [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "img-src 'self' data: blob: https:",
+        "font-src 'self' data: https://fonts.gstatic.com",
+        `connect-src ${connectSrc}`,
+    ].join('; ');
+};
 
 app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -91,14 +104,14 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
     if (process.env.NODE_ENV === 'production') {
-        res.setHeader('Content-Security-Policy', CSP_BASE);
+        res.setHeader('Content-Security-Policy', buildCsp(false));
         // 仅 HTTPS 部署后启用 HSTS;若未启用 HTTPS 会让所有用户被锁定 https://
         if (process.env.ENABLE_HSTS === 'true') {
             res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
         }
     } else {
         // Dev 用 Report-Only 模式,违规只 console 警告,不阻断
-        res.setHeader('Content-Security-Policy-Report-Only', CSP_BASE + CSP_DEV_EXTRA);
+        res.setHeader('Content-Security-Policy-Report-Only', buildCsp(true));
     }
     next();
 });
