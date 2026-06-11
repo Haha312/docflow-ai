@@ -140,7 +140,8 @@
         "saved": "已保存到云",
         "retry_generate": "重新生成",
         "eta": "预计还需约 {{n}} 秒",
-        "eta_soon": "即将完成..."
+        "eta_soon": "即将完成...",
+        "page_n": "第 {{n}} 页"
     },
     "pricing": {
         "success_title": "支付成功！",

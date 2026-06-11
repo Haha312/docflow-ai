@@ -140,7 +140,8 @@
         "saved": "Saved to cloud",
         "retry_generate": "Retry",
         "eta": "About {{n}} sec remaining",
-        "eta_soon": "Almost done..."
+        "eta_soon": "Almost done...",
+        "page_n": "Page {{n}}"
     },
     "pricing": {
         "success_title": "Payment Successful!",

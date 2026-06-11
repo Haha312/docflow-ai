@@ -1506,6 +1506,26 @@ function Home() {
                               className="mx-auto bg-white border border-gray-200 mb-2 relative shadow-sm flex flex-col"
                               style={{ maxWidth: '794px', width: '100%', minHeight: '1123px', padding: '80px 90px 40px' }}
                             >
+                              {/* 视觉分页线层 — 滚动时呈现 A4 翻页感。pointer-events:none + aria-hidden,
+                                  纯装饰,不进 contentEditable 数据(保存时不受影响)。
+                                  由 contentPageCount(按内容真实高度算)驱动,流式生成时实时增长。 */}
+                              {contentPageCount > 1 && (
+                                <div className="absolute inset-0 pointer-events-none select-none z-0" aria-hidden="true">
+                                  {Array.from({ length: contentPageCount - 1 }).map((_, i) => (
+                                    <div
+                                      key={i}
+                                      className="absolute left-0 right-0 flex items-center gap-2 px-6"
+                                      style={{ top: (i + 1) * A4_HEIGHT_PX }}
+                                    >
+                                      <div className="flex-1 border-t border-dashed border-gray-200" />
+                                      <span className="text-[10px] text-gray-300 tabular-nums whitespace-nowrap">
+                                        {t('home.page_n', '第 {{n}} 页', { n: i + 2 })}
+                                      </span>
+                                      <div className="flex-1 border-t border-dashed border-gray-200" />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                               <div
                                 id="preview-content"
                                 ref={previewContentRef}
@@ -1515,7 +1535,7 @@ function Home() {
                                 onInput={handleContentEdit}
                                 onKeyUp={updateActiveFormats}
                                 onMouseUp={updateActiveFormats}
-                                className="outline-none min-h-[500px]"
+                                className="outline-none min-h-[500px] relative z-10"
                               />
                               {/* Page number footer */}
                               {outputText && (
