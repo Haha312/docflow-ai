@@ -141,7 +141,8 @@
         "retry_generate": "重新生成",
         "eta": "预计还需约 {{n}} 秒",
         "eta_soon": "即将完成...",
-        "page_n": "第 {{n}} 页"
+        "page_n": "第 {{n}} 页",
+        "model_recommended": "推荐"
     },
     "pricing": {
         "success_title": "支付成功！",

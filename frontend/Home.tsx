@@ -19,6 +19,7 @@ import systemLogo from './image/image.jpg';
 import { PRESETS } from './constants';
 import { DocPreset, AIState, StyleConfig } from './types';
 import katex from 'katex';
+import DOMPurify from 'dompurify';
 import 'katex/dist/katex.min.css';
 
 const getTextCount = (html: string) => {
@@ -26,10 +27,11 @@ const getTextCount = (html: string) => {
 };
 
 const MODEL_OPTIONS = [
-  { key: 'gemini-flash', name: 'Gemini 2.5 Flash', descKey: 'home.model_fast' },
-  { key: 'gemini-pro',   name: 'Gemini 3 Pro',     descKey: 'home.model_quality' },
-  { key: 'doubao',       name: '豆包 Doubao',       descKey: 'home.model_bytedance' },
-  { key: 'deepseek',     name: 'DeepSeek V4 Pro',   descKey: 'home.model_deepseek' },
+  // deepseek 置顶 + 推荐:国内直连免代理,新用户开箱即用(Gemini 需代理,首次失败即流失)
+  { key: 'deepseek',     name: 'DeepSeek V4 Pro',   descKey: 'home.model_deepseek', recommended: true },
+  { key: 'doubao',       name: '豆包 Doubao',       descKey: 'home.model_bytedance', recommended: false },
+  { key: 'gemini-flash', name: 'Gemini 2.5 Flash', descKey: 'home.model_fast', recommended: false },
+  { key: 'gemini-pro',   name: 'Gemini 3 Pro',     descKey: 'home.model_quality', recommended: false },
 ] as const;
 
 // A4 page dimensions at 96 dpi (297mm × 96 / 25.4 ≈ 1122px)
@@ -45,7 +47,7 @@ function Home() {
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
   const [selectedPreset, setSelectedPreset] = useState<DocPreset>(DocPreset.ACADEMIC);
   const [selectedModel, setSelectedModel] = useState<string>(
-    () => localStorage.getItem('docuflow_selected_model') ?? 'gemini-pro'
+    () => localStorage.getItem('docuflow_selected_model') ?? 'deepseek'
   );
   const [isModelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -441,6 +443,10 @@ function Home() {
         setDownloadHighlight(true);
         setTimeout(() => setDownloadHighlight(false), 2500);
         await refreshUser();
+
+        // 自动保存草稿:防止用户花了额度生成后误关页面丢失内容。
+        // silent=true 失败不打扰;contentOverride 用 ref(state 此刻可能未刷新)。
+        handleSaveToCloud({ silent: true, contentOverride: textBufferRef.current });
       }
 
     } catch (err: any) {
@@ -468,13 +474,17 @@ function Home() {
   // Save current document to cloud (Supabase). First save → POST (新建);
   // subsequent saves with the same currentDocumentId → PUT (覆盖更新)。
   // 取内容时优先用用户在前端编辑后的 DOM 内容,否则用 outputText。
-  const handleSaveToCloud = async () => {
-    if (!outputText || !isAuthenticated || isSavingToCloud) return;
+  // opts.silent: 自动保存路径(生成完成后),失败静默不打扰用户。
+  // opts.contentOverride: 生成刚完成时 outputText state 尚未刷新,用 textBufferRef 直传。
+  const handleSaveToCloud = async (opts?: { silent?: boolean; contentOverride?: string }) => {
+    const silent = opts?.silent === true;
+    const source = opts?.contentOverride ?? outputText;
+    if (!source || !isAuthenticated || isSavingToCloud) return;
     setIsSavingToCloud(true);
     try {
       const html = isContentEdited && previewContentRef.current
         ? previewContentRef.current.innerHTML
-        : outputText;
+        : source;
       const title = (inputFileName || 'Untitled').replace(/\.[^.]+$/, '') || 'Untitled';
       const wordCount = getTextCount(html);
       const payload = { title, content: html, preset: String(selectedPreset), wordCount };
@@ -485,12 +495,19 @@ function Home() {
         const { id } = await saveDocument(payload);
         setCurrentDocumentId(id);
       }
-      // Reuse existing toast mechanism for "saved" feedback
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 2000);
+      if (!silent) {
+        // Reuse existing toast mechanism for "saved" feedback
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2000);
+      }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : t('errors.save_doc_failed', '保存文档失败');
-      setAiState(prev => ({ ...prev, error: msg }));
+      if (silent) {
+        // 自动保存失败静默:不打断用户,仅 console 记录
+        console.warn('Auto-save draft failed (non-blocking):', e);
+      } else {
+        const msg = e instanceof Error ? e.message : t('errors.save_doc_failed', '保存文档失败');
+        setAiState(prev => ({ ...prev, error: msg }));
+      }
     } finally {
       setIsSavingToCloud(false);
     }
@@ -702,6 +719,16 @@ function Home() {
         return imageMap[match] || match;
       });
     }
+
+    // 2.5 XSS 净化:此时 processedText 是 AI 原始 HTML(图片已还原为可信 base64,
+    //     公式仍是 $...$ 文本,KaTeX 尚未渲染)。剥离 <script>/onerror 等危险内容。
+    //     - ALLOWED_URI_REGEXP 放行 data:(base64 图片)否则图片被清空
+    //     - ADD_ATTR 保留 id(TOC 锚点 724 行后注入,但已有 id 的标签要保住)+ style(预设/公式占位)
+    //     - KaTeX 在净化之后渲染(743 行),本地可信不再净化
+    processedText = DOMPurify.sanitize(processedText, {
+      ADD_ATTR: ['id', 'style', 'target'],
+      ALLOWED_URI_REGEXP: /^(?:data:|https?:|mailto:|#)/i,
+    });
 
     // 3a. Merge consecutive <ol> blocks split by AI (Word auto-numbering safety net)
     // AI sometimes wraps each list item in its own <ol>...</ol>, causing all items to show "1."
@@ -1141,8 +1168,13 @@ function Home() {
                           onClick={() => { setSelectedModel(opt.key); setModelDropdownOpen(false); }}
                           className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors text-left ${selectedModel === opt.key ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
                         >
-                          <span className={`font-medium ${selectedModel === opt.key ? 'text-gray-900' : 'text-gray-700'}`}>
+                          <span className={`font-medium ${selectedModel === opt.key ? 'text-gray-900' : 'text-gray-700'} flex items-center gap-1.5`}>
                             {opt.name}
+                            {opt.recommended && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-600 rounded">
+                                {t('home.model_recommended', '推荐')}
+                              </span>
+                            )}
                           </span>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-xs text-gray-400">{t(opt.descKey)}</span>
@@ -1293,7 +1325,7 @@ function Home() {
                   <>
                     {isAuthenticated && (
                       <button
-                        onClick={handleSaveToCloud}
+                        onClick={() => handleSaveToCloud()}
                         disabled={isSavingToCloud}
                         className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-all border border-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
                         title={currentDocumentId ? t('home.update_to_cloud', '更新到云') : t('home.save_to_cloud', '保存到云')}

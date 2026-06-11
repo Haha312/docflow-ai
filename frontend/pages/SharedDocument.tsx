@@ -1,7 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import DOMPurify from 'dompurify';
 import { getSharedDocument } from '../services/backendApiService';
+
+// 净化配置:保留排版所需的 id/style 属性 + 放行 base64 图片(data:)和常规链接,
+// 剥离 <script>/onerror 等危险内容。分享页是纯展示,必须净化(防 XSS)。
+const SANITIZE_CONFIG = {
+  ADD_ATTR: ['id', 'style', 'target'],
+  ALLOWED_URI_REGEXP: /^(?:data:|https?:|mailto:|#)/i,
+};
 
 interface SharedDoc {
   id: string;
@@ -18,6 +26,21 @@ export function SharedDocument() {
   const [doc, setDoc] = useState<SharedDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // 净化 AI 生成的 HTML(防 XSS),缓存避免每次渲染重算
+  const safeContent = useMemo(
+    () => (doc ? DOMPurify.sanitize(doc.content, SANITIZE_CONFIG) : ''),
+    [doc]
+  );
+
+  // 注入 noindex meta — 阻止搜索引擎收录分享的私密文档(robots.txt 之外的页面级保险)
+  useEffect(() => {
+    const meta = document.createElement('meta');
+    meta.name = 'robots';
+    meta.content = 'noindex,nofollow';
+    document.head.appendChild(meta);
+    return () => { document.head.removeChild(meta); };
+  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -83,7 +106,7 @@ export function SharedDocument() {
       <div className="py-8 px-4">
         <div
           className="max-w-3xl mx-auto bg-white shadow-sm rounded-lg p-12 prose prose-zinc max-w-none"
-          dangerouslySetInnerHTML={{ __html: doc.content }}
+          dangerouslySetInnerHTML={{ __html: safeContent }}
         />
       </div>
 

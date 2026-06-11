@@ -20,6 +20,7 @@ const svgCaptcha = require('svg-captcha');
 const router = Router();
 
 import { TIER_LIMITS } from '../config/tierConfig';
+import { getUsageCount, getPeriodStart } from '../utils/usageCount';
 
 /**
  * POST /api/auth/register
@@ -166,33 +167,10 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
 
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
 
-        // Calculate Usage & Remaining Quota
-        let usageCount = 0;
-
-        if (userTier === 'FREE') {
-            // 免费用户：无论何时，只计算总数
-            usageCount = await prisma.usageLog.count({
-                where: {
-                    userId: user.id,
-                    actionType: 'generate_document'
-                }
-            });
-        } else {
-            // 付费用户：按自然月计算
-            const currentMonthStart = new Date();
-            currentMonthStart.setDate(1);
-            currentMonthStart.setHours(0, 0, 0, 0);
-
-            usageCount = await prisma.usageLog.count({
-                where: {
-                    userId: user.id,
-                    actionType: 'generate_document',
-                    createdAt: {
-                        gte: currentMonthStart
-                    }
-                }
-            });
-        }
+        // Calculate Usage & Remaining Quota(带 60s Redis 缓存,DB 为真实源)
+        // FREE: 终身计数;付费: 按订阅周期(quotaPeriodStart 对齐购买日,null 回落自然月)
+        const periodStart = userTier === 'FREE' ? null : getPeriodStart(user.quotaPeriodStart);
+        const usageCount = await getUsageCount(user.id, periodStart);
 
         const limit = TIER_LIMITS[userTier] || 10;
         const remainingQuota = Math.max(0, limit - usageCount);

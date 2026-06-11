@@ -122,7 +122,9 @@ async function applyPaidOrder(
         where: { id: userId },
         data: {
             subscriptionStatus: getTierFromPlanType(planType),
-            subscriptionEndDate: endDate
+            subscriptionEndDate: endDate,
+            // 额度周期起点对齐付款时间(月度额度按购买日重置,而非自然月 1 号)
+            quotaPeriodStart: now
         }
     });
 
@@ -571,6 +573,23 @@ router.post('/refund/:orderId', authenticate, async (req: AuthRequest, res: Resp
         if (order.status !== 'PAID') {
             res.status(400).json(errorResponse(`订单当前状态为 ${order.status},无法退款`, 400));
             return;
+        }
+
+        // 退款门槛:付款后产生过使用记录(消耗过额度)→ 不允许自助退款,走客服。
+        // 防"付款 → 用满额度 → 全额退款"薅羊毛。基准用 order.createdAt(无 paidAt 字段,
+        // 偏保守 = 多拒少漏)。admin 代退可绕过。
+        if (!isAdminUser) {
+            const usedCount = await prisma.usageLog.count({
+                where: {
+                    userId: order.userId,
+                    actionType: 'generate_document',
+                    createdAt: { gte: order.createdAt },
+                },
+            });
+            if (usedCount > 0) {
+                res.status(400).json(errorResponse('该订单已产生使用记录,无法自助退款,请联系客服处理', 400));
+                return;
+            }
         }
 
         // 原子标记 REFUNDING,防止并发重复退款

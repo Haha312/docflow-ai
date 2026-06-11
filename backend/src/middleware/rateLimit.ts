@@ -1,8 +1,8 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../types';
 import { errorResponse } from '../utils/response';
-import prisma from '../config/database';
 import { isAdmin } from '../utils/admin';
+import { getUsageCount, getPeriodStart } from '../utils/usageCount';
 
 const TIER_LIMITS = {
     FREE: 3,      // 终身 3 次
@@ -38,12 +38,8 @@ export const checkRateLimit = async (
         const tier = user.subscriptionStatus || 'FREE';
 
         if (tier === 'FREE') {
-            const usageCount = await prisma.usageLog.count({
-                where: {
-                    userId: user.id,
-                    actionType: 'generate_document',
-                },
-            });
+            // FREE 终身计数(periodStart=null → 不加时间过滤),带 60s Redis 缓存
+            const usageCount = await getUsageCount(user.id, null);
 
             const limit = TIER_LIMITS.FREE;
             if (usageCount >= limit) {
@@ -57,23 +53,16 @@ export const checkRateLimit = async (
             }
             res.locals.remainingQuota = limit - usageCount;
         } else {
-            const monthStart = new Date();
-            monthStart.setDate(1);
-            monthStart.setHours(0, 0, 0, 0);
-
-            const usageCount = await prisma.usageLog.count({
-                where: {
-                    userId: user.id,
-                    actionType: 'generate_document',
-                    createdAt: { gte: monthStart },
-                },
-            });
+            // 付费用户:按订阅周期重置(quotaPeriodStart 对齐购买日);
+            // 老用户 quotaPeriodStart=null 回落自然月。带 60s Redis 缓存。
+            const periodStart = getPeriodStart(user.quotaPeriodStart);
+            const usageCount = await getUsageCount(user.id, periodStart);
 
             const limit = TIER_LIMITS[tier as keyof typeof TIER_LIMITS] || 50;
             if (usageCount >= limit) {
                 res.status(403).json(
                     errorResponse(
-                        `本月使用次数已达上限 (${limit} 次)。下月 1 日重置,或升级获取更多额度。`,
+                        `本周期使用次数已达上限 (${limit} 次)。额度将在下个订阅周期重置,或升级获取更多额度。`,
                         403
                     )
                 );

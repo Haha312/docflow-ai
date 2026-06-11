@@ -8,6 +8,7 @@ export interface AuthRequest extends Request {
         email: string;
         subscriptionStatus: 'FREE' | 'PLUS' | 'PRO' | 'ULTRA';
         subscriptionEndDate?: Date | null;
+        quotaPeriodStart?: Date | null;
         role?: string;
     };
 }

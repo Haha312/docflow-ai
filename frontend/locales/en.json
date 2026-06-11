@@ -141,7 +141,8 @@
         "retry_generate": "Retry",
         "eta": "About {{n}} sec remaining",
         "eta_soon": "Almost done...",
-        "page_n": "Page {{n}}"
+        "page_n": "Page {{n}}",
+        "model_recommended": "Best"
     },
     "pricing": {
         "success_title": "Payment Successful!",

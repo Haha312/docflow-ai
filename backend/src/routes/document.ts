@@ -3,9 +3,22 @@ import { AuthRequest } from '../types';
 import { successResponse, errorResponse } from '../utils/response';
 import { authenticate } from '../middleware/auth';
 import prisma from '../config/database';
+import { getContentLimit } from '../config/tierConfig';
 import crypto from 'crypto';
 
 const router = Router();
+
+/** content 大小校验,超限返回 true 并已写响应 */
+function rejectOversizedContent(req: AuthRequest, res: Response, content: unknown): boolean {
+    if (typeof content !== 'string') return false;
+    const tier = req.user?.subscriptionStatus || 'FREE';
+    const limit = getContentLimit(tier);
+    if (content.length > limit) {
+        res.status(413).json(errorResponse(`文档内容过大(上限 ${limit} 字符)`, 413));
+        return true;
+    }
+    return false;
+}
 
 // 保存文档
 router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
@@ -17,6 +30,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
             res.status(400).json(errorResponse('标题和内容不能为空', 400));
             return;
         }
+        if (rejectOversizedContent(req, res, content)) return;
 
         const document = await prisma.document.create({
             data: {
@@ -119,6 +133,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
             res.status(400).json(errorResponse('至少需要更新一个字段', 400));
             return;
         }
+        if (rejectOversizedContent(req, res, content)) return;
 
         const existing = await prisma.document.findUnique({ where: { id } });
         if (!existing) {
@@ -199,15 +214,20 @@ router.post('/:id/share', authenticate, async (req: AuthRequest, res: Response):
             return;
         }
 
-        // 已有 token 则复用
+        // 分享链接有效期:30 天(隐私保护,防永久公开 + 被搜索引擎长期收录)
+        const SHARE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+        const shareExpiresAt = new Date(Date.now() + SHARE_TTL_MS);
+
+        // 已有 token 则复用,但刷新过期时间(否则历史链接永不过期)
         if (document.shareToken) {
-            res.json(successResponse({ shareToken: document.shareToken }));
+            await prisma.document.update({ where: { id }, data: { shareExpiresAt } });
+            res.json(successResponse({ shareToken: document.shareToken, shareExpiresAt }));
             return;
         }
 
         const shareToken = crypto.randomBytes(20).toString('base64url');
-        await prisma.document.update({ where: { id }, data: { shareToken } });
-        res.json(successResponse({ shareToken }));
+        await prisma.document.update({ where: { id }, data: { shareToken, shareExpiresAt } });
+        res.json(successResponse({ shareToken, shareExpiresAt }));
     } catch (error) {
         console.error('创建分享链接失败:', error);
         res.status(500).json(errorResponse('创建分享链接失败', 500));
@@ -233,7 +253,7 @@ router.delete('/:id/share', authenticate, async (req: AuthRequest, res: Response
             return;
         }
 
-        await prisma.document.update({ where: { id }, data: { shareToken: null } });
+        await prisma.document.update({ where: { id }, data: { shareToken: null, shareExpiresAt: null } });
         res.json(successResponse({ ok: true }));
     } catch (error) {
         console.error('撤销分享链接失败:', error);
@@ -256,7 +276,7 @@ router.get('/share/:token', async (req: Request, res: Response): Promise<void> =
 
         const document = await prisma.document.findUnique({
             where: { shareToken },
-            select: { id: true, title: true, content: true, preset: true, wordCount: true, createdAt: true }
+            select: { id: true, title: true, content: true, preset: true, wordCount: true, createdAt: true, shareExpiresAt: true }
         });
 
         if (!document) {
@@ -264,7 +284,15 @@ router.get('/share/:token', async (req: Request, res: Response): Promise<void> =
             return;
         }
 
-        res.json(successResponse(document));
+        // 过期检查:超过有效期返回 404(等同失效)
+        if (document.shareExpiresAt && document.shareExpiresAt.getTime() < Date.now()) {
+            res.status(404).json(errorResponse('分享链接已过期', 404));
+            return;
+        }
+
+        // 不把内部字段 shareExpiresAt 返回给前端
+        const { shareExpiresAt: _omit, ...publicDoc } = document;
+        res.json(successResponse(publicDoc));
     } catch (error) {
         console.error('访问分享文档失败:', error);
         res.status(500).json(errorResponse('访问分享文档失败', 500));

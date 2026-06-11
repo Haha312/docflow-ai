@@ -47,7 +47,8 @@ export const authenticate = async (
                 id: true,
                 email: true,
                 subscriptionStatus: true,
-                subscriptionEndDate: true
+                subscriptionEndDate: true,
+                quotaPeriodStart: true
             }
         });
 

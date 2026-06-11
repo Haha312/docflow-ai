@@ -547,7 +547,8 @@ const estimateSafeChunkSize = (modelKey: string | undefined, userTier: keyof typ
 
 
 
-import { TIER_LIMITS } from '../config/tierConfig';
+import { TIER_LIMITS, getContentLimit } from '../config/tierConfig';
+import { invalidateUsageCount } from '../utils/usageCount';
 import { splitContentBySemantics, extractFirstHeading, compressChunksByCoverage } from '../utils/chunking';
 
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3-pro-preview';
@@ -573,6 +574,10 @@ const tryAcquireGenerationSlot = (): boolean => {
     activeGenerations += 1;
     return true;
 };
+
+// 用户级并发锁:同一用户同时只能有 1 个生成请求,防止刷额度 / 并发薅羊毛。
+// 内存 Set(短时锁,不需 Redis 持久化)。注意:多实例部署需迁移到 Redis SETNX。
+const activeUserGenerations = new Set<string>();
 
 // OpenAI Compatible API Call (for Gemini via proxy)
 async function* callOpenAICompatible(
@@ -642,6 +647,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
     let geminiApiKey: string | undefined;
     let fullRestoredText = '';
     let generationSlotAcquired = false;
+    let userLockAcquired: string | null = null;
     let requestedModelKey: string | undefined;
 
     // 检测客户端是否中途断开 (用户关闭浏览器/切换页面/点取消):若已断开,
@@ -667,6 +673,14 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         }
         generationSlotAcquired = true;
 
+        // 用户级并发锁:同一用户已有任务在跑则拒绝(防并发刷额度)
+        if (activeUserGenerations.has(user.id)) {
+            res.status(429).json(errorResponse('您有一个文档正在生成中，请等待完成后再试', 429));
+            return;
+        }
+        activeUserGenerations.add(user.id);
+        userLockAcquired = user.id;
+
         // 0. Fetch Dynamic System Config
         let dbConfig: Record<string, string> = {};
         try {
@@ -688,6 +702,16 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
         // 获取用户等级与配置
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
+
+        // content 大小上限校验:防超大输入烧 token / 打满服务器(body limit 100mb 拦不住)
+        const contentLimit = getContentLimit(userTier);
+        if (content.length > contentLimit) {
+            res.status(413).json(errorResponse(
+                `文档内容过大(${content.length} 字符,上限 ${contentLimit}),请精简后重试或升级会员`,
+                413
+            ));
+            return;
+        }
 
         // Truncate fileName to prevent oversized prompt injection
         const safeFileName = String(fileName).slice(0, 200);
@@ -1516,6 +1540,9 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             }
         });
 
+        // 失效额度缓存,让下一次额度查询立即反映本次消耗
+        await invalidateUsageCount(user.id);
+
         console.log(`[DONE] Document generated. Tokens: ${finalReportedTokens}`);
 
         // 发送完成事件
@@ -1559,6 +1586,9 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
     } finally {
         if (generationSlotAcquired) {
             activeGenerations = Math.max(0, activeGenerations - 1);
+        }
+        if (userLockAcquired) {
+            activeUserGenerations.delete(userLockAcquired);
         }
     }
 });
