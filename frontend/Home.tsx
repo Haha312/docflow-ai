@@ -13,6 +13,7 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { useConfirmDialog } from './components/ConfirmDialog';
 import { generateDocumentViaBackend, saveDocument, updateDocument } from './services/backendApiService';
 import { generateDocx } from './utils/docxGenerator';
+import { sanitizeDocxPreview } from './utils/sanitizeHtml';
 import { useAuth } from './contexts/AuthContext';
 import systemLogo from './image/image.jpg';
 // useTypewriter removed: SSE stream is already incremental, no need for secondary typing animation
@@ -45,6 +46,8 @@ function Home() {
   const { confirm, ConfirmDialogComponent } = useConfirmDialog();
   const [inputText, setInputText] = useState<string>('');
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
+  // 区分内容来源:'paste' = 粘贴文本(空状态 textarea),'file' = 上传文件(文件 chip),null = 空
+  const [inputSource, setInputSource] = useState<'paste' | 'file' | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<DocPreset>(DocPreset.ACADEMIC);
   const [selectedModel, setSelectedModel] = useState<string>(
     () => localStorage.getItem('docuflow_selected_model') ?? 'deepseek'
@@ -149,10 +152,43 @@ function Home() {
   const activeStyle = currentStyles[selectedPreset];
   const activePresetConfig = PRESETS.find(p => p.id === selectedPreset)!;
 
+  // 空状态(大气 hero):还没有生成结果、也没在生成时,中间显示居中大输入区而非空白 A4
+  const showHero = !outputText && !aiState.isThinking;
+
+  // 粘贴/文件字数(memo 避免大文本每次 render 重算双正则)+ 与后端 CONTENT_LIMIT 对齐的输入上限
+  const inputTextCount = useMemo(() => getTextCount(inputText), [inputText]);
+  const pasteCharLimit = user?.subscriptionStatus && user.subscriptionStatus !== 'FREE' ? 2_000_000 : 200_000;
 
   const handleFileLoaded = (content: string, name: string) => {
     setInputText(content);
     setInputFileName(name);
+    setInputSource('file');
+    setOutputText('');
+    setAiState(prev => ({ ...prev, error: null, progress: 0 }));
+  };
+
+  // 空状态里粘贴文本输入:文件名取正文首行(便于区分多个草稿,避免历史里全叫「粘贴文本」),
+  // 空白内容视为空(复位文件名/来源),纯空格不算有效输入。
+  const handlePasteInput = (value: string) => {
+    setInputText(value);
+    const trimmed = value.trim();
+    setInputSource(trimmed ? 'paste' : null);
+    if (trimmed) {
+      const firstLine = value.split('\n').map(s => s.trim()).find(Boolean) || '';
+      // 取首句(到第一个句末标点)或前 30 字,较短者,避免单行长文被生硬截断
+      const sentence = firstLine.split(/[。.!?！？]/)[0].trim();
+      const base = (sentence || firstLine).slice(0, 30).replace(/[\\/:*?"<>|]/g, '').trim() || t('home.pasted_filename', '粘贴文本');
+      setInputFileName(`${base}.txt`);
+    } else {
+      setInputFileName('document.txt');
+    }
+  };
+
+  // 空状态轻量清空(无确认弹窗 —— 粘贴内容重输成本低,且此时无已生成结果可丢失)
+  const handleHeroClear = () => {
+    setInputText('');
+    setInputFileName('document.txt');
+    setInputSource(null);
     setOutputText('');
     setAiState(prev => ({ ...prev, error: null, progress: 0 }));
   };
@@ -219,6 +255,7 @@ function Home() {
     if (confirmed) {
       setInputText('');
       setInputFileName('document.txt');
+      setInputSource(null);
       setOutputText('');
       setContentPageCount(1);
       setAiState({ isThinking: false, error: null, progressStep: '', progress: 0, estimatedSec: null, startedAt: null });
@@ -315,7 +352,7 @@ function Home() {
   };
 
   const handleProcess = async () => {
-    if (!inputText) return;
+    if (!inputText.trim()) return;
     if (!isAuthenticated) {
       setShowAuthModal(true);
       return;
@@ -792,6 +829,16 @@ function Home() {
     return finalText.replace('___AI_CURSOR_TOKEN___', '<span id="ai-typing-cursor" class="inline-block w-[6px] h-[15px] bg-slate-400 ml-1 mb-[-2px] animate-[pulse_0.8s_ease-in-out_infinite] rounded-sm align-middle"></span>');
   }, [outputText, imageMap, aiState.isThinking]);
 
+  // XSS 净化:.docx 原文预览。inputText 是 FileDropzone 里 mammoth.convertToHtml 的客户端转换产物,
+  // 恶意 .docx 可让 mammoth 产出 <img src=x onerror=...> 之类标记,split「对比」视图用
+  // dangerouslySetInnerHTML 渲染时会触发 self-XSS。渲染前净化(配置同上方 renderedContent:
+  // 放行 data: 图片 / style / table 相关标签 + id 锚点)。注意只净化"用于显示"的派生值,
+  // inputText 状态本身保持原样,后端处理需要的 FORMULA_DATA/STRUCTURE_DATA 标记不受影响。
+  const sanitizedInputHtml = useMemo(() => {
+    if (!inputText || !inputFileName.endsWith('.docx')) return '';
+    return sanitizeDocxPreview(inputText);
+  }, [inputText, inputFileName]);
+
   // TOC extraction is now done inside useLayoutEffect below — no DOMParser, no debounce.
 
   // Assign reset content handler
@@ -1008,6 +1055,129 @@ function Home() {
       </header>
 
       <main className="w-full px-4 md:px-6 lg:px-8 pt-4 md:pt-6 pb-0">
+        {showHero ? (
+          /* ───────── 空状态:大气居中输入区(粘贴文本 / 拖文件 二合一) ───────── */
+          <div className="flex items-start md:items-center justify-center min-h-[calc(100vh-120px)] py-8 md:py-4">
+            <div className="w-full max-w-2xl mx-auto flex flex-col items-center px-2">
+              <div className="text-xs text-gray-400 tracking-wide mb-3.5">{t('home.hero_eyebrow', 'AI 智能排版 · 一键导出 Word')}</div>
+              <h1 className="text-2xl md:text-[28px] font-semibold text-gray-900 mb-2 text-center">{t('home.hero_title', '把文字变成精排文档')}</h1>
+              <p className="text-sm text-gray-500 mb-8 text-center">{t('home.hero_subtitle', '粘贴文字，或拖入 Word / txt，AI 自动排版')}</p>
+
+              {/* 输入面板 */}
+              {inputSource === 'file' ? (
+                <div className="w-full bg-white border border-gray-200 rounded-2xl p-4">
+                  <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 bg-white border border-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate" title={inputFileName}>{inputFileName}</p>
+                        <p className="text-xs text-gray-400">{getTextCount(inputText).toLocaleString()} {t('home.chars', '字')}</p>
+                      </div>
+                    </div>
+                    <button onClick={handleHeroClear} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="w-full bg-white border border-gray-200 rounded-2xl p-5 transition-colors focus-within:border-gray-300">
+                    <textarea
+                      value={inputText}
+                      onChange={(e) => handlePasteInput(e.target.value)}
+                      placeholder={t('home.hero_placeholder', '在此粘贴你的文字内容…')}
+                      autoFocus
+                      maxLength={pasteCharLimit}
+                      className="w-full min-h-[150px] max-h-[340px] resize-y text-[15px] leading-relaxed text-gray-800 placeholder-gray-400 outline-none bg-transparent block"
+                    />
+                    {inputText && (
+                      <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-1">
+                        <span className="text-xs text-gray-400">{inputTextCount.toLocaleString()} {t('home.chars', '字')}</span>
+                        <button onClick={handleHeroClear} className="text-xs text-gray-400 hover:text-red-500 transition-colors">{t('home.clear', '清空')}</button>
+                      </div>
+                    )}
+                  </div>
+                  {/* 文件入口常驻:即便已粘贴文字,也能改为拖入/选择文件(拖入即覆盖) */}
+                  <div className="w-full mt-3">
+                    <FileDropzone onFileLoaded={handleFileLoaded} userTier={user?.subscriptionStatus} />
+                  </div>
+                </>
+              )}
+
+              {/* 模板 chips */}
+              <div className="flex flex-wrap gap-2 justify-center mt-7 max-w-xl">
+                {PRESETS.map(p => {
+                  const titleKey = `home.preset_${p.id.toLowerCase().replace('-', '_')}`;
+                  const selected = selectedPreset === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => setSelectedPreset(p.id)}
+                      aria-pressed={selected}
+                      className={`text-[13px] px-4 py-1.5 rounded-full border transition-colors ${selected ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+                    >
+                      {t(titleKey, p.title)}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 模型 + 开始排版 */}
+              <div className="flex items-center gap-3 mt-7">
+                <div className="relative" ref={modelDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setModelDropdownOpen(v => !v)}
+                    aria-haspopup="listbox"
+                    aria-expanded={isModelDropdownOpen}
+                    className="flex items-center gap-2 text-[13px] text-gray-600 border border-gray-200 rounded-lg px-3.5 py-2.5 hover:border-gray-300 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z" /></svg>
+                    <span className="font-medium text-gray-800">{MODEL_OPTIONS.find(m => m.key === selectedModel)?.name ?? selectedModel}</span>
+                    <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isModelDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
+                  </button>
+                  {isModelDropdownOpen && (
+                    <div className="absolute bottom-full mb-1 left-0 min-w-[230px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+                      {MODEL_OPTIONS.map(opt => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          onClick={() => { setSelectedModel(opt.key); setModelDropdownOpen(false); }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors text-left ${selectedModel === opt.key ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
+                        >
+                          <span className="font-medium text-gray-800">{opt.name}</span>
+                          {opt.recommended && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{t('home.recommended', '推荐')}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={handleProcess}
+                  disabled={!inputText.trim()}
+                  className="flex items-center gap-2 text-sm font-medium text-white bg-gray-900 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed px-7 py-2.5 rounded-lg transition-colors"
+                >
+                  {t('home.hero_generate', '开始排版')}
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                </button>
+              </div>
+
+              {inputText.trim() && (
+                <p className="text-[10px] text-gray-300 mt-2">
+                  {typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌘' : 'Ctrl'}+Enter
+                </p>
+              )}
+              {/* 失败/中止反馈:hero 是早失败(413/网络/早期停止)的落地页,必须在此可见,否则用户以为按钮失效 */}
+              {(aiState.error || aiState.stopMessage) && (
+                <div className={`mt-4 w-full max-w-md text-sm px-4 py-2.5 rounded-lg border text-center ${aiState.error ? 'bg-red-50 text-red-600 border-red-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
+                  {aiState.error || aiState.stopMessage}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
         <div ref={workspaceRef} className="flex flex-col md:flex-row gap-4 md:gap-6 h-auto md:h-[calc(100vh-88px)]">
 
           {/* Left Panel */}
@@ -1370,7 +1540,7 @@ function Home() {
                   <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed custom-scrollbar">
                     {inputFileName.endsWith('.docx') ? (
                       <div
-                        dangerouslySetInnerHTML={{ __html: inputText }}
+                        dangerouslySetInnerHTML={{ __html: sanitizedInputHtml }}
                         className="[&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-gray-200 [&_th]:p-2 [&_th]:bg-gray-50 [&_td]:border [&_td]:border-gray-200 [&_td]:p-2"
                       />
                     ) : (
@@ -1668,6 +1838,7 @@ function Home() {
             </div>
           </div>
         </div>
+        )}
       </main>
 
       <StyleEditor
@@ -1697,6 +1868,10 @@ function Home() {
           setOutputText(doc.content);
           // 关键:同步 textBufferRef,否则后续 SSE flush 可能用旧 buffer 冲掉
           textBufferRef.current = doc.content;
+          // 清掉空状态可能残留的待生成输入(粘贴文本/上传文件),
+          // 否则工作态 chip 的文件名/字数会与刚打开的文档来源不一致,且「重排」会用错内容源
+          setInputText('');
+          setInputSource(null);
           setCurrentDocumentId(doc.id);
           if (doc.title) setInputFileName(`${doc.title}.docx`);
           setIsContentEdited(false);
