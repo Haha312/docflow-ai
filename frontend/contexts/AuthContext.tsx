@@ -6,8 +6,7 @@ interface AuthContextType {
     remainingQuota: number;
     isLoading: boolean;
     isAuthenticated: boolean;
-    login: (email: string, password: string) => Promise<void>;
-    register: (email: string, password: string, code: string) => Promise<void>;
+    login: (phone: string, code: string) => Promise<void>;
     logout: () => void;
     refreshUser: () => Promise<void>;
 }
@@ -46,18 +45,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loadUser();
     }, []);
 
-    // 登录
-    const login = async (email: string, password: string) => {
-        await authService.login(email, password);
-        // 登录后刷新用户信息获取额度
+    // 登录(手机号 + 短信验证码,新用户自动注册)
+    const login = async (phone: string, code: string) => {
+        await authService.loginWithSms(phone, code);
         await loadUser();
-    };
-
-    // 注册
-    const register = async (email: string, password: string, code: string) => {
-        await authService.register(email, password, code);
-        // 注册后自动登录
-        await login(email, password);
     };
 
     // 登出
@@ -78,7 +69,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         login,
-        register,
         logout,
         refreshUser,
     };

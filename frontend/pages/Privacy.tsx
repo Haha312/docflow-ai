@@ -17,13 +17,6 @@ export function Privacy() {
   return (
     <div className="min-h-screen bg-zinc-50 py-12 px-4">
       <div className="max-w-3xl mx-auto">
-        {/* 红色 banner */}
-        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
-          <p className="text-sm font-semibold text-red-700">
-            ⚠️ 本页文案为占位模板,上线前请由法务/运营完成 review,替换所有 <code>{'{{...}}'}</code> 占位符。
-          </p>
-        </div>
-
         <Link to="/" className="text-sm text-gray-500 hover:text-gray-900">← 返回首页</Link>
 
         <h1 className="mt-6 text-3xl font-bold text-gray-900">隐私政策</h1>
@@ -81,8 +74,8 @@ export function Privacy() {
             <h2 className="text-lg font-semibold text-gray-900 mb-2">6. 您的权利</h2>
             <p>您对您的个人信息享有以下权利:</p>
             <ul className="list-disc pl-5 space-y-1 mt-2">
-              <li><strong>查询权</strong>:在用户中心查看个人资料、文档历史、订单记录。</li>
-              <li><strong>更正权</strong>:在用户中心修改邮箱、密码。</li>
+              <li><strong>查询权</strong>:在用户中心查看个人资料、订单记录。</li>
+              <li><strong>更正权</strong>:在用户中心修改邮箱、手机号。</li>
               <li><strong>删除权</strong>:在用户中心删除账号(GDPR 第 17 条、《个人信息保护法》第 47 条)。</li>
               <li><strong>数据导出权</strong>:发邮件至 <a href="mailto:{{CONTACT_EMAIL}}" className="text-indigo-600 underline">{'{{CONTACT_EMAIL}}'}</a> 申请导出您的全部数据。</li>
               <li><strong>撤回同意</strong>:可随时取消营销邮件订阅;撤回账号同意需通过删除账号实现。</li>

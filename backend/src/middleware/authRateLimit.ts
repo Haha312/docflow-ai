@@ -23,13 +23,8 @@ interface AuthRateLimitOptions {
 }
 
 function resolveClientIp(req: Request): string {
-    const forwarded = req.headers['x-forwarded-for'];
-    if (typeof forwarded === 'string') {
-        return forwarded.split(',')[0].trim();
-    }
-    if (Array.isArray(forwarded) && forwarded[0]) {
-        return forwarded[0].split(',')[0].trim();
-    }
+    // 信任 Express 依据 `trust proxy` 设置解析出的 req.ip(它会从 XFF 取可信那一跳)。
+    // 不直接读原始 x-forwarded-for[0] —— 那是客户端可控、最易伪造的位置,会让限流被绕过。
     return req.ip || req.socket.remoteAddress || 'unknown';
 }
 

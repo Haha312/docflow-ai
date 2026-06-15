@@ -59,6 +59,9 @@ async function runReminder(): Promise<void> {
         // 只在 {7, 3, 1} 这三个 bucket 上发
         if (!REMINDER_DAYS.includes(daysLeft as 7 | 3 | 1)) continue;
 
+        // email 为选填:用户未填邮箱则跳过续费提醒(手机登录后 email 可能为空)
+        if (!u.email) continue;
+
         const lockKey = `reminder:${u.id}:${daysLeft}`;
         const alreadySent = await redis.get(lockKey);
         if (alreadySent) continue;

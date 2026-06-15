@@ -30,7 +30,7 @@ export const checkRateLimit = async (
             return;
         }
 
-        if (await isAdmin(user.email)) {
+        if (await isAdmin(user.phone)) {
             next();
             return;
         }

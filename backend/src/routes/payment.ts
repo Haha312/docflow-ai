@@ -379,11 +379,17 @@ router.all('/webhook/alipay', async (req: Request, res: Response): Promise<void>
         const tradeStatus = params.trade_status;
         const outTradeNo = params.out_trade_no;
         if (tradeStatus === 'TRADE_SUCCESS' || tradeStatus === 'TRADE_FINISHED') {
-            const passback = params.passback_params ? JSON.parse(decodeURIComponent(params.passback_params)) : {};
-            const userId = passback.userId;
-            const planType = passback.planType;
-            if (outTradeNo && userId && planType) {
-                await applyPaidOrder(outTradeNo, userId, planType);
+            if (outTradeNo) {
+                const order = await prisma.order.findUnique({ where: { id: outTradeNo } });
+                // 校验:实付金额 == 订单应付额(元) 且 收款 app_id == 自己的应用,防伪造低价订单顶包。
+                const amountOk = !!order && Math.abs(Number(order.amount) - Number(params.total_amount)) < 0.01;
+                const appIdOk = !process.env.ALIPAY_APP_ID || params.app_id === process.env.ALIPAY_APP_ID;
+                if (order && amountOk && appIdOk) {
+                    // 用本地可信 order 数据开通(planType/userId 不取回调可控字段)
+                    await applyPaidOrder(outTradeNo, order.userId, order.planType);
+                } else {
+                    console.error(`[alipay webhook] 金额/商户校验失败 out_trade_no=${outTradeNo} order=${order?.amount} notify=${params.total_amount} app_id=${params.app_id}`);
+                }
             }
         }
 
@@ -439,22 +445,16 @@ router.post('/webhook/wechat', async (req: Request, res: Response): Promise<void
         }
 
         const outTradeNo = data.out_trade_no;
-        const attachRaw = data.attach || '';
-        let userId = '';
-        let planType = '';
-
-        try {
-            const attach = JSON.parse(decodeURIComponent(attachRaw));
-            userId = attach.userId || '';
-            planType = attach.planType || '';
-        } catch {
-            // ignore parsing error and fallback to order info
-        }
-
         if (outTradeNo) {
             const order = await prisma.order.findUnique({ where: { id: outTradeNo } });
-            if (order) {
-                await applyPaidOrder(outTradeNo, userId || order.userId, planType || order.planType);
+            // 校验:实付 total_fee(分)== 订单应付额×100,且 mch_id/appid == 自己的商户,防顶包。
+            const feeOk = !!order && Math.round(Number(order.amount) * 100) === Number(data.total_fee);
+            const mchOk = !process.env.WECHAT_MCH_ID || data.mch_id === process.env.WECHAT_MCH_ID;
+            const appOk = !process.env.WECHAT_APP_ID || data.appid === process.env.WECHAT_APP_ID;
+            if (order && feeOk && mchOk && appOk) {
+                await applyPaidOrder(outTradeNo, order.userId, order.planType);
+            } else {
+                console.error(`[wechat webhook] 金额/商户校验失败 out_trade_no=${outTradeNo} order=${order?.amount} total_fee=${data.total_fee} mch_id=${data.mch_id}`);
             }
         }
 
@@ -564,7 +564,7 @@ router.post('/refund/:orderId', authenticate, async (req: AuthRequest, res: Resp
         }
 
         const isOrderOwner = order.userId === user.id;
-        const isAdminUser = await isAdmin(user.email);
+        const isAdminUser = await isAdmin(user.phone);
         if (!isOrderOwner && !isAdminUser) {
             res.status(403).json(errorResponse('无权操作该订单', 403));
             return;

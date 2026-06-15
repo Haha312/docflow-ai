@@ -1,5 +1,5 @@
 
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LineRuleType, Table, TableRow, TableCell, BorderStyle, WidthType, SectionType, Footer, PageNumber, Math as DocxMath, MathRun, MathSuperScript, MathSubScript, MathFraction, MathRadical, ImageRun, TableOfContents, PageBreak, NumberFormat, XmlComponent } from "docx";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, LineRuleType, Table, TableRow, TableCell, BorderStyle, WidthType, SectionType, Footer, PageNumber, Math as DocxMath, MathRun, MathSuperScript, MathSubScript, MathFraction, MathRadical, ImageRun, TableOfContents, PageBreak, NumberFormat, XmlComponent, PageOrientation, convertMillimetersToTwip } from "docx";
 import { StyleConfig, Alignment } from "../types";
 import i18n from '../i18n';
 import JSZip from 'jszip';
@@ -1176,6 +1176,31 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         return { hdr: nodes, body: [] };
     }
 
+    // ===== 页面尺寸 + 页边距 =====
+    // 旧预设可能缺省 pageMargins/pageSize → 兜底 A4 + 标准论文边距,保证不破坏已有预设。
+    // 统一换算成整数 twips(OOXML 最通用、各 Word/WPS 版本都精确识别),不用 "3.7cm" 字符串,
+    // 以保证 GB/T 9704 等"分毫不差"的合规承诺真正落到导出文件里。
+    const toMm = (v: string): number => {
+        const m = (v || '').match(/([\d.]+)\s*(cm|mm|in)?/i);
+        if (!m) return 25.4;
+        const n = parseFloat(m[1]); const unit = (m[2] || 'mm').toLowerCase();
+        return unit === 'cm' ? n * 10 : unit === 'in' ? n * 25.4 : n;
+    };
+    const PAGE_SIZES_MM: Record<string, { w: number; h: number }> = {
+        A4: { w: 210, h: 297 }, A3: { w: 297, h: 420 }, Letter: { w: 215.9, h: 279.4 },
+    };
+    const _ps = PAGE_SIZES_MM[styleConfig.pageSize ?? 'A4'] ?? PAGE_SIZES_MM.A4;
+    const _mg = styleConfig.pageMargins ?? { top: '2.54cm', bottom: '2.54cm', left: '3.18cm', right: '3.18cm' };
+    const pageProps = {
+        size: { width: convertMillimetersToTwip(_ps.w), height: convertMillimetersToTwip(_ps.h), orientation: PageOrientation.PORTRAIT },
+        margin: {
+            top: convertMillimetersToTwip(toMm(_mg.top)),
+            bottom: convertMillimetersToTwip(toMm(_mg.bottom)),
+            left: convertMillimetersToTwip(toMm(_mg.left)),
+            right: convertMillimetersToTwip(toMm(_mg.right)),
+        },
+    };
+
     // ===== 构建多节文档 =====
     let sections = [];
     const isJournalLayout = styleConfig.columns && styleConfig.columns > 1;
@@ -1187,6 +1212,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         if (hasCover && coverNodes.length > 0) {
             sections.push({
                 properties: {
+                    page: pageProps,
                     type: SectionType.NEXT_PAGE
                 },
                 children: processNodes(coverNodes as unknown as NodeList),
@@ -1216,6 +1242,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
 
             sections.push({
                 properties: {
+                    page: pageProps,
                     type: SectionType.NEXT_PAGE,
                     pageNumberFormatType: NumberFormat.UPPER_ROMAN,
                     pageNumberStart: 1
@@ -1235,6 +1262,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
 
                 sections.push({
                     properties: {
+                        page: pageProps,
                         type: SectionType.NEXT_PAGE,
                         column: { count: 1 },
                         pageNumberFormatType: NumberFormat.DECIMAL,
@@ -1245,6 +1273,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 });
                 sections.push({
                     properties: {
+                        page: pageProps,
                         type: SectionType.CONTINUOUS,
                         column: { count: styleConfig.columns, space: 425 }
                     },
@@ -1254,6 +1283,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             } else {
                 sections.push({
                     properties: {
+                        page: pageProps,
                         type: SectionType.NEXT_PAGE,
                         pageNumberFormatType: NumberFormat.DECIMAL,
                         pageNumberStart: 1
@@ -1271,12 +1301,13 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             const { hdr: hdrNodes2, body: bodyNodes3 } = splitJournalContent(Array.from(xmlDoc.body.childNodes));
 
             sections = [
-                { properties: { column: { count: 1 }, type: SectionType.CONTINUOUS }, children: processNodes(hdrNodes2 as unknown as NodeList), footers: { default: createBodyFooter() } },
-                { properties: { column: { count: styleConfig.columns, space: 425 }, type: SectionType.CONTINUOUS }, children: processNodes(bodyNodes3 as unknown as NodeList), footers: { default: createBodyFooter() } }
+                { properties: { page: pageProps, column: { count: 1 }, type: SectionType.CONTINUOUS }, children: processNodes(hdrNodes2 as unknown as NodeList), footers: { default: createBodyFooter() } },
+                { properties: { page: pageProps, column: { count: styleConfig.columns, space: 425 }, type: SectionType.CONTINUOUS }, children: processNodes(bodyNodes3 as unknown as NodeList), footers: { default: createBodyFooter() } }
             ];
         } else {
             sections = [{
                 properties: {
+                    page: pageProps,
                     pageNumberFormatType: NumberFormat.DECIMAL,
                     pageNumberStart: 1
                 },

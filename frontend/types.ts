@@ -11,6 +11,30 @@ export type NumberingStyle = 'none' | 'decimal' | 'decimal-nested' | 'chinese-hi
 export type FigureNumberingStyle = 'sequential' | 'chapter-relative'; // 图1 vs 图1-1
 export type Alignment = 'left' | 'center' | 'right' | 'justify';
 
+// 页边距(cm 字符串,如 "3.7cm"),docx 库的 UniversalMeasure 直接接受
+export interface PageMargins { top: string; bottom: string; left: string; right: string }
+export type PageSizeName = 'A4' | 'A3' | 'Letter';
+
+// ===== 内容完整性报告(镜像 backend/src/utils/integrity.ts,需手动保持一致)=====
+export type IntegritySeverity = 'info' | 'warning' | 'critical';
+export interface IntegrityIssue { type: string; severity: IntegritySeverity; detail: string }
+export interface StructuralCounts {
+  paragraphs: number;
+  headings: number;
+  headingsByLevel: Record<number, number>;
+  listItems: number;
+  charCount: number;
+  images: number;
+}
+export interface IntegrityReport {
+  input: StructuralCounts;
+  output: StructuralCounts;
+  charRetentionPct: number;
+  headingsMatched: boolean;
+  issues: IntegrityIssue[];
+  truncated: boolean;
+}
+
 export interface StyleConfig {
   fontFamily: string;     // 正文字体
   headingFont: string;    // 标题字体 (默认/通用)
@@ -106,6 +130,10 @@ export interface StyleConfig {
 
   // Layout
   columns?: number; // 分栏数量
+
+  // Page setup(可选:旧预设缺省时 docxGenerator 用默认值兜底)
+  pageMargins?: PageMargins; // 页边距 (GB/T 9704: 上3.7 下3.5 左2.8 右2.6cm)
+  pageSize?: PageSizeName;   // 纸张,默认 A4
 
   // TOC Generation
   generateToc?: boolean; // 导出 DOCX 时是否自动生成目录页

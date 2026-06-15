@@ -16,7 +16,9 @@ export function translateBackendError(message: string): string {
 
 export interface User {
     id: string;
-    email: string;
+    phone: string | null;
+    email: string | null;
+    isAdmin?: boolean;
     subscriptionStatus: 'FREE' | 'PLUS' | 'PRO' | 'ULTRA';
     subscriptionEndDate?: string;
 }
@@ -64,74 +66,32 @@ class AuthService {
         return data.data;
     }
 
-    // 发送邮箱验证码
-    async sendEmailCode(email: string, captcha: string, sessionId: string): Promise<void> {
-        const response = await fetch(`${API_BASE_URL}/api/auth/send-verify-code`, {
+    // 发送短信验证码(需先通过图形码人机校验)。dev mock 模式后端会回传 devCode,便于本地联调。
+    async sendSmsCode(phone: string, captcha: string, sessionId: string): Promise<{ devCode?: string }> {
+        const response = await fetch(`${API_BASE_URL}/api/auth/send-sms-code`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email, captcha, sessionId }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone, captcha, sessionId }),
         });
-
         const data = await response.json();
-
         if (!response.ok) {
             throw new Error(data.message || i18n.t('errors.send_captcha_failed', '验证码发送失败'));
         }
+        return data.data || {};
     }
 
-    // 用户注册
-    async register(email: string, password: string, code: string): Promise<User> {
-        const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email, password, code }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.message || i18n.t('errors.register_failed', '注册失败'));
-        }
-
-        return data.data;
-    }
-
-    // 重置密码 (复用 send-verify-code 已经发到邮箱的 6 位验证码)
-    async resetPassword(email: string, code: string, newPassword: string): Promise<void> {
-        const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, code, newPassword }),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data.message || i18n.t('errors.reset_password_failed', '密码重置失败'));
-        }
-    }
-
-    // 用户登录
-    async login(email: string, password: string): Promise<AuthResponse> {
+    // 手机号 + 短信验证码登录(无密码,新用户自动注册)
+    async loginWithSms(phone: string, code: string): Promise<AuthResponse> {
         const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email, password }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone, code }),
         });
-
         const data = await response.json();
-
         if (!response.ok) {
             throw new Error(data.message || i18n.t('errors.login_failed', '登录失败'));
         }
-
-        // 保存 token
         this.setToken(data.data.token);
-
         return data.data;
     }
 
@@ -140,74 +100,57 @@ class AuthService {
         this.clearToken();
     }
 
-    // 修改密码(已登录,需要旧密)
-    async changePassword(oldPassword: string, newPassword: string): Promise<void> {
+    private authHeaders(): Record<string, string> {
         const token = this.getToken();
         if (!token) throw new Error(i18n.t('errors.not_logged_in', '未登录'));
-
-        const response = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ oldPassword, newPassword }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || i18n.t('errors.change_password_failed', '密码修改失败'));
+        return { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
     }
 
-    // 修改邮箱第一步:验证密码 + 发码到新邮箱
-    async requestEmailChange(password: string, newEmail: string): Promise<void> {
-        const token = this.getToken();
-        if (!token) throw new Error(i18n.t('errors.not_logged_in', '未登录'));
-
-        const response = await fetch(`${API_BASE_URL}/api/auth/change-email/request-code`, {
+    // 设置/更新选填邮箱(用于接收支付收据/续费提醒;传空字符串清除)
+    async setEmail(email: string): Promise<{ email: string | null }> {
+        const response = await fetch(`${API_BASE_URL}/api/auth/set-email`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ password, newEmail }),
+            headers: this.authHeaders(),
+            body: JSON.stringify({ email }),
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.message || i18n.t('errors.change_email_failed', '邮箱修改失败'));
-    }
-
-    // 修改邮箱第二步:输入新邮箱收到的验证码
-    async confirmEmailChange(code: string): Promise<{ email: string }> {
-        const token = this.getToken();
-        if (!token) throw new Error(i18n.t('errors.not_logged_in', '未登录'));
-
-        const response = await fetch(`${API_BASE_URL}/api/auth/change-email/confirm`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ code }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || i18n.t('errors.change_email_failed', '邮箱修改失败'));
+        if (!response.ok) throw new Error(data.message || i18n.t('errors.set_email_failed', '邮箱保存失败'));
         return data.data;
     }
 
-    // 删除账号:需要密码 + 输 "DELETE" 字面量
-    async deleteAccount(password: string): Promise<void> {
-        const token = this.getToken();
-        if (!token) throw new Error(i18n.t('errors.not_logged_in', '未登录'));
+    // 换绑手机第一步:向新手机发码
+    async requestPhoneChange(newPhone: string, captcha: string, sessionId: string): Promise<void> {
+        const response = await fetch(`${API_BASE_URL}/api/auth/change-phone/send-code`, {
+            method: 'POST',
+            headers: this.authHeaders(),
+            body: JSON.stringify({ newPhone, captcha, sessionId }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || i18n.t('errors.change_phone_failed', '手机号修改失败'));
+    }
 
+    // 换绑手机第二步:输入新手机验证码,成功后换新 token
+    async confirmPhoneChange(code: string): Promise<{ phone: string }> {
+        const response = await fetch(`${API_BASE_URL}/api/auth/change-phone/confirm`, {
+            method: 'POST',
+            headers: this.authHeaders(),
+            body: JSON.stringify({ code }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || i18n.t('errors.change_phone_failed', '手机号修改失败'));
+        if (data.data?.token) this.setToken(data.data.token); // 旧 token 已失效,换新
+        return data.data;
+    }
+
+    // 删除账号:无密码,仅需输 "DELETE" 字面量确认
+    async deleteAccount(): Promise<void> {
         const response = await fetch(`${API_BASE_URL}/api/auth/account`, {
             method: 'DELETE',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ password, confirm: 'DELETE' }),
+            headers: this.authHeaders(),
+            body: JSON.stringify({ confirm: 'DELETE' }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.message || i18n.t('errors.delete_account_failed', '账号删除失败'));
-        // 成功后清除本地 token (旧 token 已被后端 banned)
         this.clearToken();
     }
 

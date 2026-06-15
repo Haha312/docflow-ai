@@ -5,7 +5,9 @@ import { Request } from 'express';
 export interface AuthRequest extends Request {
     user?: {
         id: string;
-        email: string;
+        phone: string | null;
+        email: string | null;
+        tokenVersion: number;
         subscriptionStatus: 'FREE' | 'PLUS' | 'PRO' | 'ULTRA';
         subscriptionEndDate?: Date | null;
         quotaPeriodStart?: Date | null;
@@ -110,5 +112,6 @@ export interface CreateCheckoutRequest {
 // JWT Payload
 export interface JwtPayload {
     userId: string;
-    email: string;
+    phone: string | null;
+    tokenVersion: number;
 }

@@ -1,23 +1,12 @@
 
 import React, { useCallback, useState } from 'react';
-import mammoth from 'mammoth';
-import { extractRawTextWithFormulas, extractDocumentStructure } from '../utils/docxParser';
 import { useTranslation } from 'react-i18next';
+import { parseUploadedFile, getFileSizeLimit } from '../utils/parseUploadedFile';
 
 interface Props {
   onFileLoaded: (content: string, fileName: string) => void;
   userTier?: 'FREE' | 'PLUS' | 'PRO' | 'ULTRA';
 }
-
-// 根据用户等级获取文件大小限制 (MB)
-const getFileSizeLimit = (tier?: string): number => {
-  switch (tier) {
-    case 'ULTRA': return 100;       // 100MB
-    case 'PRO': return 50;          // 50MB
-    case 'PLUS': return 50;         // 50MB
-    default: return 20;             // FREE: 20MB
-  }
-};
 
 export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
   const { t } = useTranslation();
@@ -37,100 +26,15 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
   }, []);
 
   const MAX_FILE_SIZE_MB = getFileSizeLimit(userTier);
-  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
   const processFile = async (file: File) => {
     setError(null);
     setIsLoading(true);
     setLoadingFileType(file.name.endsWith('.docx') ? 'docx' : 'text');
-
-    // 文件大小检查
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
-      setError(t('home.file_too_large', { size: fileSizeMB, max: MAX_FILE_SIZE_MB, defaultValue: `文件过大 (${fileSizeMB}MB)，最大支持 ${MAX_FILE_SIZE_MB}MB` }));
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      if (file.name.endsWith('.docx')) {
-        const arrayBuffer = await file.arrayBuffer();
-
-        // 0. Pre-read styles.xml to build a dynamic mammoth styleMap,
-        //    so heading styles with non-standard names/IDs are correctly mapped to <h1>-<h6>.
-        let dynamicStyleMap: string[] = [];
-        try {
-          const JSZip = (await import('jszip')).default;
-          const zip = await JSZip.loadAsync(arrayBuffer);
-          const stylesEntry = zip.file('word/styles.xml');
-          if (stylesEntry) {
-            const stylesXml = await stylesEntry.async('text');
-            const stylesDoc = new DOMParser().parseFromString(stylesXml, 'application/xml');
-            const allStyles = stylesDoc.getElementsByTagName('w:style');
-            for (const style of Array.from(allStyles)) {
-              if (style.getAttribute('w:type') !== 'paragraph') continue;
-              const nameEl = style.getElementsByTagName('w:name')[0];
-              const name = nameEl?.getAttribute('w:val') ?? '';
-              const enMatch = name.match(/^heading\s+(\d+)$/i);
-              const cnMatch = name.match(/^标题\s*(\d+)$/);
-              const level = enMatch ? enMatch[1] : cnMatch ? cnMatch[1] : null;
-              if (level && parseInt(level) <= 6) {
-                dynamicStyleMap.push(`p[style-name='${name}'] => h${level}:fresh`);
-              }
-            }
-          }
-        } catch (_) { /* silently skip — mammoth falls back to defaults */ }
-
-        // 1. Standard HTML conversion (Layout, tables, images)
-        // Mammoth strips OMML formulas, so the visual preview usually lacks them.
-        const result = await mammoth.convertToHtml({
-          arrayBuffer,
-          ...(dynamicStyleMap.length > 0 ? { styleMap: dynamicStyleMap } : {}),
-        });
-        let finalContent = result.value;
-
-        // 2. Advanced: Extract raw XML text to capture Native Word Formulas (OMML)
-        // Append formula data as a hidden marker so the AI backend can process them.
-        // The marker <!-- FORMULA_DATA --> is stripped before docx export in handleDownload.
-        try {
-          const rawContext = await extractRawTextWithFormulas(arrayBuffer);
-          const hasFormulas = rawContext?.includes("$$");
-          console.log('Formula extraction:', hasFormulas ? 'found formulas' : 'no formulas');
-          if (hasFormulas && rawContext) {
-            finalContent += `\n<!-- FORMULA_DATA -->\n${rawContext}`;
-          }
-        } catch (xmlErr) {
-          console.warn("Failed to extract raw XML context", xmlErr);
-        }
-
-        // 3. Extract document heading structure for pre-computed numbering.
-        // This lets the backend tell the AI exactly what number each heading should get,
-        // eliminating cross-chunk numbering drift entirely.
-        try {
-          const structure = await extractDocumentStructure(arrayBuffer);
-          if (structure.length > 0) {
-            finalContent += `\n<!-- STRUCTURE_DATA -->\n${JSON.stringify(structure)}`;
-            console.log(`[STRUCTURE] Appended ${structure.length} heading entries`);
-          }
-        } catch (structErr) {
-          console.warn("Failed to extract document structure", structErr);
-        }
-
-        setError(null);
-        onFileLoaded(finalContent, file.name);
-
-      } else if (file.type === "application/vnd.ms-word" || file.name.endsWith('.doc')) {
-        throw new Error(t('home.unsupported_doc', "暂不支持旧版 .doc 格式，请另存为 .docx 或 .txt 后上传。"));
-      } else {
-        const textContent = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target?.result as string);
-          reader.onerror = () => reject(new Error(t('home.read_failed', "文件读取失败")));
-          reader.readAsText(file);
-        });
-        setError(null);
-        onFileLoaded(textContent, file.name);
-      }
+      const { content, fileName } = await parseUploadedFile(file, userTier, t);
+      setError(null);
+      onFileLoaded(content, fileName);
     } catch (e: any) {
       setError(e.message || t('home.read_docx_failed', "读取 .docx 文件失败，请确认文件未损坏。"));
     } finally {

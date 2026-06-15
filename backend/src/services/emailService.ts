@@ -12,10 +12,23 @@ const transporter = nodemailer.createTransport({
         user: process.env.SMTP_USER || 'user',
         pass: process.env.SMTP_PASS || 'pass',
     },
-    tls: {
-        rejectUnauthorized: false
-    }
+    // 不再关闭 TLS 证书校验(默认验证,防中间人)
 });
+
+const isSmtpConfigured = (): boolean => !!(process.env.SMTP_HOST || process.env.SMTP_USER);
+
+/**
+ * SMTP 未配置时的处理:dev 视为成功(不真发,也不打印敏感内容);
+ * 生产记 error 并返回 false(邮件为选填通知,失败由调用方非阻断处理)。
+ */
+function smtpUnconfigured(label: string): boolean {
+    if (process.env.NODE_ENV === 'production') {
+        console.error(`[email] SMTP 未配置,${label} 邮件未发送`);
+        return false;
+    }
+    console.log(`[email] (dev) SMTP 未配置,跳过 ${label} 邮件`);
+    return true;
+}
 
 /**
  * 续费提醒邮件 (会员到期前 7/3/1 天发送)。复用同一个 transporter。
@@ -26,10 +39,7 @@ export const sendRenewalReminder = async (
     planName: string,
     expiryDate: Date
 ): Promise<boolean> => {
-    if (!process.env.SMTP_HOST && !process.env.SMTP_USER) {
-        console.log(`[MOCK EMAIL] Renewal reminder to ${to}: ${daysLeft} days left for ${planName}`);
-        return true;
-    }
+    if (!isSmtpConfigured()) return smtpUnconfigured('renewal');
 
     const frontendUrl = (process.env.FRONTEND_URL || '').split(',')[0] || 'https://docuflow.ai';
     const upgradeUrl = `${frontendUrl}/?upgrade=1`;
@@ -72,10 +82,7 @@ export const sendPaymentSuccess = async (
     currency: string,
     endDate: Date
 ): Promise<boolean> => {
-    if (!process.env.SMTP_HOST && !process.env.SMTP_USER) {
-        console.log(`[MOCK EMAIL] Payment success to ${to}: ${planName} ${currency} ${amount}, until ${endDate.toISOString()}`);
-        return true;
-    }
+    if (!isSmtpConfigured()) return smtpUnconfigured('payment');
 
     const frontendUrl = (process.env.FRONTEND_URL || '').split(',')[0] || 'https://docuflow.ai';
     const endStr = endDate.toISOString().split('T')[0];
@@ -114,9 +121,8 @@ export const sendPaymentSuccess = async (
 
 export const sendVerificationEmail = async (to: string, code: string): Promise<boolean> => {
     // If no real SMTP config, just log for dev
-    if (!process.env.SMTP_HOST && !process.env.SMTP_USER) {
-        console.log(`[MOCK EMAIL] To: ${to}, Code: ${code}`);
-        return true;
+    if (!isSmtpConfigured()) {
+        return smtpUnconfigured('verification');
     }
 
     try {

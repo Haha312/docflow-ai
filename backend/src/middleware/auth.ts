@@ -33,11 +33,17 @@ export const authenticate = async (
 
         const decoded = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as JwtPayload;
 
-        // 检查 token 是否已被吊销(账号删除后 Redis 标 banned 24h,阻止残留 JWT 访问其他端点)
-        const banned = await redis.get(`banned:${decoded.userId}`);
-        if (banned) {
-            res.status(401).json(errorResponse('AUTH_INVALID_TOKEN', 401));
-            return;
+        // 检查 token 是否已被吊销(账号删除后 Redis 标 banned 24h)。
+        // Redis 不可用时 fail-open(放行 + 记 warn):banned 只是 24h 软约束,
+        // 不应因 Redis 抖动让所有登录态用户全站 500。
+        try {
+            const banned = await redis.get(`banned:${decoded.userId}`);
+            if (banned) {
+                res.status(401).json(errorResponse('AUTH_INVALID_TOKEN', 401));
+                return;
+            }
+        } catch (redisErr) {
+            console.warn('[auth] redis banned check failed (fail-open):', (redisErr as Error).message);
         }
 
         // 从数据库获取用户信息
@@ -45,7 +51,9 @@ export const authenticate = async (
             where: { id: decoded.userId },
             select: {
                 id: true,
+                phone: true,
                 email: true,
+                tokenVersion: true,
                 subscriptionStatus: true,
                 subscriptionEndDate: true,
                 quotaPeriodStart: true
@@ -54,6 +62,12 @@ export const authenticate = async (
 
         if (!user) {
             res.status(401).json(errorResponse('AUTH_USER_NOT_FOUND', 401));
+            return;
+        }
+
+        // tokenVersion 不匹配 → 旧 token 已失效(改手机/强制下线后立即生效)
+        if (typeof decoded.tokenVersion === 'number' && decoded.tokenVersion !== user.tokenVersion) {
+            res.status(401).json(errorResponse('AUTH_TOKEN_REVOKED', 401));
             return;
         }
 

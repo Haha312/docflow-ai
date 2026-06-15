@@ -13,6 +13,7 @@ const router = Router();
 import OpenAI from 'openai';
 import { extractImagesAsPlaceholders, restoreImages } from '../utils/imageUtils';
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
+import { countStructure, buildIntegrityReport, IntegrityIssue } from '../utils/integrity';
 
 
 type PreComputedHeading = { level: number; text: string; number: string };
@@ -554,7 +555,7 @@ import { splitContentBySemantics, extractFirstHeading, compressChunksByCoverage 
 const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3-pro-preview';
 const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 50));
 
-interface ModelConfig { apiKey: string; baseUrl: string; modelId: string; needsProxy?: boolean; maxOutputTokens?: number; }
+interface ModelConfig { apiKey: string; baseUrl: string; modelId: string; needsProxy?: boolean; maxOutputTokens?: number; extraBody?: Record<string, unknown>; }
 
 function getModelConfig(modelKey: string, dbConfig: Record<string, string>): ModelConfig | null {
     const geminiKey  = dbConfig['GOOGLE_API_KEY']        || process.env.GOOGLE_API_KEY        || '';
@@ -563,7 +564,10 @@ function getModelConfig(modelKey: string, dbConfig: Record<string, string>): Mod
         'gemini-flash': { apiKey: geminiKey,  baseUrl: geminiBase, modelId: 'gemini-2.5-flash',                                  needsProxy: true,  maxOutputTokens: 16000 },
         'gemini-pro':   { apiKey: geminiKey,  baseUrl: geminiBase, modelId: process.env.GEMINI_MODEL || 'gemini-3-pro-preview', needsProxy: true,  maxOutputTokens: 32000 },
         'doubao':       { apiKey: process.env.DOUBAO_API_KEY   || '', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',     modelId: process.env.DOUBAO_ENDPOINT_ID || '', needsProxy: false, maxOutputTokens: 8192 },
-        'deepseek':     { apiKey: process.env.DEEPSEEK_API_KEY || '', baseUrl: 'https://api.deepseek.com/v1',                  modelId: 'deepseek-chat',                      needsProxy: false, maxOutputTokens: 16384 },
+        // thinking 默认关闭(深度思考阶段不出正文,用户长时间空等;实测关闭后首 token 1514ms→599ms)。
+        // 需要开启时设 DEEPSEEK_THINKING=enabled。
+        'deepseek':     { apiKey: process.env.DEEPSEEK_API_KEY || '', baseUrl: 'https://api.deepseek.com/v1',                  modelId: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash', needsProxy: false, maxOutputTokens: 16384,
+                          extraBody: process.env.DEEPSEEK_THINKING === 'enabled' ? undefined : { thinking: { type: 'disabled' } } },
     };
     return registry[modelKey] ?? null;
 }
@@ -588,7 +592,8 @@ async function* callOpenAICompatible(
     modelName: string,
     maxTokens?: number,
     useProxy?: boolean,
-    includeUsage?: boolean
+    includeUsage?: boolean,
+    extraBody?: Record<string, unknown>
 ): AsyncGenerator<{ content: string; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }; finishReason?: string | null }> {
     console.log('DEBUG: callOpenAICompatible start', { baseUrl, modelName, apiKeyLength: apiKey?.length, maxTokens, useProxy });
 
@@ -601,7 +606,8 @@ async function* callOpenAICompatible(
         }
         const client = new OpenAI(clientOptions);
 
-        const stream = await client.chat.completions.create({
+        // extraBody:模型特有参数(如 deepseek 的 thinking 开关),OpenAI SDK 类型不认识但会原样序列化
+        const requestBody = {
             model: modelName,
             messages: [
                 { role: 'system', content: systemPrompt },
@@ -610,8 +616,10 @@ async function* callOpenAICompatible(
             stream: true,
             ...(includeUsage ? { stream_options: { include_usage: true } } : {}),
             temperature: 0.1,
-            max_tokens: maxTokens
-        });
+            max_tokens: maxTokens,
+            ...(extraBody || {})
+        } as Parameters<typeof client.chat.completions.create>[0] & { stream: true };
+        const stream = await client.chat.completions.create(requestBody);
 
         for await (const chunk of stream) {
             const content = chunk.choices[0]?.delta?.content || '';
@@ -693,7 +701,8 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const { content, preset: rawPreset, fileName, styleConfig, model }: GenerateRequest = req.body;
         // Normalize preset to lowercase to handle frontend sending 'CORPORATE' vs backend enum 'corporate'
         const preset = (rawPreset as string).toLowerCase() as typeof rawPreset;
-        requestedModelKey = model;
+        // 前端不再让用户选模型;未指定时默认 deepseek(直连免代理、开箱即用,作为"自动最优")
+        requestedModelKey = model || 'deepseek';
 
         if (!content || !preset || !fileName || !styleConfig) {
             res.status(400).json(errorResponse('缺少必要参数', 400));
@@ -1110,6 +1119,8 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         let totalExactTokens = 0;
         let consecutiveCoveredSkips = 0;
         let finalChunksUsed = 0;
+        // 完整性证明:收集生成期间触发的(原本静默的)丢失/截断/跳过事件,最后随 SSE 发给前端
+        const integrityIssues: IntegrityIssue[] = [];
 
         // 3. 循环处理 Chunks
         for (let i = 0; i < chunks.length; i++) {
@@ -1131,6 +1142,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             if (i > 0 && (skippedByFingerprint || (headingCovered && overlap >= 320 && coverageRatio >= 0.78))) {
                 consecutiveCoveredSkips += 1;
                 console.log(`[SKIP_COVERED_CHUNK] part=${i + 1}/${chunks.length} heading="${chunkFirstHeading}" overlap=${overlap} coverage=${coverageRatio.toFixed(3)} fingerprint=${headingCoverageRatio.toFixed(2)}(${matchedHeadings.length}/${chunkHeadings.size})`);
+                integrityIssues.push({ type: 'chunk_skipped', severity: 'info', detail: `第 ${i + 1} 部分与已生成内容高度重复,已跳过(避免重复)` });
                 // Sync heading counter state from preComputedHeadings for skipped chunks,
                 // so the continuation prompt for the next processed chunk stays accurate.
                 if (preComputedHeadings.length > 0) {
@@ -1149,6 +1161,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 }
                 if (consecutiveCoveredSkips >= 2) {
                     console.log(`[EARLY_STOP_COVERAGE] stop_at_part=${i + 1} total=${chunks.length}`);
+                    integrityIssues.push({ type: 'early_stop', severity: 'warning', detail: `第 ${i + 1} 部分起内容疑似重复,已提前结束(若后续仍有内容可能遗漏)` });
                     break;
                 }
                 continue;
@@ -1266,7 +1279,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                         let streamHallucinationDetected = false;
 
                         // 初次生成
-                        for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, userContent, currentModel, maxTokens, useProxy, includeUsage)) {
+                        for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, userContent, currentModel, maxTokens, useProxy, includeUsage, modelCfg?.extraBody)) {
                             if (result.content) {
                                 chunkOutput += result.content;
                                 res.write(`data: ${JSON.stringify({ delta: result.content })}\n\n`);
@@ -1307,7 +1320,10 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                             if (result.finishReason) finishReason = result.finishReason;
                             if (result.usage) totalExactTokens += result.usage.total_tokens || 0;
                         }
-                        if (streamHallucinationDetected) finishReason = null; // skip continuation
+                        if (streamHallucinationDetected) {
+                            finishReason = null; // skip continuation
+                            integrityIssues.push({ type: 'stream_hallucination', severity: 'critical', detail: `第 ${i + 1} 部分检测到异常重复/失控输出,已中断该部分` });
+                        }
 
                         // 截断续写：当 finish_reason === "length" 时，自动从断点继续
                         let continuations = 0;
@@ -1322,7 +1338,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                             const continueUserContent = `TRUNCATION CONTINUATION — DO NOT REPEAT\n\nYour previous HTML output was cut off mid-way. The last ~200 characters of your raw HTML output were:\n\`\`\`\n${htmlTail}\n\`\`\`\nThe last ~600 characters of PLAIN TEXT content (for reference) were:\n"...${plainTail}"\n\nRULES:\n1. Continue the HTML output from EXACTLY where it was cut — complete any unclosed tags first if needed.\n2. ABSOLUTELY DO NOT repeat any sentence, paragraph, or heading already in the output above.\n3. Do NOT add any prefix, preamble, or "Continuing from..." text.\n4. Output ONLY the continuation HTML, nothing else.`;
 
                             finishReason = null;
-                            for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, continueUserContent, currentModel, maxTokens, useProxy, includeUsage)) {
+                            for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, continueUserContent, currentModel, maxTokens, useProxy, includeUsage, modelCfg?.extraBody)) {
                                 if (result.content) {
                                     chunkOutput += result.content;
                                     res.write(`data: ${JSON.stringify({ delta: result.content })}\n\n`);
@@ -1438,7 +1454,11 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 // Chunk 完成后处理（cleanOutput 和图片还原需要完整文本）
                 let cleanChunk = cleanOutput(chunkOutput);
                 // Truncate any hallucination loop that slipped through during main generation
+                const __beforeTruncLen = cleanChunk.length;
                 cleanChunk = truncateAtRepetitionLoop(cleanChunk);
+                if (cleanChunk.length < __beforeTruncLen) {
+                    integrityIssues.push({ type: 'loop_truncated', severity: 'critical', detail: `第 ${i + 1} 部分检测到重复循环,已截断 ${__beforeTruncLen - cleanChunk.length} 字符` });
+                }
                 // Close any HTML tags left open by truncation (e.g. <li>, <td>, <ul>)
                 cleanChunk = repairUnclosedTags(cleanChunk);
                 // CORPORATE only: detect + reorder doc elements to GB/T 9704-2012 standard layout (first chunk only)
@@ -1501,17 +1521,8 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         }
         console.log(`[FINAL_CHUNKS_USED] ${finalChunksUsed}/${chunks.length}`);
 
-        // 保存文档
-        const pureText = fullRestoredText.replace(/<[^>]+>/g, '').replace(/\s+/g, '').trim();
-        await prisma.document.create({
-            data: {
-                userId: user.id,
-                title: fileName.replace(/\.[^/.]+$/, "") || 'Untitled',
-                content: fullRestoredText,
-                preset: preset,
-                wordCount: pureText.length
-            }
-        });
+        // 隐私优先:不持久化用户文档内容。生成结果只流式回前端 + 供下载,后端不入库。
+        // (历史记录功能已下线;如需恢复需同时加回读取接口与前端界面。)
 
         // 估算 token 使用量(输入 + 输出) 当 API 未返回时备用
         // Gemini 计费: 约 1 token ~= 0.75 个中文字符
@@ -1544,6 +1555,24 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         await invalidateUsageCount(user.id);
 
         console.log(`[DONE] Document generated. Tokens: ${finalReportedTokens}`);
+
+        // 内容完整性报告:输入 vs 输出结构对比 + 期间事件,发给前端做"没丢东西"的证明
+        try {
+            const inputCounts = countStructure(contentWithoutImages);
+            inputCounts.images = imageCount;
+            // 输入标题数优先用前端解析的精确大纲(纯文本粘贴时 HTML 无标题标签,此值更准)
+            if (preComputedHeadings.length > 0) {
+                inputCounts.headings = preComputedHeadings.length;
+                inputCounts.headingsByLevel = preComputedHeadings.reduce((acc, h) => {
+                    acc[h.level] = (acc[h.level] ?? 0) + 1; return acc;
+                }, {} as Record<number, number>);
+            }
+            const outputCounts = countStructure(fullRestoredText);
+            const integrityReport = buildIntegrityReport(inputCounts, outputCounts, integrityIssues);
+            res.write(`data: ${JSON.stringify({ integrityReport })}\n\n`);
+        } catch (e) {
+            console.error('[integrity] failed to build report (non-fatal):', e);
+        }
 
         // 发送完成事件
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallba
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FileDropzone } from './components/FileDropzone';
+import { HeroInput } from './components/HeroInput';
 import { PresetCard } from './components/PresetCard';
 import { ProductRequirements } from './components/ProductRequirements';
 import { StyleEditor } from './components/StyleEditor';
@@ -11,14 +12,17 @@ import { PricingModal } from './components/PricingModal';
 import { UserInfo } from './components/UserInfo';
 import { UserProfileModal } from './components/UserProfileModal';
 import { useConfirmDialog } from './components/ConfirmDialog';
-import { generateDocumentViaBackend, saveDocument, updateDocument } from './services/backendApiService';
+import { generateDocumentViaBackend } from './services/backendApiService';
 import { generateDocx } from './utils/docxGenerator';
 import { sanitizeDocxPreview } from './utils/sanitizeHtml';
 import { useAuth } from './contexts/AuthContext';
 import systemLogo from './image/image.jpg';
 // useTypewriter removed: SSE stream is already incremental, no need for secondary typing animation
 import { PRESETS } from './constants';
-import { DocPreset, AIState, StyleConfig } from './types';
+import { DocPreset, AIState, StyleConfig, IntegrityReport } from './types';
+import { TrustPanel } from './components/TrustPanel';
+import { evaluateCompliance } from './utils/compliance';
+import { diffContent } from './utils/contentDiff';
 import katex from 'katex';
 import DOMPurify from 'dompurify';
 import 'katex/dist/katex.min.css';
@@ -26,14 +30,6 @@ import 'katex/dist/katex.min.css';
 const getTextCount = (html: string) => {
   return html.replace(/<[^>]+>/g, '').replace(/\s/g, '').length;
 };
-
-const MODEL_OPTIONS = [
-  // deepseek 置顶 + 推荐:国内直连免代理,新用户开箱即用(Gemini 需代理,首次失败即流失)
-  { key: 'deepseek',     name: 'DeepSeek V4 Pro',   descKey: 'home.model_deepseek', recommended: true },
-  { key: 'doubao',       name: '豆包 Doubao',       descKey: 'home.model_bytedance', recommended: false },
-  { key: 'gemini-flash', name: 'Gemini 2.5 Flash', descKey: 'home.model_fast', recommended: false },
-  { key: 'gemini-pro',   name: 'Gemini 3 Pro',     descKey: 'home.model_quality', recommended: false },
-] as const;
 
 // A4 page dimensions at 96 dpi (297mm × 96 / 25.4 ≈ 1122px)
 const A4_HEIGHT_PX = 1122;
@@ -49,20 +45,27 @@ function Home() {
   // 区分内容来源:'paste' = 粘贴文本(空状态 textarea),'file' = 上传文件(文件 chip),null = 空
   const [inputSource, setInputSource] = useState<'paste' | 'file' | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<DocPreset>(DocPreset.ACADEMIC);
-  const [selectedModel, setSelectedModel] = useState<string>(
-    () => localStorage.getItem('docuflow_selected_model') ?? 'deepseek'
-  );
-  const [isModelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const modelDropdownRef = useRef<HTMLDivElement>(null);
   const [outputText, setOutputText] = useState<string>('');
   const [imageMap, setImageMap] = useState<Record<string, string>>({});
+  // 内容完整性报告(后端生成结束时随 SSE 返回);null = 尚无/已重置
+  const [integrityReport, setIntegrityReport] = useState<IntegrityReport | null>(null);
   const [showToast, setShowToast] = useState(false);
   // Directly use outputText for rendering — SSE stream provides natural incremental flow
 
   const [currentStyles, setCurrentStyles] = useState<Record<DocPreset, StyleConfig>>(() => {
     const initial: any = {};
     PRESETS.forEach(p => initial[p.id] = { ...p.styleConfig });
+    // 读取本地持久化的自定义样式,合并到默认之上(刷新不丢)
+    try {
+      const saved = localStorage.getItem('docuflow_custom_styles');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        PRESETS.forEach(p => {
+          if (parsed && parsed[p.id]) initial[p.id] = { ...p.styleConfig, ...parsed[p.id] };
+        });
+      }
+    } catch (_) { /* 忽略损坏的本地数据 */ }
     return initial;
   });
 
@@ -84,8 +87,6 @@ function Home() {
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [pricingReason, setPricingReason] = useState<'quota' | undefined>(undefined);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
-  const [isSavingToCloud, setIsSavingToCloud] = useState(false);
   const [tick, setTick] = useState(0); // 每秒递增,驱动倒计时重渲染
 
   const { isAuthenticated, user, refreshUser } = useAuth();
@@ -152,12 +153,29 @@ function Home() {
   const activeStyle = currentStyles[selectedPreset];
   const activePresetConfig = PRESETS.find(p => p.id === selectedPreset)!;
 
+  // 格式合规校验(随当前预设/样式实时重算;无对标标准的预设返回 spec=null)
+  const compliance = useMemo(() => evaluateCompliance(selectedPreset, activeStyle), [selectedPreset, activeStyle]);
+
+  // 「仅格式改动」对比(只在生成结束后算一次,避免流式期间每 80ms 重算)
+  const contentDiff = useMemo(
+    () => (outputText && inputText && !aiState.isThinking ? diffContent(inputText, outputText) : null),
+    [inputText, outputText, aiState.isThinking]
+  );
+
   // 空状态(大气 hero):还没有生成结果、也没在生成时,中间显示居中大输入区而非空白 A4
   const showHero = !outputText && !aiState.isThinking;
 
   // 粘贴/文件字数(memo 避免大文本每次 render 重算双正则)+ 与后端 CONTENT_LIMIT 对齐的输入上限
   const inputTextCount = useMemo(() => getTextCount(inputText), [inputText]);
   const pasteCharLimit = user?.subscriptionStatus && user.subscriptionStatus !== 'FREE' ? 2_000_000 : 200_000;
+
+  // 各模板是否被改过(与默认 styleConfig 不同)— 用于 hero chip 上的「已改」小点。
+  // useMemo 仅在 currentStyles 变化时重算,避免随 inputText 每次按键重复 stringify。
+  const customizedMap = useMemo(() => {
+    const m = {} as Record<DocPreset, boolean>;
+    PRESETS.forEach(p => { m[p.id] = JSON.stringify(currentStyles[p.id]) !== JSON.stringify(p.styleConfig); });
+    return m;
+  }, [currentStyles]);
 
   const handleFileLoaded = (content: string, name: string) => {
     setInputText(content);
@@ -184,6 +202,9 @@ function Home() {
     }
   };
 
+  // 试试示例:一键填入一段结构化样例,降低空状态冷启动门槛(用户看不懂该粘什么时)
+  const handleTrySample = () => handlePasteInput(t('home.sample_text', '关于推进部门数字化转型的工作报告\n\n一、背景\n随着业务规模扩大，传统的人工流程已难以满足效率要求，数字化转型势在必行。\n\n二、主要举措\n1. 搭建统一的数据中台，打通各系统数据孤岛。\n2. 引入自动化工具，减少重复性人工操作。\n3. 建立数据安全与权限管理规范。\n\n三、预期成效\n预计可将核心流程处理时间缩短约百分之四十，显著提升整体运营效率。'));
+
   // 空状态轻量清空(无确认弹窗 —— 粘贴内容重输成本低,且此时无已生成结果可丢失)
   const handleHeroClear = () => {
     setInputText('');
@@ -193,16 +214,6 @@ function Home() {
     setAiState(prev => ({ ...prev, error: null, progress: 0 }));
   };
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
-        setModelDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   // 倒计时 ticker — 仅在生成中每秒更新一次
   useEffect(() => {
     if (!aiState.isThinking || aiState.estimatedSec === null) return;
@@ -210,10 +221,10 @@ function Home() {
     return () => clearInterval(id);
   }, [aiState.isThinking, aiState.estimatedSec]);
 
-  // Persist model selection across page refreshes
+  // 持久化自定义样式(刷新不丢)
   useEffect(() => {
-    localStorage.setItem('docuflow_selected_model', selectedModel);
-  }, [selectedModel]);
+    try { localStorage.setItem('docuflow_custom_styles', JSON.stringify(currentStyles)); } catch (_) { /* 配额满等忽略 */ }
+  }, [currentStyles]);
 
 
   useEffect(() => {
@@ -370,8 +381,7 @@ function Home() {
     });
     setOutputText('');
     setImageMap({});
-    // 开始新一轮生成 → 清空"已保存的文档 id",下次保存会触发 POST 而非 PUT (防止覆盖旧文档)
-    setCurrentDocumentId(null);
+    setIntegrityReport(null);
 
     // ── 客户端预处理：在发送给后端之前完成，避免传输大量 base64 图片数据 ──
     // 1. 提取图片：把 <img ...> 替换为 __IMG_N__ 占位符（与后端 imageUtils 逻辑一致）
@@ -411,13 +421,13 @@ function Home() {
     abortControllerRef.current = controller;
 
     try {
-      await generateDocumentViaBackend(
+      const genResult = await generateDocumentViaBackend(
         {
           content: contentForBackend,
           preset: selectedPreset,
           fileName: inputFileName,
           styleConfig: activeStyle,
-          model: selectedModel,
+          // 不再让用户选模型:省略 model,后端自动选最优(默认 deepseek)
         },
         (partialText, progressData, newImageMap) => {
           if (abortControllerRef.current === null) return;
@@ -464,6 +474,7 @@ function Home() {
       // Generation complete
       if (abortControllerRef.current !== null) {
         setAiState(prev => ({ ...prev, progress: 100, progressStep: t('home.generation_complete', '排版生成完毕') }));
+        setIntegrityReport(genResult?.integrityReport ?? null);
         // Flush: cancel any pending timer and show final text
         if (rafIdRef.current !== null) {
           clearTimeout(rafIdRef.current);
@@ -480,10 +491,6 @@ function Home() {
         setDownloadHighlight(true);
         setTimeout(() => setDownloadHighlight(false), 2500);
         await refreshUser();
-
-        // 自动保存草稿:防止用户花了额度生成后误关页面丢失内容。
-        // silent=true 失败不打扰;contentOverride 用 ref(state 此刻可能未刷新)。
-        handleSaveToCloud({ silent: true, contentOverride: textBufferRef.current });
       }
 
     } catch (err: any) {
@@ -505,48 +512,6 @@ function Home() {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
-    }
-  };
-
-  // Save current document to cloud (Supabase). First save → POST (新建);
-  // subsequent saves with the same currentDocumentId → PUT (覆盖更新)。
-  // 取内容时优先用用户在前端编辑后的 DOM 内容,否则用 outputText。
-  // opts.silent: 自动保存路径(生成完成后),失败静默不打扰用户。
-  // opts.contentOverride: 生成刚完成时 outputText state 尚未刷新,用 textBufferRef 直传。
-  const handleSaveToCloud = async (opts?: { silent?: boolean; contentOverride?: string }) => {
-    const silent = opts?.silent === true;
-    const source = opts?.contentOverride ?? outputText;
-    if (!source || !isAuthenticated || isSavingToCloud) return;
-    setIsSavingToCloud(true);
-    try {
-      const html = isContentEdited && previewContentRef.current
-        ? previewContentRef.current.innerHTML
-        : source;
-      const title = (inputFileName || 'Untitled').replace(/\.[^.]+$/, '') || 'Untitled';
-      const wordCount = getTextCount(html);
-      const payload = { title, content: html, preset: String(selectedPreset), wordCount };
-
-      if (currentDocumentId) {
-        await updateDocument(currentDocumentId, payload);
-      } else {
-        const { id } = await saveDocument(payload);
-        setCurrentDocumentId(id);
-      }
-      if (!silent) {
-        // Reuse existing toast mechanism for "saved" feedback
-        setShowToast(true);
-        setTimeout(() => setShowToast(false), 2000);
-      }
-    } catch (e: unknown) {
-      if (silent) {
-        // 自动保存失败静默:不打断用户,仅 console 记录
-        console.warn('Auto-save draft failed (non-blocking):', e);
-      } else {
-        const msg = e instanceof Error ? e.message : t('errors.save_doc_failed', '保存文档失败');
-        setAiState(prev => ({ ...prev, error: msg }));
-      }
-    } finally {
-      setIsSavingToCloud(false);
     }
   };
 
@@ -1061,7 +1026,7 @@ function Home() {
             <div className="w-full max-w-2xl mx-auto flex flex-col items-center px-2">
               <div className="text-xs text-gray-400 tracking-wide mb-3.5">{t('home.hero_eyebrow', 'AI 智能排版 · 一键导出 Word')}</div>
               <h1 className="text-2xl md:text-[28px] font-semibold text-gray-900 mb-2 text-center">{t('home.hero_title', '把文字变成精排文档')}</h1>
-              <p className="text-sm text-gray-500 mb-8 text-center">{t('home.hero_subtitle', '粘贴文字，或拖入 Word / txt，AI 自动排版')}</p>
+              <p className="text-sm text-gray-500 mb-6 text-center">{t('home.hero_subtitle', '粘贴文字，或拖入 Word / txt，AI 自动排版')}</p>
 
               {/* 输入面板 */}
               {inputSource === 'file' ? (
@@ -1082,78 +1047,54 @@ function Home() {
                   </div>
                 </div>
               ) : (
-                <>
-                  <div className="w-full bg-white border border-gray-200 rounded-2xl p-5 transition-colors focus-within:border-gray-300">
-                    <textarea
-                      value={inputText}
-                      onChange={(e) => handlePasteInput(e.target.value)}
-                      placeholder={t('home.hero_placeholder', '在此粘贴你的文字内容…')}
-                      autoFocus
-                      maxLength={pasteCharLimit}
-                      className="w-full min-h-[150px] max-h-[340px] resize-y text-[15px] leading-relaxed text-gray-800 placeholder-gray-400 outline-none bg-transparent block"
-                    />
-                    {inputText && (
-                      <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-1">
-                        <span className="text-xs text-gray-400">{inputTextCount.toLocaleString()} {t('home.chars', '字')}</span>
-                        <button onClick={handleHeroClear} className="text-xs text-gray-400 hover:text-red-500 transition-colors">{t('home.clear', '清空')}</button>
-                      </div>
-                    )}
-                  </div>
-                  {/* 文件入口常驻:即便已粘贴文字,也能改为拖入/选择文件(拖入即覆盖) */}
-                  <div className="w-full mt-3">
-                    <FileDropzone onFileLoaded={handleFileLoaded} userTier={user?.subscriptionStatus} />
-                  </div>
-                </>
+                <HeroInput
+                  value={inputText}
+                  count={inputTextCount}
+                  maxLength={pasteCharLimit}
+                  userTier={user?.subscriptionStatus}
+                  onPasteChange={handlePasteInput}
+                  onClear={handleHeroClear}
+                  onFileLoaded={handleFileLoaded}
+                  onTrySample={handleTrySample}
+                />
               )}
 
               {/* 模板 chips */}
-              <div className="flex flex-wrap gap-2 justify-center mt-7 max-w-xl">
+              <div className="flex flex-wrap gap-2 justify-center mt-6 max-w-xl">
                 {PRESETS.map(p => {
                   const titleKey = `home.preset_${p.id.toLowerCase().replace('-', '_')}`;
                   const selected = selectedPreset === p.id;
+                  const customized = customizedMap[p.id];
                   return (
                     <button
                       key={p.id}
                       onClick={() => setSelectedPreset(p.id)}
                       aria-pressed={selected}
-                      className={`text-[13px] px-4 py-1.5 rounded-full border transition-colors ${selected ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+                      className={`text-[13px] px-4 py-1.5 rounded-full border transition-colors inline-flex items-center ${selected ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
                     >
                       {t(titleKey, p.title)}
+                      {customized && (
+                        <span
+                          title={t('home.customized', '已自定义')}
+                          className={`ml-1.5 w-1.5 h-1.5 rounded-full ${selected ? 'bg-white/80' : 'bg-emerald-500'}`}
+                        />
+                      )}
                     </button>
                   );
                 })}
+                {/* 轻量自定义入口:打开完整样式编辑器(字体/字号/行距/边距/编号…) */}
+                <button
+                  type="button"
+                  onClick={() => setStyleEditorOpen(true)}
+                  className="text-[13px] px-3.5 py-1.5 rounded-full border border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors inline-flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                  {t('home.custom', '自定义')}
+                </button>
               </div>
 
-              {/* 模型 + 开始排版 */}
-              <div className="flex items-center gap-3 mt-7">
-                <div className="relative" ref={modelDropdownRef}>
-                  <button
-                    type="button"
-                    onClick={() => setModelDropdownOpen(v => !v)}
-                    aria-haspopup="listbox"
-                    aria-expanded={isModelDropdownOpen}
-                    className="flex items-center gap-2 text-[13px] text-gray-600 border border-gray-200 rounded-lg px-3.5 py-2.5 hover:border-gray-300 transition-colors"
-                  >
-                    <svg className="w-3.5 h-3.5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z" /></svg>
-                    <span className="font-medium text-gray-800">{MODEL_OPTIONS.find(m => m.key === selectedModel)?.name ?? selectedModel}</span>
-                    <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isModelDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
-                  </button>
-                  {isModelDropdownOpen && (
-                    <div className="absolute bottom-full mb-1 left-0 min-w-[230px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
-                      {MODEL_OPTIONS.map(opt => (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          onClick={() => { setSelectedModel(opt.key); setModelDropdownOpen(false); }}
-                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors text-left ${selectedModel === opt.key ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-                        >
-                          <span className="font-medium text-gray-800">{opt.name}</span>
-                          {opt.recommended && <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{t('home.recommended', '推荐')}</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+              {/* 开始排版 */}
+              <div className="flex justify-center mt-6">
                 <button
                   onClick={handleProcess}
                   disabled={!inputText.trim()}
@@ -1162,6 +1103,22 @@ function Home() {
                   {t('home.hero_generate', '开始排版')}
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                 </button>
+              </div>
+
+              {/* 信任条:把空状态的留白变成可信度 —— 完整性 / 国标合规 / 隐私 */}
+              <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mt-6 pt-5 border-t border-gray-100 w-full max-w-lg text-xs text-gray-400">
+                <span className="inline-flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" /><path d="M9 12l2 2 4-4" /></svg>
+                  {t('home.trust_integrity', '内容完整性核对')}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M9 12l2 2 4-4" /></svg>
+                  {t('home.trust_compliance', '公文 / 毕业论文国标合规')}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
+                  {t('home.trust_privacy', '不保存你的文档')}
+                </span>
               </div>
 
               {inputText.trim() && (
@@ -1180,7 +1137,8 @@ function Home() {
         ) : (
         <div ref={workspaceRef} className="flex flex-col md:flex-row gap-4 md:gap-6 h-auto md:h-[calc(100vh-88px)]">
 
-          {/* Left Panel */}
+          {/* Left Panel(已隐藏:控件上移到预览顶部栏,预览全宽) */}
+          {false && (
           <div
             className="hidden md:flex flex-col flex-shrink-0 relative"
             style={{
@@ -1307,60 +1265,6 @@ function Home() {
                 <h2 className="text-sm font-semibold text-gray-900">{t('home.start_generate', '开始生成')}</h2>
               </div>
 
-              {/* Model Selector */}
-              <div className="mb-3" ref={modelDropdownRef}>
-                <p className="text-xs text-gray-400 mb-1.5">{t('home.model', '生成模型')}</p>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => !aiState.isThinking && setModelDropdownOpen(v => !v)}
-                    disabled={aiState.isThinking}
-                    className="w-full flex items-center justify-between px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
-                  >
-                    <span className="font-medium text-gray-800">
-                      {MODEL_OPTIONS.find(m => m.key === selectedModel)?.name ?? selectedModel}
-                    </span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-gray-400">
-                        {t(MODEL_OPTIONS.find(m => m.key === selectedModel)?.descKey ?? '')}
-                      </span>
-                      <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${isModelDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M6 9l6 6 6-6" />
-                      </svg>
-                    </div>
-                  </button>
-                  {isModelDropdownOpen && (
-                    <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
-                      {MODEL_OPTIONS.map(opt => (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          onClick={() => { setSelectedModel(opt.key); setModelDropdownOpen(false); }}
-                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors text-left ${selectedModel === opt.key ? 'bg-gray-50' : 'hover:bg-gray-50'}`}
-                        >
-                          <span className={`font-medium ${selectedModel === opt.key ? 'text-gray-900' : 'text-gray-700'} flex items-center gap-1.5`}>
-                            {opt.name}
-                            {opt.recommended && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-50 text-indigo-600 rounded">
-                                {t('home.model_recommended', '推荐')}
-                              </span>
-                            )}
-                          </span>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs text-gray-400">{t(opt.descKey)}</span>
-                            {selectedModel === opt.key && (
-                              <svg className="w-3.5 h-3.5 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path d="M20 6L9 17l-5-5" />
-                              </svg>
-                            )}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
               {/* Action Button */}
               <div>
                 {aiState.isThinking ? (
@@ -1456,75 +1360,153 @@ function Home() {
               </>
             )}
           </div>
+          )}
 
-          {/* Right Panel - Preview */}
+          {/* Right Panel - Preview(预览为主,全宽) */}
           <div className="flex-1 flex flex-col min-w-0 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(0,0,0,0.02)]">
-            {/* Toolbar */}
-            <div className="h-12 px-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <div className="flex items-center gap-3">
-                {/* Expand sidebar button — only when collapsed */}
-                {sidebarCollapsed && (
-                  <button
-                    onClick={() => setSidebarCollapsed(false)}
-                    className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
-                    title="展开侧边栏"
-                  >
-                    <svg className="w-4 h-4 rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M15 18l-6-6 6-6" />
-                    </svg>
-                  </button>
-                )}
-                <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
-                  <button
-                    onClick={() => setViewMode('preview')}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'preview' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}
-                  >
-                    {t('home.preview_view', '结果预览')}
-                  </button>
-                  <button
-                    onClick={() => setViewMode('split')}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'split' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}
-                  >
-                    {t('home.split_view', '原文对比')}
-                  </button>
+            {/* 顶部控制栏:文件 / 模板 / 自定义 / 重新生成·停止 / 视图 / 保存下载 —— 控件收顶,预览为主 */}
+            <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-center gap-x-3 gap-y-2">
+              {/* 文件 */}
+              {inputText && (
+                <div className="flex items-center gap-1.5 text-xs text-gray-600 min-w-0 max-w-[220px]">
+                  <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                  <span className="truncate" title={inputFileName}>{inputFileName}</span>
+                  {!aiState.isThinking && (
+                    <button onClick={handleClear} title={t('home.clear', '清空')} className="p-0.5 text-gray-400 hover:text-red-500 flex-shrink-0">
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                    </button>
+                  )}
                 </div>
+              )}
+
+              {/* 模板 chips + 自定义 */}
+              <div className={`flex items-center gap-1.5 flex-wrap ${aiState.isThinking ? 'opacity-50 pointer-events-none' : ''}`}>
+                {PRESETS.map(p => {
+                  const sel = selectedPreset === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => setSelectedPreset(p.id)}
+                      aria-pressed={sel}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors inline-flex items-center ${sel ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+                    >
+                      {t(`home.preset_${p.id.toLowerCase().replace('-', '_')}`, p.title)}
+                      {customizedMap[p.id] && <span className={`ml-1 w-1.5 h-1.5 rounded-full ${sel ? 'bg-white/80' : 'bg-emerald-500'}`} />}
+                    </button>
+                  );
+                })}
+                <button onClick={() => setStyleEditorOpen(true)} title={t('home.custom', '自定义')} className="w-6 h-6 flex items-center justify-center rounded-full border border-dashed border-gray-300 text-gray-400 hover:text-gray-700 hover:border-gray-400 transition-colors">
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* 重新生成 / 停止 + 进度 */}
+              {aiState.isThinking ? (
+                <div className="flex items-center gap-2 min-w-0">
+                  <button onClick={handleStop} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors flex-shrink-0">
+                    <span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" /><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" /></span>
+                    {t('home.stop_generation', '停止生成')}
+                  </button>
+                  <span className="text-xs text-gray-400 truncate">{aiState.progressStep}{aiState.progress > 0 ? ` · ${aiState.progress}%` : ''}</span>
+                </div>
+              ) : (
+                <button
+                  onClick={handleProcess}
+                  disabled={!inputText}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+                  {t('home.retry_generate', '重新生成')}
+                </button>
+              )}
+
+              {/* 右侧:视图切换 + 保存/下载 */}
+              <div className="ml-auto flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg p-0.5">
+                  <button onClick={() => setViewMode('preview')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'preview' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}>{t('home.preview_view', '结果预览')}</button>
+                  <button onClick={() => setViewMode('split')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${viewMode === 'split' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-900'}`}>{t('home.split_view', '原文对比')}</button>
+                </div>
                 {outputText && !aiState.isThinking && (
                   <>
-                    {isAuthenticated && (
-                      <button
-                        onClick={() => handleSaveToCloud()}
-                        disabled={isSavingToCloud}
-                        className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-all border border-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
-                        title={currentDocumentId ? t('home.update_to_cloud', '更新到云') : t('home.save_to_cloud', '保存到云')}
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                          <polyline points="17 8 12 3 7 8"></polyline>
-                          <line x1="12" y1="3" x2="12" y2="15"></line>
-                        </svg>
-                        {isSavingToCloud
-                          ? t('home.saving', '保存中...')
-                          : (currentDocumentId ? t('home.update_to_cloud', '更新到云') : t('home.save_to_cloud', '保存到云'))}
-                      </button>
-                    )}
                     <button
                       onClick={() => { handleDownload(); setDownloadHighlight(false); }}
-                      className={`flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all shadow-sm ${downloadHighlight ? 'ring-2 ring-offset-2 ring-green-400 scale-105' : 'ring-0 scale-100'}`}
+                      className={`flex items-center gap-1.5 bg-gray-900 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-gray-800 transition-all shadow-sm ${downloadHighlight ? 'ring-2 ring-offset-2 ring-green-400 scale-105' : ''}`}
                     >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <line x1="12" y1="15" x2="12" y2="3" />
-                      </svg>
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                       {t('home.download_docx', '下载 .docx')}
                     </button>
                   </>
                 )}
               </div>
             </div>
+
+            {/* 失败 / 停止反馈条 */}
+            {aiState.error && (
+              <div className="px-4 py-2 bg-red-50 border-b border-red-100 flex items-center justify-between gap-3">
+                <p className="text-xs text-red-600 flex-1 min-w-0">{aiState.error}</p>
+                {inputText && !aiState.isThinking && (
+                  <button onClick={handleProcess} className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-red-200 text-red-600 text-xs font-medium rounded-lg hover:bg-red-50">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+                    {t('home.retry_generate', '重新生成')}
+                  </button>
+                )}
+              </div>
+            )}
+            {aiState.stopMessage && !aiState.error && (
+              <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                <p className="text-xs text-gray-500">{aiState.stopMessage}</p>
+              </div>
+            )}
+
+            {/* 信任层:内容完整性 + 格式合规。生成结束后出现 */}
+            {outputText && !aiState.isThinking && (integrityReport || compliance.spec) && (
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/40">
+                <TrustPanel
+                  integrityReport={integrityReport}
+                  complianceResults={compliance.spec ? compliance.results : undefined}
+                  complianceStandardName={compliance.spec?.standardName}
+                />
+              </div>
+            )}
+
+            {/* 「仅格式改动」对比断言条(仅原文对比视图) */}
+            {viewMode === 'split' && contentDiff && (
+              <div className={`px-4 py-2 border-b text-xs ${contentDiff.identical ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-amber-50 border-amber-100 text-amber-700'}`}>
+                <div className="flex items-start gap-2">
+                  <span className="flex-shrink-0">{contentDiff.identical ? '✓' : '⚠'}</span>
+                  {contentDiff.identical ? (
+                    <span>{t('home.diff_ok', '仅格式调整:正文内容与原文一致')}</span>
+                  ) : (
+                    <span>{t('home.diff_warn', '检测到 {{r}} 处疑似删减、{{a}} 处疑似新增,请复核(AI 重排改写措辞可能导致误报)', { r: contentDiff.removed.length, a: contentDiff.added.length })}</span>
+                  )}
+                </div>
+                {!contentDiff.identical && (contentDiff.removed.length > 0 || contentDiff.added.length > 0) && (
+                  <div className="mt-1.5 space-y-1 pl-5">
+                    {contentDiff.removed.length > 0 && (
+                      <details>
+                        <summary className="cursor-pointer text-amber-700/80 hover:text-amber-800">{t('home.diff_removed', '疑似删减 {{n}} 处', { n: contentDiff.removed.length })}</summary>
+                        <ul className="mt-1 space-y-0.5">
+                          {contentDiff.removed.map((s, i) => (
+                            <li key={i} className="text-gray-500 truncate before:content-['−_'] before:text-red-400">{s}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                    {contentDiff.added.length > 0 && (
+                      <details>
+                        <summary className="cursor-pointer text-amber-700/80 hover:text-amber-800">{t('home.diff_added', '疑似新增 {{n}} 处', { n: contentDiff.added.length })}</summary>
+                        <ul className="mt-1 space-y-0.5">
+                          {contentDiff.added.map((s, i) => (
+                            <li key={i} className="text-gray-500 truncate before:content-['+_'] before:text-blue-400">{s}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Content */}
             <div className="flex-1 flex min-h-0">
@@ -1863,24 +1845,6 @@ function Home() {
       <UserProfileModal
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
-        onOpenDocument={(doc) => {
-          // 把历史文档加载回主编辑器
-          setOutputText(doc.content);
-          // 关键:同步 textBufferRef,否则后续 SSE flush 可能用旧 buffer 冲掉
-          textBufferRef.current = doc.content;
-          // 清掉空状态可能残留的待生成输入(粘贴文本/上传文件),
-          // 否则工作态 chip 的文件名/字数会与刚打开的文档来源不一致,且「重排」会用错内容源
-          setInputText('');
-          setInputSource(null);
-          setCurrentDocumentId(doc.id);
-          if (doc.title) setInputFileName(`${doc.title}.docx`);
-          setIsContentEdited(false);
-          setViewMode('preview');
-          // preset 安全转换:只在它是合法 DocPreset 时才 set
-          if (Object.values(DocPreset).includes(doc.preset as DocPreset)) {
-            setSelectedPreset(doc.preset as DocPreset);
-          }
-        }}
       />
 
       {/* Toast Notification */}
@@ -1901,6 +1865,13 @@ function Home() {
         <a href="/terms" target="_blank" rel="noopener" className="hover:text-gray-600 transition-colors">{t('footer.terms', '用户协议')}</a>
         <span>·</span>
         <a href="/privacy" target="_blank" rel="noopener" className="hover:text-gray-600 transition-colors">{t('footer.privacy', '隐私政策')}</a>
+        {/* ICP 备案号:配置 VITE_ICP_BEIAN 后展示,链接工信部备案系统 */}
+        {import.meta.env.VITE_ICP_BEIAN && (
+          <>
+            <span>·</span>
+            <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" className="hover:text-gray-600 transition-colors">{import.meta.env.VITE_ICP_BEIAN}</a>
+          </>
+        )}
       </div>
     </div>
   );

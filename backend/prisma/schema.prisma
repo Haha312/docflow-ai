@@ -9,8 +9,10 @@ datasource db {
 
 model User {
   id                  String             @id @default(uuid())
-  email               String             @unique
-  passwordHash        String
+  phone               String?            @unique
+  email               String?            @unique
+  passwordHash        String?
+  tokenVersion        Int                @default(0)
   subscriptionStatus  SubscriptionStatus @default(FREE)
   subscriptionEndDate DateTime?
   quotaPeriodStart    DateTime?

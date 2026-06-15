@@ -17,13 +17,6 @@ export function Terms() {
   return (
     <div className="min-h-screen bg-zinc-50 py-12 px-4">
       <div className="max-w-3xl mx-auto">
-        {/* 红色 banner — 提醒未完成 */}
-        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4">
-          <p className="text-sm font-semibold text-red-700">
-            ⚠️ 本页文案为占位模板,上线前请由法务/运营完成 review,替换所有 <code>{'{{...}}'}</code> 占位符。
-          </p>
-        </div>
-
         <Link to="/" className="text-sm text-gray-500 hover:text-gray-900">← 返回首页</Link>
 
         <h1 className="mt-6 text-3xl font-bold text-gray-900">用户协议</h1>

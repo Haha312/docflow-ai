@@ -35,3 +35,10 @@ export const isValidEmail = (email: string): boolean => {
 export const isValidPassword = (password: string): boolean => {
     return password.length >= 6;
 };
+
+/**
+ * 验证中国大陆手机号格式 (1 开头,第二位 3-9,共 11 位)
+ */
+export const isValidPhone = (phone: string): boolean => {
+    return /^1[3-9]\d{9}$/.test(phone);
+};

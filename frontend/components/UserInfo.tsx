@@ -69,11 +69,11 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin
         className="group flex items-center gap-3 pl-1 pr-3 py-1 bg-white hover:bg-gray-50 border border-transparent hover:border-gray-200 rounded-full transition-all duration-200 hover:shadow-sm"
       >
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-black flex items-center justify-center text-white font-medium text-sm shadow-md ring-2 ring-white ring-offset-1 ring-offset-gray-50 group-hover:scale-105 transition-transform duration-200">
-          {(user.email.charAt(0) || '?').toUpperCase()}
+          {(user.email?.[0] || user.phone?.[0] || '?').toUpperCase()}
         </div>
         <div className="hidden sm:flex flex-col items-start gap-0.5">
           <span className="text-xs font-semibold text-gray-700 max-w-[100px] truncate leading-none">
-            {user.email.split('@')[0]}
+            {user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : (user.email?.split('@')[0] || t('nav.user', '用户'))}
           </span>
           <span className={`text-[10px] font-bold tracking-wide uppercase leading-none ${getTierColor(user.subscriptionStatus)}`}>
             {tierLabel}
@@ -90,7 +90,7 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin
       {showMenu && (
         <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50">
           <div className="px-3 py-2 border-b border-gray-100">
-            <p className="text-xs text-gray-500">{user.email}</p>
+            <p className="text-xs text-gray-500">{user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : user.email}</p>
             <div className="flex items-center justify-between mt-1">
               <span className={`text-sm font-bold ${getTierColor(user.subscriptionStatus)}`}>
                 {tierLabel}
@@ -126,7 +126,7 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin
             {t('nav.upgrade')}
           </button>
 
-          {['admin@docuflow.ai'].includes(user.email.toLowerCase()) && (
+          {user.isAdmin && (
             <button
               onClick={() => { setShowMenu(false); onOpenAdmin && onOpenAdmin(); }}
               className="w-full text-left px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-2"

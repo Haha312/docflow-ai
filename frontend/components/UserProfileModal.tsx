@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { OrderHistory } from './OrderHistory';
-import { DocumentList, OpenableDocument } from './DocumentList';
 import { cancelSubscription, getUserUsage } from '../services/backendApiService';
 import { authService } from '../services/authService';
 import { useTranslation } from 'react-i18next';
@@ -10,20 +9,15 @@ import { useTranslation } from 'react-i18next';
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /**
-   * 父组件提供时,文档历史列表会显示"打开"按钮;点击后此回调被触发,
-   * 同时 Modal 自动关闭(把控制权交回主页面)。
-   */
-  onOpenDocument?: (doc: OpenableDocument) => void;
 }
 
-type AccountAction = 'pwd' | 'email' | 'delete' | null;
+type AccountAction = 'email' | 'delete' | null;
 
-export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfileModalProps) {
+export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
   const { user, remainingQuota, logout, refreshUser } = useAuth();
   const toast = useToast();
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'profile' | 'documents' | 'orders'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'orders'>('profile');
 
   // 本月用量统计
   const [monthlyCount, setMonthlyCount] = useState<number | null>(null);
@@ -46,28 +40,17 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
 
-  // 账户管理 (修改密码 / 邮箱 / 删除)
+  // 账户管理 (选填邮箱 / 删除账号)
   const [activeAction, setActiveAction] = useState<AccountAction>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
-  // 密码表单
-  const [oldPwd, setOldPwd] = useState('');
-  const [newPwd, setNewPwd] = useState('');
-  // 邮箱表单
-  const [emailPwd, setEmailPwd] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [emailCode, setEmailCode] = useState('');
-  const [emailStep, setEmailStep] = useState<'request' | 'confirm'>('request');
-  // 删除账号表单
-  const [deletePwd, setDeletePwd] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState('');
 
   const resetAccountForms = () => {
     setActiveAction(null);
     setActionError('');
-    setOldPwd(''); setNewPwd('');
-    setEmailPwd(''); setNewEmail(''); setEmailCode(''); setEmailStep('request');
-    setDeletePwd(''); setDeleteConfirm('');
+    setNewEmail(''); setDeleteConfirm('');
   };
 
   const handleCancelSubscription = async () => {
@@ -84,44 +67,16 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
     }
   };
 
-  const handleChangePassword = async () => {
+  const handleSetEmail = async () => {
     setActionLoading(true);
     setActionError('');
     try {
-      await authService.changePassword(oldPwd, newPwd);
-      toast.success(t('profile.password_changed', '密码已修改'));
-      resetAccountForms();
-    } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : t('errors.change_password_failed', '密码修改失败'));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleRequestEmailCode = async () => {
-    setActionLoading(true);
-    setActionError('');
-    try {
-      await authService.requestEmailChange(emailPwd, newEmail);
-      toast.info(t('profile.email_code_sent', '验证码已发送到新邮箱'));
-      setEmailStep('confirm');
-    } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : t('errors.change_email_failed', '邮箱修改失败'));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleConfirmEmailChange = async () => {
-    setActionLoading(true);
-    setActionError('');
-    try {
-      await authService.confirmEmailChange(emailCode);
+      await authService.setEmail(newEmail.trim());
       await refreshUser();
       toast.success(t('profile.email_changed', '邮箱已更新'));
       resetAccountForms();
     } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : t('errors.change_email_failed', '邮箱修改失败'));
+      setActionError(e instanceof Error ? e.message : t('errors.set_email_failed', '邮箱保存失败'));
     } finally {
       setActionLoading(false);
     }
@@ -131,10 +86,9 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
     setActionLoading(true);
     setActionError('');
     try {
-      await authService.deleteAccount(deletePwd);
+      await authService.deleteAccount();
       toast.success(t('profile.account_deleted', '账号已删除'));
-      // 直接 logout(authService.deleteAccount 已 clearToken)+ 关闭 modal
-      // logout() 会把 AuthContext 的 user 设 null, 主页面自动重渲染
+      // authService.deleteAccount 已 clearToken;logout() 把 AuthContext.user 设 null
       logout();
       onClose();
     } catch (e: unknown) {
@@ -169,11 +123,11 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
 
           <div className="flex items-center gap-4 mb-6">
             <div className="w-14 h-14 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 font-medium text-xl">
-              {(user.email.charAt(0) || '?').toUpperCase()}
+              {(user.email?.[0] || user.phone?.[0] || '?').toUpperCase()}
             </div>
             <div>
               <h2 className="text-xl font-medium text-gray-900">{t('profile.title')}</h2>
-              <p className="text-sm text-gray-500 mt-0.5">{user.email}</p>
+              <p className="text-sm text-gray-500 mt-0.5">{user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : (user.email || '')}</p>
             </div>
           </div>
 
@@ -181,7 +135,6 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
           <div className="flex gap-6 border-b border-gray-200">
             {[
               { key: 'profile', label: t('profile.tab_profile') },
-              { key: 'documents', label: t('profile.tab_documents') },
               { key: 'orders', label: t('profile.tab_orders') }
             ].map(tab => (
               <button
@@ -266,29 +219,29 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
               <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
                 <p className="text-xs text-gray-400 mb-2">{t('profile.account_management', '账户管理')}</p>
 
-                {/* 修改密码 */}
-                {activeAction !== 'pwd' ? (
+                {/* 手机号(只读展示) */}
+                <div className="flex justify-between items-center py-1.5">
+                  <span className="text-sm text-gray-500">{t('auth.phone', '手机号')}</span>
+                  <span className="text-sm text-gray-900">{user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : '-'}</span>
+                </div>
+
+                {/* 通知邮箱(选填,用于支付收据/续费提醒) */}
+                {activeAction !== 'email' ? (
                   <button
-                    onClick={() => { resetAccountForms(); setActiveAction('pwd'); }}
-                    className="w-full text-left text-sm text-gray-700 hover:text-gray-900 transition-colors py-1.5"
+                    onClick={() => { resetAccountForms(); setNewEmail(user.email || ''); setActiveAction('email'); }}
+                    className="w-full flex items-center justify-between text-sm text-gray-700 hover:text-gray-900 transition-colors py-1.5 border-t border-gray-100"
                   >
-                    {t('profile.change_password', '修改密码')}
+                    <span>{t('profile.notify_email', '通知邮箱(选填)')}</span>
+                    <span className="text-xs text-gray-400">{user.email || t('profile.not_set', '未设置')}</span>
                   </button>
                 ) : (
-                  <div className="space-y-2 py-1">
+                  <div className="space-y-2 py-1 border-t border-gray-100 pt-3">
+                    <p className="text-xs text-gray-500">{t('profile.email_purpose', '用于接收支付收据与续费提醒,可留空')}</p>
                     <input
-                      type="password"
-                      placeholder={t('profile.old_password', '当前密码')}
-                      value={oldPwd}
-                      onChange={(e) => setOldPwd(e.target.value)}
-                      disabled={actionLoading}
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                    />
-                    <input
-                      type="password"
-                      placeholder={t('profile.new_password_min', '新密码 (至少 6 位)')}
-                      value={newPwd}
-                      onChange={(e) => setNewPwd(e.target.value)}
+                      type="email"
+                      placeholder={t('profile.new_email', '邮箱地址')}
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
                       disabled={actionLoading}
                       className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                     />
@@ -298,85 +251,13 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
                         {t('common.cancel', '取消')}
                       </button>
                       <button
-                        disabled={actionLoading || !oldPwd || newPwd.length < 6}
-                        onClick={handleChangePassword}
+                        disabled={actionLoading || (!!newEmail.trim() && !newEmail.includes('@'))}
+                        onClick={handleSetEmail}
                         className="flex-1 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
                       >
                         {actionLoading ? t('common.processing', '处理中...') : t('common.confirm', '确定')}
                       </button>
                     </div>
-                  </div>
-                )}
-
-                {/* 修改邮箱 */}
-                {activeAction !== 'email' ? (
-                  <button
-                    onClick={() => { resetAccountForms(); setActiveAction('email'); }}
-                    className="w-full text-left text-sm text-gray-700 hover:text-gray-900 transition-colors py-1.5 border-t border-gray-100"
-                  >
-                    {t('profile.change_email', '修改邮箱')}
-                  </button>
-                ) : (
-                  <div className="space-y-2 py-1 border-t border-gray-100 pt-3">
-                    {emailStep === 'request' ? (
-                      <>
-                        <input
-                          type="password"
-                          placeholder={t('profile.current_password', '当前密码')}
-                          value={emailPwd}
-                          onChange={(e) => setEmailPwd(e.target.value)}
-                          disabled={actionLoading}
-                          className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                        />
-                        <input
-                          type="email"
-                          placeholder={t('profile.new_email', '新邮箱地址')}
-                          value={newEmail}
-                          onChange={(e) => setNewEmail(e.target.value)}
-                          disabled={actionLoading}
-                          className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                        />
-                        {actionError && <p className="text-xs text-red-600">{actionError}</p>}
-                        <div className="flex gap-2 pt-1">
-                          <button disabled={actionLoading} onClick={resetAccountForms} className="flex-1 py-2 bg-gray-50 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-100 disabled:opacity-50">
-                            {t('common.cancel', '取消')}
-                          </button>
-                          <button
-                            disabled={actionLoading || !emailPwd || !newEmail.includes('@')}
-                            onClick={handleRequestEmailCode}
-                            className="flex-1 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
-                          >
-                            {actionLoading ? t('common.processing', '处理中...') : t('profile.send_code_to_new_email', '发送验证码')}
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-xs text-gray-500">{t('profile.code_sent_to', '验证码已发到 {{email}}', { email: newEmail })}</p>
-                        <input
-                          type="text"
-                          placeholder={t('auth.email_code_placeholder', '输入6位验证码')}
-                          value={emailCode}
-                          onChange={(e) => setEmailCode(e.target.value)}
-                          disabled={actionLoading}
-                          maxLength={6}
-                          className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                        />
-                        {actionError && <p className="text-xs text-red-600">{actionError}</p>}
-                        <div className="flex gap-2 pt-1">
-                          <button disabled={actionLoading} onClick={resetAccountForms} className="flex-1 py-2 bg-gray-50 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-100 disabled:opacity-50">
-                            {t('common.cancel', '取消')}
-                          </button>
-                          <button
-                            disabled={actionLoading || emailCode.length !== 6}
-                            onClick={handleConfirmEmailChange}
-                            className="flex-1 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
-                          >
-                            {actionLoading ? t('common.processing', '处理中...') : t('common.confirm', '确定')}
-                          </button>
-                        </div>
-                      </>
-                    )}
                   </div>
                 )}
 
@@ -392,14 +273,6 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
                   <div className="space-y-2 py-1 border-t border-gray-100 pt-3">
                     <p className="text-sm text-red-600 font-medium">{t('profile.delete_account_warning', '此操作不可撤销!所有文档、订单、使用记录将被永久删除。')}</p>
                     <input
-                      type="password"
-                      placeholder={t('profile.current_password', '当前密码')}
-                      value={deletePwd}
-                      onChange={(e) => setDeletePwd(e.target.value)}
-                      disabled={actionLoading}
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                    />
-                    <input
                       type="text"
                       placeholder={t('profile.delete_confirm_placeholder', '输入 DELETE 确认')}
                       value={deleteConfirm}
@@ -413,7 +286,7 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
                         {t('common.cancel', '取消')}
                       </button>
                       <button
-                        disabled={actionLoading || !deletePwd || deleteConfirm !== 'DELETE'}
+                        disabled={actionLoading || deleteConfirm !== 'DELETE'}
                         onClick={handleDeleteAccount}
                         className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
                       >
@@ -495,11 +368,6 @@ export function UserProfileModal({ isOpen, onClose, onOpenDocument }: UserProfil
             </div>
           )}
 
-          {activeTab === 'documents' && (
-            <DocumentList
-              onOpenDocument={onOpenDocument ? (doc) => { onOpenDocument(doc); onClose(); } : undefined}
-            />
-          )}
           {activeTab === 'orders' && <OrderHistory />}
         </div>
       </div>

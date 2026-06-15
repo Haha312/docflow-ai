@@ -1,5 +1,5 @@
 // 后端 API 调用服务 (替换直接调用 Gemini)
-import { DocPreset, StyleConfig } from '../types';
+import { DocPreset, StyleConfig, IntegrityReport } from '../types';
 import { authService } from './authService';
 import i18n from '../i18n';
 
@@ -23,7 +23,7 @@ export async function generateDocumentViaBackend(
     request: GenerateDocumentRequest,
     onProgress: (html: string, progress?: any, imageMap?: Record<string, string>) => void,
     abortSignal?: AbortSignal
-): Promise<string> {
+): Promise<{ html: string; integrityReport?: IntegrityReport }> {
     const token = authService.getToken();
     if (!token) {
         throw new Error(i18n.t('errors.login_required', '请先登录'));
@@ -66,6 +66,7 @@ export async function generateDocumentViaBackend(
     const decoder = new TextDecoder();
     let fullText = '';
     let buffer = '';
+    let capturedReport: IntegrityReport | undefined;
 
     try {
         while (true) {
@@ -85,7 +86,13 @@ export async function generateDocumentViaBackend(
                             const data = JSON.parse(dataStr);
 
                             if (data.error) throw new Error(data.error);
-                            if (data.done) return fullText;
+                            if (data.done) return { html: fullText, integrityReport: capturedReport };
+
+                            // integrityReport 事件 — 内容完整性报告(done 之前送达)
+                            if (data.integrityReport) {
+                                capturedReport = data.integrityReport;
+                                continue;
+                            }
 
                             // imageMap 事件 — 初始化图片映射
                             if (data.imageMap) {
@@ -120,7 +127,7 @@ export async function generateDocumentViaBackend(
                 }
             }
         }
-        return fullText;
+        return { html: fullText, integrityReport: capturedReport };
     } finally {
         reader.releaseLock();
     }
@@ -158,85 +165,6 @@ export async function getUserUsage(limit = 100): Promise<Array<{
     return data.data;
 }
 
-// 获取用户文档列表
-export async function getUserDocuments(page = 1, pageSize = 20): Promise<{ list: any[], pagination: any }> {
-    const token = authService.getToken();
-    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
-
-    const response = await fetch(`${API_BASE_URL}/api/documents?page=${page}&pageSize=${pageSize}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || i18n.t('errors.fetch_doc_failed', '获取文档失败'));
-    return data.data;
-}
-
-// 获取文档详情
-export async function getDocument(id: string): Promise<any> {
-    const token = authService.getToken();
-    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
-
-    const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || i18n.t('errors.fetch_doc_failed', '获取文档失败'));
-    return data.data;
-}
-
-// 删除文档
-export async function deleteDocument(id: string): Promise<void> {
-    const token = authService.getToken();
-    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
-
-    const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || i18n.t('errors.delete_doc_failed', '删除文档失败'));
-}
-
-// 创建文档分享链接 (返回 shareToken)
-export async function createShareLink(documentId: string): Promise<{ shareToken: string }> {
-    const token = authService.getToken();
-    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
-    const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/share`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || '创建分享链接失败');
-    return data.data;
-}
-
-// 撤销文档分享链接
-export async function revokeShareLink(documentId: string): Promise<void> {
-    const token = authService.getToken();
-    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
-    const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/share`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || '撤销分享链接失败');
-}
-
-// 公开访问 — 通过 shareToken 获取文档(无需登录)
-export async function getSharedDocument(shareToken: string): Promise<{
-    id: string;
-    title: string;
-    content: string;
-    preset: string;
-    wordCount?: number | null;
-    createdAt: string;
-}> {
-    const response = await fetch(`${API_BASE_URL}/api/documents/share/${shareToken}`);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || '分享链接已失效');
-    return data.data;
-}
-
 // 取消订阅 (立即降级为 FREE,放弃剩余天数。退款剩余天数需联系客服)
 export async function cancelSubscription(): Promise<{ previousTier: string; previousEndDate: string | null }> {
     const token = authService.getToken();
@@ -248,29 +176,6 @@ export async function cancelSubscription(): Promise<{ previousTier: string; prev
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || i18n.t('errors.cancel_subscription_failed', '取消订阅失败'));
-    return data.data;
-}
-
-// 保存新文档到后端 (云同步)
-export async function saveDocument(payload: {
-    title: string;
-    content: string;
-    preset?: string;
-    wordCount?: number;
-}): Promise<{ id: string }> {
-    const token = authService.getToken();
-    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
-
-    const response = await fetch(`${API_BASE_URL}/api/documents`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || i18n.t('errors.save_doc_failed', '保存文档失败'));
     return data.data;
 }
 
@@ -289,29 +194,4 @@ export async function requestRefund(orderId: string, reason?: string): Promise<v
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || i18n.t('errors.refund_failed', '退款失败'));
-}
-
-// 更新已有文档 (用户在前端编辑后保存)
-export async function updateDocument(
-    id: string,
-    payload: {
-        title?: string;
-        content?: string;
-        preset?: string;
-        wordCount?: number;
-    }
-): Promise<void> {
-    const token = authService.getToken();
-    if (!token) throw new Error(i18n.t('errors.login_required', '请先登录'));
-
-    const response = await fetch(`${API_BASE_URL}/api/documents/${id}`, {
-        method: 'PUT',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message || i18n.t('errors.update_doc_failed', '更新文档失败'));
 }

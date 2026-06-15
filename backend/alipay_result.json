@@ -1,7 +1,0 @@
-{
-  "code": "40006",
-  "msg": "Insufficient Permissions",
-  "subCode": "isv.insufficient-isv-permissions",
-  "subMsg": "接口调用权限不足，解决方案：https://open.alipay.com/api/errCheck?traceId=0b44620217701692371064072eba89&source=openapi",
-  "traceId": "0b44620217701692371064072eba89"
-}

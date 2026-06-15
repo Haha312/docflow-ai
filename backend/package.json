@@ -47,6 +47,7 @@
         "pino": "^10.3.1",
         "pino-http": "^11.0.0",
         "svg-captcha": "^1.4.0",
+        "tencentcloud-sdk-nodejs-sms": "^4.1.240",
         "undici": "^7.19.2"
     },
     "devDependencies": {

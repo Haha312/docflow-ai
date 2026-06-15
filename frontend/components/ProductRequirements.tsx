@@ -43,8 +43,8 @@ export const ProductRequirements: React.FC<Props> = ({ isOpen, onClose }) => {
               {[
                 {
                   step: '1',
-                  title: t('help.qs_1_title', '上传文档'),
-                  desc: t('help.qs_1_desc', '支持 .docx、.txt、.md，单文件最大 100MB')
+                  title: t('help.qs_1_title', '粘贴或上传'),
+                  desc: t('help.qs_1_desc', '直接粘贴文字，或拖入 .docx / .txt / .md 文件（单文件最大 100MB）')
                 },
                 {
                   step: '2',
@@ -54,7 +54,7 @@ export const ProductRequirements: React.FC<Props> = ({ isOpen, onClose }) => {
                 {
                   step: '3',
                   title: t('help.qs_3_title', '开始生成'),
-                  desc: t('help.qs_3_desc', '选择 AI 模型，点击「开始智能重排」，生成完成后预览并下载')
+                  desc: t('help.qs_3_desc', '点击「开始排版」，生成完成后可预览、对比原文并下载')
                 }
               ].map(item => (
                 <div key={item.step} className="bg-white p-4 rounded-xl border border-gray-200">
@@ -80,8 +80,8 @@ export const ProductRequirements: React.FC<Props> = ({ isOpen, onClose }) => {
                 },
                 {
                   icon: '🔍',
-                  title: t('help.cf_2_title', '预览与原文对比'),
-                  desc: t('help.cf_2_desc', '生成后自动切换预览模式，点击「原文对比」可并排核对原文与结果')
+                  title: t('help.cf_2_title', '内容完整性核对'),
+                  desc: t('help.cf_2_desc', '生成后并排对比原文与结果，自动标注内容是否完整（无丢失、截断），确保只改格式、不改文字')
                 },
                 {
                   icon: '🎨',
@@ -92,6 +92,11 @@ export const ProductRequirements: React.FC<Props> = ({ isOpen, onClose }) => {
                   icon: '📄',
                   title: t('help.cf_4_title', '.docx 一键导出'),
                   desc: t('help.cf_4_desc', '生成完成后点击右上角「下载 .docx」，导出标准 Word 文档，可直接编辑')
+                },
+                {
+                  icon: '✅',
+                  title: t('help.cf_5_title', '格式合规检查'),
+                  desc: t('help.cf_5_desc', '按《GB/T 9704》党政机关公文、毕业论文等标准，自动核对字体、字号、行距、页边距是否达标')
                 }
               ].map(item => (
                 <div key={item.title} className="bg-white p-4 rounded-xl border border-gray-200">
@@ -131,6 +136,12 @@ export const ProductRequirements: React.FC<Props> = ({ isOpen, onClose }) => {
                 <h4 className="font-medium text-gray-900 text-sm">{t('help.faq_4_title', '生成结果不满意怎么办？')}</h4>
                 <p className="text-xs text-gray-500 mt-1">
                   {t('help.faq_4_desc', '可以点击「自定义」调整字体、行距等排版参数后重新生成；也可以先下载 .docx，在 Word 中手动微调。建议对长文档使用高质量模型（Gemini Pro）以获得最佳结构识别效果。')}
+                </p>
+              </div>
+              <div className="bg-white p-4 rounded-xl border border-gray-200">
+                <h4 className="font-medium text-gray-900 text-sm">{t('help.faq_5_title', '我的文档会被保存吗？')}</h4>
+                <p className="text-xs text-gray-500 mt-1">
+                  {t('help.faq_5_desc', '不会。文档仅在生成时临时处理，结果只返回给你下载，服务器不保存任何文档内容，请放心。')}
                 </p>
               </div>
             </div>

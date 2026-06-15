@@ -9,7 +9,7 @@ const router = express.Router();
 
 const requireAdmin = async (req: AuthRequest, res: Response, next: express.NextFunction) => {
     try {
-        if (!req.user || !(await isAdmin(req.user.email))) {
+        if (!req.user || !(await isAdmin(req.user.phone))) {
             res.status(403).json({ error: 'Access Denied: Admins Only' });
             return;
         }
@@ -48,7 +48,7 @@ router.get('/stats', authenticate, requireAdmin, async (req: AuthRequest, res: R
         const recentLogs = await prisma.usageLog.findMany({
             take: 50,
             orderBy: { createdAt: 'desc' },
-            include: { user: { select: { email: true, subscriptionStatus: true } } }
+            include: { user: { select: { phone: true, email: true, subscriptionStatus: true } } }
         });
 
         // 4. Daily History (Dynamic days) for line chart
@@ -119,6 +119,153 @@ router.get('/stats', authenticate, requireAdmin, async (req: AuthRequest, res: R
 });
 
 /**
+ * GET /api/admin/overview
+ * 营收 + 用户聚合总览(只读,纯聚合现有 Order/User,无 schema 改动)
+ */
+router.get('/overview', authenticate, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const days = parseInt(req.query.days as string) || 7;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const periodStart = new Date();
+        periodStart.setDate(periodStart.getDate() - (days - 1));
+        periodStart.setHours(0, 0, 0, 0);
+
+        // 收入按下单时间 createdAt 分桶:Order 无 paidAt 字段;updatedAt 会被退款改写,故用不可变的 createdAt
+        // (即付场景下下单时间≈支付时间;若日后新增 paidAt 列可改用之)
+        const [todayAgg, periodAgg, totalAgg, refundAgg] = await Promise.all([
+            prisma.order.aggregate({ _sum: { amount: true }, _count: { id: true }, where: { status: 'PAID', createdAt: { gte: today } } }),
+            prisma.order.aggregate({ _sum: { amount: true }, _count: { id: true }, where: { status: 'PAID', createdAt: { gte: periodStart } } }),
+            prisma.order.aggregate({ _sum: { amount: true }, _count: { id: true }, where: { status: 'PAID' } }),
+            prisma.order.aggregate({ _sum: { amount: true }, _count: { id: true }, where: { status: 'REFUNDED' } }),
+        ]);
+
+        // 按套餐(仅已支付)
+        const byPlanRaw = await prisma.order.groupBy({
+            by: ['planType'],
+            where: { status: 'PAID' },
+            _count: { id: true },
+            _sum: { amount: true },
+        });
+        const byPlan = byPlanRaw
+            .map(p => ({ planType: p.planType, count: p._count.id, revenue: Number(p._sum.amount ?? 0) }))
+            .sort((a, b) => b.revenue - a.revenue);
+
+        // 每日营收(近 N 天,沿用 /stats dailyHistory 写法)
+        const dailyRevenue = [];
+        for (let i = days - 1; i >= 0; i--) {
+            const ds = new Date();
+            ds.setDate(ds.getDate() - i);
+            ds.setHours(0, 0, 0, 0);
+            const de = new Date(ds);
+            de.setHours(23, 59, 59, 999);
+            const a = await prisma.order.aggregate({
+                _sum: { amount: true },
+                _count: { id: true },
+                where: { status: 'PAID', createdAt: { gte: ds, lte: de } },
+            });
+            dailyRevenue.push({
+                date: ds.toISOString().split('T')[0],
+                dateLabel: `${ds.getMonth() + 1}/${ds.getDate()}`,
+                revenue: Number(a._sum.amount ?? 0),
+                orders: a._count.id || 0,
+            });
+        }
+
+        // 用户聚合
+        const [totalUsers, tierGroups, activePaid, newToday] = await Promise.all([
+            prisma.user.count(),
+            prisma.user.groupBy({ by: ['subscriptionStatus'], _count: { id: true } }),
+            prisma.user.count({ where: { subscriptionStatus: { not: 'FREE' } } }),
+            prisma.user.count({ where: { createdAt: { gte: today } } }),
+        ]);
+        const byTier: Record<string, number> = { FREE: 0, PLUS: 0, PRO: 0, ULTRA: 0 };
+        tierGroups.forEach(g => { byTier[g.subscriptionStatus] = g._count.id; });
+        const conversionPct = totalUsers > 0 ? Math.round((activePaid / totalUsers) * 10000) / 100 : 0;
+
+        // 每日新增注册(近 N 天)
+        const dailySignups = [];
+        for (let i = days - 1; i >= 0; i--) {
+            const ds = new Date();
+            ds.setDate(ds.getDate() - i);
+            ds.setHours(0, 0, 0, 0);
+            const de = new Date(ds);
+            de.setHours(23, 59, 59, 999);
+            const c = await prisma.user.count({ where: { createdAt: { gte: ds, lte: de } } });
+            dailySignups.push({
+                date: ds.toISOString().split('T')[0],
+                dateLabel: `${ds.getMonth() + 1}/${ds.getDate()}`,
+                count: c,
+            });
+        }
+
+        res.json({
+            revenue: {
+                today: { revenue: Number(todayAgg._sum.amount ?? 0), paidOrders: todayAgg._count.id || 0 },
+                period: { revenue: Number(periodAgg._sum.amount ?? 0), paidOrders: periodAgg._count.id || 0 },
+                total: { revenue: Number(totalAgg._sum.amount ?? 0), paidOrders: totalAgg._count.id || 0 },
+            },
+            refunds: { refundedAmount: Number(refundAgg._sum.amount ?? 0), refundedCount: refundAgg._count.id || 0 },
+            byPlan,
+            dailyRevenue,
+            users: { total: totalUsers, byTier, activePaid, newToday, conversionPct },
+            dailySignups,
+        });
+    } catch (error) {
+        console.error('Admin Overview Error:', error);
+        res.status(500).json({ error: 'Failed to fetch overview' });
+    }
+});
+
+/**
+ * GET /api/admin/orders
+ * 订单列表(分页 + 可选状态过滤)
+ */
+router.get('/orders', authenticate, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 15;
+        const skip = (page - 1) * limit;
+        const VALID_STATUSES = ['PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDING', 'REFUNDED'];
+        const status = req.query.status as string | undefined;
+        // 仅当状态在枚举内才过滤;非法/缺省 = 不过滤(不报错)
+        const where: any = (status && VALID_STATUSES.includes(status)) ? { status } : {};
+
+        const [total, orders] = await Promise.all([
+            prisma.order.count({ where }),
+            prisma.order.findMany({
+                where,
+                skip,
+                take: limit,
+                orderBy: { createdAt: 'desc' },
+                select: {
+                    id: true,
+                    amount: true,
+                    currency: true,
+                    planType: true,
+                    status: true,
+                    createdAt: true,
+                    user: { select: { phone: true, email: true, subscriptionStatus: true } },
+                },
+            }),
+        ]);
+
+        res.json({
+            data: orders.map(o => ({ ...o, amount: Number(o.amount) })),
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
+    } catch (error) {
+        console.error('Admin Orders Error:', error);
+        res.status(500).json({ error: 'Failed to fetch orders' });
+    }
+});
+
+/**
  * GET /api/admin/logs
  * Get Paginated Usage Logs
  */
@@ -134,7 +281,7 @@ router.get('/logs', authenticate, requireAdmin, async (req: AuthRequest, res: Re
                 skip,
                 take: limit,
                 orderBy: { createdAt: 'desc' },
-                include: { user: { select: { email: true, subscriptionStatus: true } } }
+                include: { user: { select: { phone: true, email: true, subscriptionStatus: true } } }
             })
         ]);
 
@@ -165,7 +312,10 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
         const skip = (page - 1) * limit;
 
         const whereClause = search ? {
-            email: { contains: search } // PostgreSQL implicitly case-sensitive generally, but depends on collation. Using standard contains.
+            OR: [
+                { phone: { contains: search } },
+                { email: { contains: search } },
+            ],
         } : {};
 
         const [total, users] = await Promise.all([
@@ -177,6 +327,7 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
                 orderBy: { createdAt: 'desc' },
                 select: {
                     id: true,
+                    phone: true,
                     email: true,
                     subscriptionStatus: true,
                     subscriptionEndDate: true,
@@ -205,6 +356,7 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
 
         const enrichedUsers = users.map(u => ({
             id: u.id,
+            phone: u.phone,
             email: u.email,
             subscriptionStatus: u.subscriptionStatus,
             subscriptionEndDate: u.subscriptionEndDate,

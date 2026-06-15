@@ -121,6 +121,8 @@ export const PRESETS: PresetConfig[] = [
       tableCaptionAlign: 'center',
       tableCaptionFont: '"SimHei", sans-serif', // 黑体
       tableCaptionSize: '10.5pt', // 五号
+      pageMargins: { top: '2.54cm', bottom: '2.54cm', left: '3.18cm', right: '3.18cm' },
+      pageSize: 'A4',
       columns: 1,
       generateToc: true
     }
@@ -213,6 +215,8 @@ export const PRESETS: PresetConfig[] = [
       tableCaptionFont: '"SimHei", sans-serif', // 表题：黑体
       tableCaptionSize: '9pt', // 小5号
 
+      pageMargins: { top: '2.54cm', bottom: '2.54cm', left: '3.18cm', right: '3.18cm' },
+      pageSize: 'A4',
       columns: 2 // 双栏排版
     }
   },
@@ -293,6 +297,8 @@ export const PRESETS: PresetConfig[] = [
       tableCaptionFont: '"SimHei", "Heiti SC", sans-serif',
       tableCaptionSize: '9pt', // 小五
 
+      pageMargins: { top: '2.54cm', bottom: '2.54cm', left: '3.18cm', right: '3.18cm' },
+      pageSize: 'A4',
       columns: 1,
       generateToc: true  // 书籍标准配有目录
     }
@@ -356,6 +362,8 @@ export const PRESETS: PresetConfig[] = [
       tableCaptionAlign: 'center',
       tableCaptionFont: '"SimHei", sans-serif',
       tableCaptionSize: '14pt', // 四号
+      pageMargins: { top: '3.7cm', bottom: '3.5cm', left: '2.8cm', right: '2.6cm' }, // GB/T 9704-2012
+      pageSize: 'A4',
       columns: 1,
       generateToc: false
     }
@@ -420,6 +428,8 @@ export const PRESETS: PresetConfig[] = [
       tableCaptionAlign: 'left',
       tableCaptionFont: '"Microsoft YaHei", sans-serif',
       tableCaptionSize: '10.5pt',
+      pageMargins: { top: '2.54cm', bottom: '2.54cm', left: '3.18cm', right: '3.18cm' },
+      pageSize: 'A4',
       columns: 1,
       generateToc: true
     }
