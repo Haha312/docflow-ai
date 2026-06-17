@@ -105,6 +105,8 @@
         "drop_to_upload": "Drop to upload",
         "customized": "Customized",
         "edit_style": "Edit style",
+        "edit": "Edit",
+        "done_edit": "Done",
         "new_doc": "New",
         "new_doc_hint": "New document (clears current content)",
         "back_home": "Back to home",

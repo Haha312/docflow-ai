@@ -34,6 +34,65 @@ const A4_HEIGHT_PX = 1122;
 // Top + bottom padding of the paper div (each side = 80px)
 const A4_PADDING_PX = 160;
 
+// ── 真·分页:把一段干净 HTML 按高度切成多张 A4 纸 ──
+const A4_SHEET_W = 794;                 // 纸宽 px(96dpi 下 A4 宽)
+const A4_SHEET_PAD = '80px 90px 40px';  // 纸张内边距(上 右/左 下)
+const PAGE_USABLE_H = 1000;             // 每页可用内容高度(纸高 1123 - 上80 - 下40 ≈ 1003,留点余量)
+
+/**
+ * 把 html 写入 el,按顶层块的真实高度贪心切成多张 `.a4-page` 纸张(.cover-page 独占一页),
+ * 返回纸张数。测量时临时把 el 当作单张纸排版(宽/内边距一致 → 高度准确)。
+ */
+function paginateIntoSheets(el: HTMLElement, html: string): number {
+  el.innerHTML = html;
+  const prevStyle = el.getAttribute('style') || '';
+  el.style.width = A4_SHEET_W + 'px';
+  el.style.padding = A4_SHEET_PAD;
+  el.style.boxSizing = 'border-box';
+  el.style.margin = '0 auto';
+
+  const children = Array.from(el.children) as HTMLElement[];
+  if (children.length === 0) { el.setAttribute('style', prevStyle); return 1; }
+
+  const groups: HTMLElement[][] = [[]];
+  let gi = 0;
+  let pageStart = children[0].offsetTop;
+  children.forEach((child, idx) => {
+    const isCover = !!child.classList && child.classList.contains('cover-page');
+    const top = child.offsetTop;
+    if (isCover) {
+      if (groups[gi].length) { groups.push([]); gi++; }   // 封面前若有内容,先收尾
+      groups[gi].push(child);                              // 封面独占本页
+      groups.push([]); gi++;                               // 之后另起一页
+      pageStart = children[idx + 1] ? children[idx + 1].offsetTop : top;
+      return;
+    }
+    if (top - pageStart >= PAGE_USABLE_H && groups[gi].length) {
+      groups.push([]); gi++;
+      pageStart = top;
+    }
+    groups[gi].push(child);
+  });
+
+  const realGroups = groups.filter(g => g.length);
+  const total = realGroups.length || 1;
+  const sheets = realGroups.map((group, i) => {
+    const sheet = document.createElement('div');
+    sheet.className = 'a4-page';
+    group.forEach(n => sheet.appendChild(n)); // 移动节点进纸张
+    const footer = document.createElement('div');
+    footer.className = 'a4-page-footer';
+    footer.setAttribute('contenteditable', 'false');
+    footer.textContent = `${i + 1} / ${total}`;
+    sheet.appendChild(footer);
+    return sheet;
+  });
+
+  el.setAttribute('style', prevStyle); // 还原为只读分页容器(透明/无内边距,白底由纸张提供)
+  el.replaceChildren(...sheets);
+  return total;
+}
+
 function Home() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -77,6 +136,8 @@ function Home() {
 
   const [showPRD, setShowPRD] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'preview'>('preview');
+  // 真·分页:默认只读分页(一张张 A4 纸);点「编辑」切到单 div 富文本编辑态
+  const [editMode, setEditMode] = useState(false);
   const [downloadHighlight, setDownloadHighlight] = useState(false);
   // P0-4: 完整性提示(后端报告显示截断/保留率低/有非 info 问题时给用户一个可关闭的轻提示)
   const [integrityNotice, setIntegrityNotice] = useState<string | null>(null);
@@ -131,6 +192,9 @@ function Home() {
   const previewContentRef = useRef<HTMLDivElement>(null);
   const [isContentEdited, setIsContentEdited] = useState(false);
   const savedRangeRef = useRef<Range | null>(null);
+  // 当前展示/导出用的「干净」内容 HTML(扁平、含 KaTeX/图片,不含 .a4-page 包裹)。
+  // 分页(只读视图)与导出都以它为源,避免把分页用的纸张 div 漏进导出。
+  const displayHtmlRef = useRef<string>('');
 
   // Live page count — measured from real DOM scroll height each time content updates
   const [contentPageCount, setContentPageCount] = useState(1);
@@ -534,11 +598,12 @@ function Home() {
     try {
       // If user has edited content, read directly from the DOM
       let docxReadyHtml: string;
-      if (isContentEdited && previewContentRef.current) {
+      if (isContentEdited && (displayHtmlRef.current || previewContentRef.current)) {
         // Strip KaTeX-rendered spans — docxGenerator cannot handle KaTeX HTML.
-        // Replace each .katex element with the raw TeX source stored in the <annotation> tag.
+        // 用 displayHtmlRef(干净的已编辑内容,不含 .a4-page 分页包裹)而非分页后的 DOM,
+        // 避免把纸张 div / 页脚漏进导出。
         const tmp = document.createElement('div');
-        tmp.innerHTML = previewContentRef.current.innerHTML;
+        tmp.innerHTML = displayHtmlRef.current || previewContentRef.current!.innerHTML;
         tmp.querySelectorAll('span.katex').forEach(katexEl => {
           const annotation = katexEl.querySelector('annotation[encoding="application/x-tex"]');
           const tex = annotation?.textContent?.trim() ?? '';
@@ -854,29 +919,41 @@ function Home() {
     const el = previewContentRef.current;
     if (!el) return;
 
-    // 1. Update innerHTML only when not in user-edit mode
-    if (!isContentEditedRef.current) {
-      el.innerHTML = renderedContent;
-    }
-
-    // 2. Handle cleared content
+    // 清空
     if (!renderedContent) {
       setTocItems([]);
       prevTocCountRef.current = 0;
       setContentPageCount(1);
+      displayHtmlRef.current = '';
       return;
     }
 
-    // 3. Extract TOC from already-rendered DOM nodes — O(headings), not O(html string length)
+    // 只读分页(preview + 非编辑 + 非流式)→ 切成多张 A4 纸;否则扁平写入单 div
+    const paginated = viewMode === 'preview' && !editMode && !aiState.isThinking;
+    if (paginated) {
+      // 以「干净内容」为源:未编辑用 renderedContent,编辑过用捕获的 displayHtmlRef
+      if (!isContentEditedRef.current) displayHtmlRef.current = renderedContent;
+      const total = paginateIntoSheets(el, displayHtmlRef.current || renderedContent);
+      setContentPageCount(total);
+    } else {
+      if (!isContentEditedRef.current) {
+        el.innerHTML = renderedContent;
+        displayHtmlRef.current = renderedContent;
+      } else if (editMode) {
+        el.innerHTML = displayHtmlRef.current || renderedContent; // 进入编辑态:显示已编辑内容
+      }
+      const totalH = el.scrollHeight + A4_PADDING_PX;
+      setContentPageCount(Math.max(1, Math.ceil(totalH / A4_HEIGHT_PX)));
+    }
+
+    // TOC 从渲染后的 DOM 提取(分页后 headings 在纸张内,querySelectorAll 仍可命中)
     const headings = Array.from(el.querySelectorAll('h1,h2,h3,h4,h5,h6')) as HTMLElement[];
     const items = headings
       .filter(h => !h.classList.contains('doc-title') && h.textContent?.trim())
       .map((h, i) => {
-        if (!h.id) h.id = `toc-h-${i}`; // write ID back so scrollToHeading can find it
+        if (!h.id) h.id = `toc-h-${i}`;
         return { id: h.id, level: parseInt(h.tagName[1]), text: h.textContent!.trim() };
       });
-
-    // Fade-in animation for newly appeared headings
     const prevCount = prevTocCountRef.current;
     if (items.length > prevCount) {
       const ids = new Set(items.slice(prevCount).map(item => item.id));
@@ -885,11 +962,26 @@ function Home() {
     }
     prevTocCountRef.current = items.length;
     setTocItems(items);
+  }, [renderedContent, viewMode, editMode, aiState.isThinking]);
 
-    // 4. Real page count from actual scroll height
-    const totalH = el.scrollHeight + A4_PADDING_PX;
-    setContentPageCount(Math.max(1, Math.ceil(totalH / A4_HEIGHT_PX)));
-  }, [renderedContent, viewMode]); // viewMode dep: re-init when switching preview ↔ split
+  // 图片(base64)解码后高度才确定 → 内容稳定后再分页一次,纠正首次测量偏差
+  useEffect(() => {
+    const el = previewContentRef.current;
+    if (!el || aiState.isThinking || editMode || viewMode !== 'preview' || !renderedContent) return;
+    const id = setTimeout(() => {
+      const total = paginateIntoSheets(el, displayHtmlRef.current || renderedContent);
+      setContentPageCount(total);
+    }, 220);
+    return () => clearTimeout(id);
+  }, [renderedContent, editMode, aiState.isThinking, viewMode]);
+
+  // 进入/退出编辑
+  const enterEditMode = () => setEditMode(true);
+  const exitEditMode = () => {
+    // 捕获编辑后的干净内容(编辑态是扁平单 div,无 .a4-page 包裹),供分页 + 导出
+    if (previewContentRef.current) displayHtmlRef.current = previewContentRef.current.innerHTML;
+    setEditMode(false);
+  };
 
   const scrollToHeading = (id: string) => {
     const el = document.getElementById(id);
@@ -951,6 +1043,12 @@ function Home() {
       #preview-content .cover-page { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 900px; padding: 120px 24px; page-break-after: always; column-span: all; }
       #preview-content .cover-page .doc-title { font-size: 30pt; margin-bottom: 1.4em; }
       #preview-content .cover-meta { text-indent: 0 !important; text-align: center; font-size: 15pt; line-height: 2; margin: 0.4em 0; color: #222; }
+      /* 真·分页:只读视图下每页是一张独立 A4 白纸(在灰桌面上浮动,纸间留白) */
+      #preview-content .a4-page { position: relative; box-sizing: border-box; width: 794px; min-height: 1123px; margin: 0 auto 24px; padding: 80px 90px 56px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 8px rgba(0,0,0,0.10); }
+      #preview-content .a4-page:last-child { margin-bottom: 8px; }
+      #preview-content .a4-page-footer { position: absolute; left: 90px; right: 90px; bottom: 22px; text-align: center; font-size: 10px; color: #c7c7c7; user-select: none; }
+      /* 封面在所属纸张内填满整页、垂直居中 */
+      #preview-content .a4-page > .cover-page { min-height: 940px; padding: 0; }
       /* 学术期刊专用元素样式 */
       #preview-content .doc-title-en { text-indent: 0; font-size: ${s.englishTitleSize || '14pt'}; font-family: ${getPreviewFontStack(s.englishTitleFont || '"Times New Roman", serif')}; font-weight: bold; text-align: center; margin-top: 0.3em; margin-bottom: 0.5em; column-span: all; }
       #preview-content .author-info { text-indent: 0; font-size: ${s.authorSize || '10.5pt'}; font-family: ${getPreviewFontStack(s.authorFont || '"FangSong", serif')}; text-align: center; margin: 0.3em 0; column-span: all; }
@@ -1506,6 +1604,19 @@ function Home() {
                 </div>
                 {outputText && !aiState.isThinking && (
                   <>
+                    {viewMode === 'preview' && (
+                      <button
+                        onClick={editMode ? exitEditMode : enterEditMode}
+                        title={editMode ? t('home.done_edit', '完成编辑') : t('home.edit', '编辑内容')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${editMode ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:text-gray-900'}`}
+                      >
+                        {editMode ? (
+                          <><svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>{t('home.done_edit', '完成')}</>
+                        ) : (
+                          <><svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>{t('home.edit', '编辑')}</>
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => { handleDownload(); setDownloadHighlight(false); }}
                       className={`flex items-center gap-1.5 bg-gray-900 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-gray-800 transition-all shadow-sm ${downloadHighlight ? 'ring-2 ring-offset-2 ring-green-400 scale-105' : ''}`}
@@ -1627,8 +1738,8 @@ function Home() {
                     {outputText && !aiState.isThinking && (
                       <span className="text-xs text-gray-400">{getTextCount(outputText).toLocaleString()} {t('home.chars', '字')}</span>
                     )}
-                    {/* Rich editor toolbar movable to left block */}
-                    {outputText && !aiState.isThinking && viewMode === 'preview' && (
+                    {/* Rich editor toolbar — 仅编辑态显示(只读分页态内容不可编辑) */}
+                    {outputText && !aiState.isThinking && viewMode === 'preview' && editMode && (
                       <>
                         <div className="w-px h-4 bg-gray-200 mx-1 lg:mx-2" />
                         <div className="flex items-center gap-0.5 md:gap-1" onMouseDown={(e) => { if ((e.target as HTMLElement).tagName !== 'SELECT') { const sel = window.getSelection(); savedRangeRef.current = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0).cloneRange() : null; e.preventDefault(); } }}>
@@ -1762,16 +1873,20 @@ function Home() {
                         )}
                         {viewMode === 'preview' ? (
                           /* A4 纸张模式 */
-                          <>
-
-                            
+                          (!editMode && !aiState.isThinking) ? (
+                            /* 只读真·分页:灰桌面 + 多张独立 A4 纸(由 paginateIntoSheets 填充 #preview-content) */
+                            <div
+                              id="preview-content"
+                              ref={previewContentRef}
+                              className="relative outline-none"
+                            />
+                          ) : (
+                            /* 编辑 / 流式:单张白纸 */
                             <div
                               className="mx-auto bg-white border border-gray-200 mb-2 relative shadow-sm flex flex-col"
                               style={{ maxWidth: '794px', width: '100%', minHeight: '1123px', padding: '80px 90px 40px' }}
                             >
-                              {/* 视觉分页线层 — 滚动时呈现 A4 翻页感。pointer-events:none + aria-hidden,
-                                  纯装饰,不进 contentEditable 数据(保存时不受影响)。
-                                  由 contentPageCount(按内容真实高度算)驱动,流式生成时实时增长。 */}
+                              {/* 视觉分页线层(仅流式/编辑的扁平视图;只读态用真·纸张) */}
                               {contentPageCount > 1 && (
                                 <div className="absolute inset-0 pointer-events-none select-none z-0" aria-hidden="true">
                                   {Array.from({ length: contentPageCount - 1 }).map((_, i) => (
@@ -1792,7 +1907,7 @@ function Home() {
                               <div
                                 id="preview-content"
                                 ref={previewContentRef}
-                                contentEditable={!aiState.isThinking}
+                                contentEditable={editMode && !aiState.isThinking}
                                 suppressContentEditableWarning
                                 spellCheck={false}
                                 onInput={handleContentEdit}
@@ -1823,7 +1938,7 @@ function Home() {
                                 </div>
                               )}
                             </div>
-                          </>
+                          )
                         ) : (
                           /* 对比模式：全宽无纸张效果 */
                           <>

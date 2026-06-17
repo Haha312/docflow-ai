@@ -105,6 +105,8 @@
         "drop_to_upload": "松开以上传文件",
         "customized": "已自定义",
         "edit_style": "调整样式",
+        "edit": "编辑",
+        "done_edit": "完成",
         "new_doc": "新建",
         "new_doc_hint": "新建文档（清空当前内容）",
         "back_home": "返回首页",
