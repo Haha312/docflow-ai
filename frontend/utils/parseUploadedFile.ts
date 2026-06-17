@@ -1,13 +1,16 @@
 import mammoth from 'mammoth';
 import { extractRawTextWithFormulas, extractDocumentStructure } from './docxParser';
 
-/** 根据用户等级获取文件大小限制 (MB) */
+/** 根据用户等级获取文件大小限制 (MB)。
+ *  注:文件大小几乎全是图片,而图片在发给后端前就被剥离成占位符(见 Home.tsx),
+ *  不进 AI、不耗 token、不上服务器 —— 所以 MB 闸只是浏览器内存保护,可以放得很宽;
+ *  真正的成本闸是字符数上限(后端 CONTENT_LIMIT),与此独立。 */
 export const getFileSizeLimit = (tier?: string): number => {
   switch (tier) {
-    case 'ULTRA': return 100;       // 100MB
-    case 'PRO': return 50;          // 50MB
-    case 'PLUS': return 50;         // 50MB
-    default: return 20;             // FREE: 20MB
+    case 'ULTRA': return 500;       // 500MB
+    case 'PRO': return 200;         // 200MB
+    case 'PLUS': return 200;        // 200MB(与 PRO 同档;文件大小不耗 token)
+    default: return 100;            // FREE: 100MB
   }
 };
 

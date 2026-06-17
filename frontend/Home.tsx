@@ -19,9 +19,7 @@ import { useAuth } from './contexts/AuthContext';
 import systemLogo from './image/image.jpg';
 // useTypewriter removed: SSE stream is already incremental, no need for secondary typing animation
 import { PRESETS } from './constants';
-import { DocPreset, AIState, StyleConfig, IntegrityReport } from './types';
-import { TrustPanel } from './components/TrustPanel';
-import { evaluateCompliance } from './utils/compliance';
+import { DocPreset, AIState, StyleConfig } from './types';
 import { diffContent } from './utils/contentDiff';
 import katex from 'katex';
 import DOMPurify from 'dompurify';
@@ -44,29 +42,26 @@ function Home() {
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
   // 区分内容来源:'paste' = 粘贴文本(空状态 textarea),'file' = 上传文件(文件 chip),null = 空
   const [inputSource, setInputSource] = useState<'paste' | 'file' | null>(null);
-  const [selectedPreset, setSelectedPreset] = useState<DocPreset>(DocPreset.ACADEMIC);
+  // 选中的模板:5 个国标模板之一,或单独的「自定义」档案
+  const [selectedPreset, setSelectedPreset] = useState<DocPreset | 'CUSTOM'>(DocPreset.ACADEMIC);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [outputText, setOutputText] = useState<string>('');
   const [imageMap, setImageMap] = useState<Record<string, string>>({});
-  // 内容完整性报告(后端生成结束时随 SSE 返回);null = 尚无/已重置
-  const [integrityReport, setIntegrityReport] = useState<IntegrityReport | null>(null);
   const [showToast, setShowToast] = useState(false);
   // Directly use outputText for rendering — SSE stream provides natural incremental flow
 
-  const [currentStyles, setCurrentStyles] = useState<Record<DocPreset, StyleConfig>>(() => {
-    const initial: any = {};
-    PRESETS.forEach(p => initial[p.id] = { ...p.styleConfig });
-    // 读取本地持久化的自定义样式,合并到默认之上(刷新不丢)
+  // 自定义样式:单独的一份可编辑档案。5 个国标模板始终保持只读默认、绝不被改写。
+  // null = 用户还没配置过自定义。
+  const [customStyle, setCustomStyle] = useState<StyleConfig | null>(() => {
     try {
-      const saved = localStorage.getItem('docuflow_custom_styles');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        PRESETS.forEach(p => {
-          if (parsed && parsed[p.id]) initial[p.id] = { ...p.styleConfig, ...parsed[p.id] };
-        });
-      }
-    } catch (_) { /* 忽略损坏的本地数据 */ }
-    return initial;
+      const saved = localStorage.getItem('docuflow_custom_style');
+      return saved ? JSON.parse(saved) : null;
+    } catch (_) { return null; }
+  });
+  // 自定义所基于的国标模板:决定 AI 排版行为 + 样式编辑器显示哪些专有字段。
+  const [customBase, setCustomBase] = useState<DocPreset>(() => {
+    const saved = localStorage.getItem('docuflow_custom_base') as DocPreset | null;
+    return saved && (Object.values(DocPreset) as string[]).includes(saved) ? saved : DocPreset.ACADEMIC;
   });
 
   const [isStyleEditorOpen, setStyleEditorOpen] = useState(false);
@@ -150,11 +145,18 @@ function Home() {
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
 
-  const activeStyle = currentStyles[selectedPreset];
-  const activePresetConfig = PRESETS.find(p => p.id === selectedPreset)!;
-
-  // 格式合规校验(随当前预设/样式实时重算;无对标标准的预设返回 spec=null)
-  const compliance = useMemo(() => evaluateCompliance(selectedPreset, activeStyle), [selectedPreset, activeStyle]);
+  const isCustom = selectedPreset === 'CUSTOM';
+  const customBaseConfig = PRESETS.find(p => p.id === customBase)!;
+  // 自定义生效样式:已编辑则用 customStyle,否则回退到 base 模板默认
+  const effectiveCustomStyle = customStyle ?? customBaseConfig.styleConfig;
+  // 自定义是否真的被改过(与 base 默认不同)— 决定是否显示「已自定义」绿点。
+  // 仅"打开过编辑器"或"改了又改回去"都不算,避免误标。
+  const customModified = !!customStyle && JSON.stringify(customStyle) !== JSON.stringify(customBaseConfig.styleConfig);
+  const selectedPresetConfig = isCustom ? null : PRESETS.find(p => p.id === selectedPreset)!;
+  const activeStyle = isCustom ? effectiveCustomStyle : selectedPresetConfig!.styleConfig;
+  const activePresetConfig = isCustom ? customBaseConfig : selectedPresetConfig!;
+  // 送后端的模板 id(自定义 → 沿用其 base 的排版行为)
+  const backendPreset: DocPreset = isCustom ? customBase : (selectedPreset as DocPreset);
 
   // 「仅格式改动」对比(只在生成结束后算一次,避免流式期间每 80ms 重算)
   const contentDiff = useMemo(
@@ -168,14 +170,6 @@ function Home() {
   // 粘贴/文件字数(memo 避免大文本每次 render 重算双正则)+ 与后端 CONTENT_LIMIT 对齐的输入上限
   const inputTextCount = useMemo(() => getTextCount(inputText), [inputText]);
   const pasteCharLimit = user?.subscriptionStatus && user.subscriptionStatus !== 'FREE' ? 2_000_000 : 200_000;
-
-  // 各模板是否被改过(与默认 styleConfig 不同)— 用于 hero chip 上的「已改」小点。
-  // useMemo 仅在 currentStyles 变化时重算,避免随 inputText 每次按键重复 stringify。
-  const customizedMap = useMemo(() => {
-    const m = {} as Record<DocPreset, boolean>;
-    PRESETS.forEach(p => { m[p.id] = JSON.stringify(currentStyles[p.id]) !== JSON.stringify(p.styleConfig); });
-    return m;
-  }, [currentStyles]);
 
   const handleFileLoaded = (content: string, name: string) => {
     setInputText(content);
@@ -221,10 +215,13 @@ function Home() {
     return () => clearInterval(id);
   }, [aiState.isThinking, aiState.estimatedSec]);
 
-  // 持久化自定义样式(刷新不丢)
+  // 持久化自定义样式 + 其 base 模板(刷新不丢)
   useEffect(() => {
-    try { localStorage.setItem('docuflow_custom_styles', JSON.stringify(currentStyles)); } catch (_) { /* 配额满等忽略 */ }
-  }, [currentStyles]);
+    try {
+      if (customStyle) localStorage.setItem('docuflow_custom_style', JSON.stringify(customStyle));
+      localStorage.setItem('docuflow_custom_base', customBase);
+    } catch (_) { /* 配额满等忽略 */ }
+  }, [customStyle, customBase]);
 
 
   useEffect(() => {
@@ -271,6 +268,13 @@ function Home() {
       setContentPageCount(1);
       setAiState({ isThinking: false, error: null, progressStep: '', progress: 0, estimatedSec: null, startedAt: null });
     }
+  };
+
+  // 返回上传页(点 logo / 新建按钮):生成中不打断;本就空则无动作;有内容则走 handleClear 二次确认
+  const handleBackToUpload = () => {
+    if (aiState.isThinking) return;
+    if (!inputText && !outputText) return;
+    handleClear();
   };
 
   // Ctrl/Cmd+Enter keyboard shortcut to start generation (metaKey = Cmd on Mac, ctrlKey = Ctrl on Windows/Linux)
@@ -381,7 +385,6 @@ function Home() {
     });
     setOutputText('');
     setImageMap({});
-    setIntegrityReport(null);
 
     // ── 客户端预处理：在发送给后端之前完成，避免传输大量 base64 图片数据 ──
     // 1. 提取图片：把 <img ...> 替换为 __IMG_N__ 占位符（与后端 imageUtils 逻辑一致）
@@ -424,7 +427,7 @@ function Home() {
       const genResult = await generateDocumentViaBackend(
         {
           content: contentForBackend,
-          preset: selectedPreset,
+          preset: backendPreset,
           fileName: inputFileName,
           styleConfig: activeStyle,
           // 不再让用户选模型:省略 model,后端自动选最优(默认 deepseek)
@@ -474,7 +477,6 @@ function Home() {
       // Generation complete
       if (abortControllerRef.current !== null) {
         setAiState(prev => ({ ...prev, progress: 100, progressStep: t('home.generation_complete', '排版生成完毕') }));
-        setIntegrityReport(genResult?.integrityReport ?? null);
         // Flush: cancel any pending timer and show final text
         if (rafIdRef.current !== null) {
           clearTimeout(rafIdRef.current);
@@ -669,11 +671,20 @@ function Home() {
     setTimeout(updateActiveFormats, 10);
   }, [handleContentEdit, updateActiveFormats]);
 
+  // 编辑只作用于「自定义」这一份档案,国标模板永不被改写
   const handleStyleUpdate = (newConfig: StyleConfig) => {
-    setCurrentStyles(prev => ({
-      ...prev,
-      [selectedPreset]: newConfig
-    }));
+    setCustomStyle(newConfig);
+  };
+
+  // 打开自定义编辑器。base 仅在还没有自定义档案时锁定为当前选中的国标模板
+  // (决定继承哪套排版行为 + 编辑器默认值)。不预填 customStyle —— 用户真正改了
+  // 某一项才生成档案,避免"只是打开看了一眼"就被标成已自定义。国标模板始终只读。
+  const openCustomEditor = () => {
+    if (!customStyle && selectedPreset !== 'CUSTOM') {
+      setCustomBase(selectedPreset as DocPreset);
+    }
+    setSelectedPreset('CUSTOM');
+    setStyleEditorOpen(true);
   };
 
   const getPreviewFontStack = (fontVal: string) => {
@@ -924,6 +935,10 @@ function Home() {
       #preview-content h4, #preview-content h5, #preview-content h6 { margin-top: 0 !important; margin-bottom: 0 !important; }
       ` : ''}
       #preview-content .doc-title { text-indent: 0; font-size: 26pt; text-align: center; margin-bottom: 1em; column-span: all; }
+      /* 封面页(报告/论文、出版物):整页居中 */
+      #preview-content .cover-page { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 900px; padding: 120px 24px; page-break-after: always; column-span: all; }
+      #preview-content .cover-page .doc-title { font-size: 30pt; margin-bottom: 1.4em; }
+      #preview-content .cover-meta { text-indent: 0 !important; text-align: center; font-size: 15pt; line-height: 2; margin: 0.4em 0; color: #222; }
       /* 学术期刊专用元素样式 */
       #preview-content .doc-title-en { text-indent: 0; font-size: ${s.englishTitleSize || '14pt'}; font-family: ${getPreviewFontStack(s.englishTitleFont || '"Times New Roman", serif')}; font-weight: bold; text-align: center; margin-top: 0.3em; margin-bottom: 0.5em; column-span: all; }
       #preview-content .author-info { text-indent: 0; font-size: ${s.authorSize || '10.5pt'}; font-family: ${getPreviewFontStack(s.authorFont || '"FangSong", serif')}; text-align: center; margin: 0.3em 0; column-span: all; }
@@ -983,7 +998,12 @@ function Home() {
       <header className="border-b border-gray-100 bg-white sticky top-0 z-50">
         <div className="w-full px-4 md:px-6 lg:px-8 h-14 flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleBackToUpload}
+              title={t('home.back_home', '返回首页')}
+              className="flex items-center gap-2.5 group focus:outline-none"
+            >
               <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
                   <img
                     src={systemLogo}
@@ -992,8 +1012,8 @@ function Home() {
                     draggable={false}
                   />
               </div>
-              <span className="text-lg font-semibold text-gray-900">DocFlow AI</span>
-            </div>
+              <span className="text-lg font-semibold text-gray-900 group-hover:text-gray-600 transition-colors">DocFlow AI</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-4">
@@ -1059,38 +1079,46 @@ function Home() {
                 />
               )}
 
-              {/* 模板 chips */}
-              <div className="flex flex-wrap gap-2 justify-center mt-6 max-w-xl">
+              {/* 模板 chips:5 个国标模板(只读默认)+ 自定义(可调) */}
+              <div className="flex flex-wrap gap-2 justify-center mt-6 max-w-2xl">
                 {PRESETS.map(p => {
                   const titleKey = `home.preset_${p.id.toLowerCase().replace('-', '_')}`;
                   const selected = selectedPreset === p.id;
-                  const customized = customizedMap[p.id];
                   return (
                     <button
                       key={p.id}
                       onClick={() => setSelectedPreset(p.id)}
                       aria-pressed={selected}
-                      className={`text-[13px] px-4 py-1.5 rounded-full border transition-colors inline-flex items-center ${selected ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+                      className={`text-[13px] px-4 py-1.5 rounded-full border transition-colors inline-flex items-center gap-1.5 ${
+                        selected
+                          ? 'bg-gray-900 text-white border-gray-900'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                      }`}
                     >
                       {t(titleKey, p.title)}
-                      {customized && (
-                        <span
-                          title={t('home.customized', '已自定义')}
-                          className={`ml-1.5 w-1.5 h-1.5 rounded-full ${selected ? 'bg-white/80' : 'bg-emerald-500'}`}
-                        />
-                      )}
+                      {selected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
                     </button>
                   );
                 })}
-                {/* 轻量自定义入口:打开完整样式编辑器(字体/字号/行距/边距/编号…) */}
-                <button
-                  type="button"
-                  onClick={() => setStyleEditorOpen(true)}
-                  className="text-[13px] px-3.5 py-1.5 rounded-full border border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors inline-flex items-center gap-1.5"
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-                  {t('home.custom', '自定义')}
-                </button>
+                {/* 自定义:左半选用 + 右半铅笔调样式 */}
+                <div className={`inline-flex items-center rounded-full border overflow-hidden transition-colors ${isCustom ? 'border-gray-900' : 'border-gray-200'}`}>
+                  <button
+                    onClick={() => setSelectedPreset('CUSTOM')}
+                    aria-pressed={isCustom}
+                    className={`text-[13px] pl-4 pr-2.5 py-1.5 inline-flex items-center gap-1.5 transition-colors ${isCustom ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {t('home.custom', '自定义')}
+                    {(isCustom || customModified) && <span title={customModified ? t('home.customized', '已自定义') : undefined} className={`w-1.5 h-1.5 rounded-full ${isCustom ? 'bg-emerald-400' : 'bg-emerald-500'}`} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openCustomEditor}
+                    title={t('home.edit_style', '调整样式')}
+                    className={`self-stretch px-2.5 inline-flex items-center border-l transition-colors ${isCustom ? 'bg-gray-900 border-white/20 text-white/70 hover:text-white' : 'bg-white border-gray-200 text-gray-400 hover:text-gray-700'}`}
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                  </button>
+                </div>
               </div>
 
               {/* 开始排版 */}
@@ -1105,19 +1133,19 @@ function Home() {
                 </button>
               </div>
 
-              {/* 信任条:把空状态的留白变成可信度 —— 完整性 / 国标合规 / 隐私 */}
+              {/* 信任条 */}
               <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mt-6 pt-5 border-t border-gray-100 w-full max-w-lg text-xs text-gray-400">
                 <span className="inline-flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" /><path d="M9 12l2 2 4-4" /></svg>
-                  {t('home.trust_integrity', '内容完整性核对')}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
                   <svg className="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M9 12l2 2 4-4" /></svg>
-                  {t('home.trust_compliance', '公文 / 毕业论文国标合规')}
+                  {t('home.trust_compliance', '公文 / 毕业论文国标排版')}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <svg className="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
                   {t('home.trust_privacy', '不保存你的文档')}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                  {t('home.trust_export', '导出可编辑 Word 文件')}
                 </span>
               </div>
 
@@ -1227,21 +1255,9 @@ function Home() {
 
             {/* Preset Section */}
             <div className={`bg-white border border-gray-200 rounded-xl p-4 flex-shrink-0 transition-opacity duration-300 ${aiState.isThinking ? 'opacity-50 pointer-events-none' : 'opacity-100'}`} title={aiState.isThinking ? t('home.wait_for_generation', '生成完成后可操作') : undefined}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">2</div>
-                  <h2 className="text-sm font-semibold text-gray-900">{t('home.select_preset', '选择模板')}</h2>
-                </div>
-                <button
-                  onClick={() => setStyleEditorOpen(true)}
-                  className="text-xs text-gray-500 hover:text-gray-900 flex items-center gap-1"
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                  </svg>
-                  {t('home.custom', '自定义')}
-                </button>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-6 h-6 bg-gray-900 text-white rounded-md flex items-center justify-center text-xs font-bold">2</div>
+                <h2 className="text-sm font-semibold text-gray-900">{t('home.select_preset', '选择模板')}</h2>
               </div>
 
               <div className="-mx-1 px-1">
@@ -1254,6 +1270,34 @@ function Home() {
                       onSelect={setSelectedPreset}
                     />
                   ))}
+                  {/* 自定义卡:点选用,铅笔调样式 */}
+                  <div
+                    onClick={() => setSelectedPreset('CUSTOM')}
+                    className={`relative p-2.5 rounded-xl cursor-pointer transition-all duration-200 border group select-none flex items-center gap-2.5 ${isCustom ? 'bg-emerald-50 border-emerald-500 shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50/50'}`}
+                  >
+                    {isCustom && (
+                      <div className="absolute top-0 right-0 p-[1px] bg-emerald-500 rounded-bl-lg rounded-tr-lg">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      </div>
+                    )}
+                    <div className={`p-2 rounded-lg flex-shrink-0 flex items-center justify-center ${isCustom ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200 group-hover:text-gray-700'}`}>
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" /><line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" /><line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" /><line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" /></svg>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className={`font-medium text-xs truncate flex items-center gap-1 ${isCustom ? 'text-emerald-900 font-semibold' : 'text-gray-700'}`}>
+                        {t('home.custom', '自定义')}
+                        {customModified && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); openCustomEditor(); }}
+                      title={t('home.edit_style', '调整样式')}
+                      className={`flex-shrink-0 p-1 rounded-md transition-colors ${isCustom ? 'text-emerald-700 hover:bg-emerald-100' : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'}`}
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1371,15 +1415,10 @@ function Home() {
                 <div className="flex items-center gap-1.5 text-xs text-gray-600 min-w-0 max-w-[220px]">
                   <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                   <span className="truncate" title={inputFileName}>{inputFileName}</span>
-                  {!aiState.isThinking && (
-                    <button onClick={handleClear} title={t('home.clear', '清空')} className="p-0.5 text-gray-400 hover:text-red-500 flex-shrink-0">
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                    </button>
-                  )}
                 </div>
               )}
 
-              {/* 模板 chips + 自定义 */}
+              {/* 模板 chips:国标只读 + 自定义可调 */}
               <div className={`flex items-center gap-1.5 flex-wrap ${aiState.isThinking ? 'opacity-50 pointer-events-none' : ''}`}>
                 {PRESETS.map(p => {
                   const sel = selectedPreset === p.id;
@@ -1388,16 +1427,32 @@ function Home() {
                       key={p.id}
                       onClick={() => setSelectedPreset(p.id)}
                       aria-pressed={sel}
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors inline-flex items-center ${sel ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors inline-flex items-center gap-1 ${sel ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
                     >
                       {t(`home.preset_${p.id.toLowerCase().replace('-', '_')}`, p.title)}
-                      {customizedMap[p.id] && <span className={`ml-1 w-1.5 h-1.5 rounded-full ${sel ? 'bg-white/80' : 'bg-emerald-500'}`} />}
+                      {sel && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
                     </button>
                   );
                 })}
-                <button onClick={() => setStyleEditorOpen(true)} title={t('home.custom', '自定义')} className="w-6 h-6 flex items-center justify-center rounded-full border border-dashed border-gray-300 text-gray-400 hover:text-gray-700 hover:border-gray-400 transition-colors">
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-                </button>
+                {/* 自定义:左半选用 + 右半铅笔调样式 */}
+                <div className={`inline-flex items-center rounded-full border overflow-hidden transition-colors ${isCustom ? 'border-gray-900' : 'border-gray-200'}`}>
+                  <button
+                    onClick={() => setSelectedPreset('CUSTOM')}
+                    aria-pressed={isCustom}
+                    className={`text-xs pl-2.5 pr-2 py-1 inline-flex items-center gap-1 transition-colors ${isCustom ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {t('home.custom', '自定义')}
+                    {(isCustom || customModified) && <span title={customModified ? t('home.customized', '已自定义') : undefined} className={`w-1.5 h-1.5 rounded-full ${isCustom ? 'bg-emerald-400' : 'bg-emerald-500'}`} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openCustomEditor}
+                    title={t('home.edit_style', '调整样式')}
+                    className={`self-stretch px-1.5 inline-flex items-center border-l transition-colors ${isCustom ? 'bg-gray-900 border-white/20 text-white/70 hover:text-white' : 'bg-white border-gray-200 text-gray-400 hover:text-gray-700'}`}
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                  </button>
+                </div>
               </div>
 
               {/* 重新生成 / 停止 + 进度 */}
@@ -1410,14 +1465,25 @@ function Home() {
                   <span className="text-xs text-gray-400 truncate">{aiState.progressStep}{aiState.progress > 0 ? ` · ${aiState.progress}%` : ''}</span>
                 </div>
               ) : (
-                <button
-                  onClick={handleProcess}
-                  disabled={!inputText}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
-                  {t('home.retry_generate', '重新生成')}
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* 新建文档:清空当前回到上传页(与重新生成同组) */}
+                  <button
+                    onClick={handleClear}
+                    title={t('home.new_doc_hint', '新建文档（清空当前内容）')}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-200 hover:border-gray-300 rounded-lg transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+                    {t('home.new_doc', '新建')}
+                  </button>
+                  <button
+                    onClick={handleProcess}
+                    disabled={!inputText}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-lg hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>
+                    {t('home.retry_generate', '重新生成')}
+                  </button>
+                </div>
               )}
 
               {/* 右侧:视图切换 + 保存/下载 */}
@@ -1456,17 +1522,6 @@ function Home() {
               <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
                 <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
                 <p className="text-xs text-gray-500">{aiState.stopMessage}</p>
-              </div>
-            )}
-
-            {/* 信任层:内容完整性 + 格式合规。生成结束后出现 */}
-            {outputText && !aiState.isThinking && (integrityReport || compliance.spec) && (
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/40">
-                <TrustPanel
-                  integrityReport={integrityReport}
-                  complianceResults={compliance.spec ? compliance.results : undefined}
-                  complianceStandardName={compliance.spec?.standardName}
-                />
               </div>
             )}
 
@@ -1619,9 +1674,11 @@ function Home() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {selectedPreset && (
-                      <span className="text-xs text-gray-500">{t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}</span>
-                    )}
+                    <span className="text-xs text-gray-500">
+                      {isCustom
+                        ? `${t('home.custom', '自定义')} · ${t(`home.preset_${customBase.toLowerCase().replace('-', '_')}`, customBaseConfig.title)}`
+                        : t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}
+                    </span>
                   </div>
                 </div>
 
@@ -1828,8 +1885,10 @@ function Home() {
         onClose={() => setStyleEditorOpen(false)}
         config={activeStyle}
         onUpdate={handleStyleUpdate}
-        presetTitle={t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}
-        presetId={selectedPreset}
+        presetTitle={isCustom
+          ? `${t('home.custom', '自定义')} · ${t(`home.preset_${customBase.toLowerCase().replace('-', '_')}`, customBaseConfig.title)}`
+          : t(`home.preset_${selectedPreset.toLowerCase().replace('-', '_')}`, activePresetConfig.title)}
+        presetId={activePresetConfig.id}
         defaultConfig={activePresetConfig.styleConfig}
       />
       <ProductRequirements isOpen={showPRD} onClose={() => setShowPRD(false)} />

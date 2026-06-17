@@ -43,6 +43,26 @@ export const getNumberingInstruction = (style: string): string => {
     }
 };
 
+// 封面页识别规则 —— 仅用于"报告/论文"(ACADEMIC) 与"出版物"(CREATIVE)。
+// 公文(CORPORATE)有自己的首页要素布局、期刊(JOURNAL)标题作者内联,均不套用封面。
+const COVER_PAGE_RULE = `
+═══════════════════════════════════════════
+封面页识别（CRITICAL）
+═══════════════════════════════════════════
+判断输入【开头】是否为一个独立的封面/扉页：典型特征是一个居中的大标题，其后跟随若干行短标识文本（如"研究报告/毕业论文/可行性研究报告"等文档类型、单位/学校/机构、作者/学号/指导教师、日期），并且在第一个正文章节标题（<h2> 及更深）之前几乎没有成段的正文。
+
+- 若判定为封面，把这整块封面信息作为输出的【第一个元素】，用如下结构包裹：
+  <div class="cover-page">
+    <h1 class="doc-title">主标题</h1>
+    <p class="cover-meta">副标题或文档类型（如"研究报告"）</p>
+    <p class="cover-meta">单位 / 学校 / 机构</p>
+    <p class="cover-meta">作者 / 学号 / 指导教师（如有，每项一行）</p>
+    <p class="cover-meta">日期</p>
+  </div>
+  规则：封面内每一行短文本各用一个 <p class="cover-meta">；主标题仍用 <h1 class="doc-title">；封面【只】放这些标识性信息，禁止把正文段落、摘要、目录放进封面。封面之后紧接正文（从 <h2> 开始）。
+- 若输入开头不是这种独立封面（例如直接就是摘要或正文），则【不要】生成 cover-page，按正常正文处理。严禁无中生有地编造封面信息。
+`;
+
 export const BASE_SYSTEM_PROMPTS: Record<DocPreset, string> = {
     [DocPreset.CORPORATE]: `
 Role: 党政机关公文排版专家（严格模式）。
@@ -148,6 +168,7 @@ CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table r
     Role: Academic Formatter (Strict).
     Task: Apply Academic Paper structure to the text.
     CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table row from the input. NO OMMISSIONS allowed.
+${COVER_PAGE_RULE}
   `,
     [DocPreset.ACADEMIC_JOURNAL]: `
 Role: 学术期刊排版专家（严格模式）。
@@ -191,6 +212,7 @@ CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table r
     Role: Book Typesetter.
     Task: Apply Narrative structure to the text.
     CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table row from the input. NO OMMISSIONS allowed.
+${COVER_PAGE_RULE}
   `,
     [DocPreset.MINIMALIST]: `
     Role: Technical Formatter.

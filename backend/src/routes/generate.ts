@@ -13,7 +13,7 @@ const router = Router();
 import OpenAI from 'openai';
 import { extractImagesAsPlaceholders, restoreImages } from '../utils/imageUtils';
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
-import { countStructure, buildIntegrityReport, IntegrityIssue } from '../utils/integrity';
+import { IntegrityIssue } from '../utils/integrity';
 
 
 type PreComputedHeading = { level: number; text: string; number: string };
@@ -1555,24 +1555,6 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         await invalidateUsageCount(user.id);
 
         console.log(`[DONE] Document generated. Tokens: ${finalReportedTokens}`);
-
-        // 内容完整性报告:输入 vs 输出结构对比 + 期间事件,发给前端做"没丢东西"的证明
-        try {
-            const inputCounts = countStructure(contentWithoutImages);
-            inputCounts.images = imageCount;
-            // 输入标题数优先用前端解析的精确大纲(纯文本粘贴时 HTML 无标题标签,此值更准)
-            if (preComputedHeadings.length > 0) {
-                inputCounts.headings = preComputedHeadings.length;
-                inputCounts.headingsByLevel = preComputedHeadings.reduce((acc, h) => {
-                    acc[h.level] = (acc[h.level] ?? 0) + 1; return acc;
-                }, {} as Record<number, number>);
-            }
-            const outputCounts = countStructure(fullRestoredText);
-            const integrityReport = buildIntegrityReport(inputCounts, outputCounts, integrityIssues);
-            res.write(`data: ${JSON.stringify({ integrityReport })}\n\n`);
-        } catch (e) {
-            console.error('[integrity] failed to build report (non-fatal):', e);
-        }
 
         // 发送完成事件
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);

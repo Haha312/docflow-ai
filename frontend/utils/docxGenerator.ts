@@ -982,6 +982,16 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 return;
             }
 
+            // 封面内的标识行(副标题/单位/作者/日期):居中
+            if (className.includes('cover-meta')) {
+                elements.push(new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    spacing: { before: 140, after: 140 },
+                    children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize('14pt'), color: "000000" })]
+                }));
+                return;
+            }
+
             // ===== 目录处理 =====
             // 目录由section生成逻辑处理,这里跳过
             if (className.includes('toc-placeholder') || text.includes('TOC_PLACEHOLDER') || (text === i18n.t('generator.toc', '目录') && tagName === 'H1')) {
@@ -1215,7 +1225,11 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     page: pageProps,
                     type: SectionType.NEXT_PAGE
                 },
-                children: processNodes(coverNodes as unknown as NodeList),
+                // 顶部留白把封面标题往下压,让整页更像封面而非顶到页眉
+                children: [
+                    new Paragraph({ spacing: { before: 2000 }, children: [] }),
+                    ...processNodes(coverNodes as unknown as NodeList)
+                ],
                 footers: { default: createCoverFooter() }
             });
         }

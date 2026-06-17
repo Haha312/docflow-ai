@@ -74,11 +74,11 @@ export function Privacy() {
             <h2 className="text-lg font-semibold text-gray-900 mb-2">6. 您的权利</h2>
             <p>您对您的个人信息享有以下权利:</p>
             <ul className="list-disc pl-5 space-y-1 mt-2">
-              <li><strong>查询权</strong>:在用户中心查看个人资料、订单记录。</li>
-              <li><strong>更正权</strong>:在用户中心修改邮箱、手机号。</li>
-              <li><strong>删除权</strong>:在用户中心删除账号(GDPR 第 17 条、《个人信息保护法》第 47 条)。</li>
+              <li><strong>查询权</strong>:在用户中心查看会员状态与订单记录。</li>
+              <li><strong>更正权</strong>:如需更正个人信息,可发邮件至 <a href="mailto:{{CONTACT_EMAIL}}" className="text-indigo-600 underline">{'{{CONTACT_EMAIL}}'}</a> 申请。</li>
+              <li><strong>删除权</strong>:如需删除账号及全部数据,可发邮件至 <a href="mailto:{{CONTACT_EMAIL}}" className="text-indigo-600 underline">{'{{CONTACT_EMAIL}}'}</a> 申请(GDPR 第 17 条、《个人信息保护法》第 47 条)。</li>
               <li><strong>数据导出权</strong>:发邮件至 <a href="mailto:{{CONTACT_EMAIL}}" className="text-indigo-600 underline">{'{{CONTACT_EMAIL}}'}</a> 申请导出您的全部数据。</li>
-              <li><strong>撤回同意</strong>:可随时取消营销邮件订阅;撤回账号同意需通过删除账号实现。</li>
+              <li><strong>撤回同意</strong>:可随时取消营销邮件订阅;撤回账号同意可通过申请删除账号实现。</li>
             </ul>
           </section>
 

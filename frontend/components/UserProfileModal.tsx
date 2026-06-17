@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useToast } from '../contexts/ToastContext';
 import { OrderHistory } from './OrderHistory';
 import { cancelSubscription, getUserUsage } from '../services/backendApiService';
-import { authService } from '../services/authService';
 import { useTranslation } from 'react-i18next';
 
 interface UserProfileModalProps {
@@ -11,11 +9,8 @@ interface UserProfileModalProps {
   onClose: () => void;
 }
 
-type AccountAction = 'email' | 'delete' | null;
-
 export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
   const { user, remainingQuota, logout, refreshUser } = useAuth();
-  const toast = useToast();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'profile' | 'orders'>('profile');
 
@@ -40,19 +35,6 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
   const [isCancelling, setIsCancelling] = useState(false);
   const [cancelError, setCancelError] = useState('');
 
-  // 账户管理 (选填邮箱 / 删除账号)
-  const [activeAction, setActiveAction] = useState<AccountAction>(null);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [actionError, setActionError] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [deleteConfirm, setDeleteConfirm] = useState('');
-
-  const resetAccountForms = () => {
-    setActiveAction(null);
-    setActionError('');
-    setNewEmail(''); setDeleteConfirm('');
-  };
-
   const handleCancelSubscription = async () => {
     setIsCancelling(true);
     setCancelError('');
@@ -64,36 +46,6 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
       setCancelError(e.message || t('profile.cancel_failed', '取消订阅失败,请重试'));
     } finally {
       setIsCancelling(false);
-    }
-  };
-
-  const handleSetEmail = async () => {
-    setActionLoading(true);
-    setActionError('');
-    try {
-      await authService.setEmail(newEmail.trim());
-      await refreshUser();
-      toast.success(t('profile.email_changed', '邮箱已更新'));
-      resetAccountForms();
-    } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : t('errors.set_email_failed', '邮箱保存失败'));
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDeleteAccount = async () => {
-    setActionLoading(true);
-    setActionError('');
-    try {
-      await authService.deleteAccount();
-      toast.success(t('profile.account_deleted', '账号已删除'));
-      // authService.deleteAccount 已 clearToken;logout() 把 AuthContext.user 设 null
-      logout();
-      onClose();
-    } catch (e: unknown) {
-      setActionError(e instanceof Error ? e.message : t('errors.delete_account_failed', '账号删除失败'));
-      setActionLoading(false);
     }
   };
 
@@ -214,88 +166,6 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                   </div>
                 </div>
               )}
-
-              {/* 账户管理 (修改密码 / 修改邮箱 / 删除账号) */}
-              <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
-                <p className="text-xs text-gray-400 mb-2">{t('profile.account_management', '账户管理')}</p>
-
-                {/* 手机号(只读展示) */}
-                <div className="flex justify-between items-center py-1.5">
-                  <span className="text-sm text-gray-500">{t('auth.phone', '手机号')}</span>
-                  <span className="text-sm text-gray-900">{user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : '-'}</span>
-                </div>
-
-                {/* 通知邮箱(选填,用于支付收据/续费提醒) */}
-                {activeAction !== 'email' ? (
-                  <button
-                    onClick={() => { resetAccountForms(); setNewEmail(user.email || ''); setActiveAction('email'); }}
-                    className="w-full flex items-center justify-between text-sm text-gray-700 hover:text-gray-900 transition-colors py-1.5 border-t border-gray-100"
-                  >
-                    <span>{t('profile.notify_email', '通知邮箱(选填)')}</span>
-                    <span className="text-xs text-gray-400">{user.email || t('profile.not_set', '未设置')}</span>
-                  </button>
-                ) : (
-                  <div className="space-y-2 py-1 border-t border-gray-100 pt-3">
-                    <p className="text-xs text-gray-500">{t('profile.email_purpose', '用于接收支付收据与续费提醒,可留空')}</p>
-                    <input
-                      type="email"
-                      placeholder={t('profile.new_email', '邮箱地址')}
-                      value={newEmail}
-                      onChange={(e) => setNewEmail(e.target.value)}
-                      disabled={actionLoading}
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                    />
-                    {actionError && <p className="text-xs text-red-600">{actionError}</p>}
-                    <div className="flex gap-2 pt-1">
-                      <button disabled={actionLoading} onClick={resetAccountForms} className="flex-1 py-2 bg-gray-50 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-100 disabled:opacity-50">
-                        {t('common.cancel', '取消')}
-                      </button>
-                      <button
-                        disabled={actionLoading || (!!newEmail.trim() && !newEmail.includes('@'))}
-                        onClick={handleSetEmail}
-                        className="flex-1 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
-                      >
-                        {actionLoading ? t('common.processing', '处理中...') : t('common.confirm', '确定')}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 删除账号 */}
-                {activeAction !== 'delete' ? (
-                  <button
-                    onClick={() => { resetAccountForms(); setActiveAction('delete'); }}
-                    className="w-full text-left text-sm text-red-600 hover:text-red-700 transition-colors py-1.5 border-t border-gray-100"
-                  >
-                    {t('profile.delete_account', '删除账号')}
-                  </button>
-                ) : (
-                  <div className="space-y-2 py-1 border-t border-gray-100 pt-3">
-                    <p className="text-sm text-red-600 font-medium">{t('profile.delete_account_warning', '此操作不可撤销!所有文档、订单、使用记录将被永久删除。')}</p>
-                    <input
-                      type="text"
-                      placeholder={t('profile.delete_confirm_placeholder', '输入 DELETE 确认')}
-                      value={deleteConfirm}
-                      onChange={(e) => setDeleteConfirm(e.target.value)}
-                      disabled={actionLoading}
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-                    />
-                    {actionError && <p className="text-xs text-red-600">{actionError}</p>}
-                    <div className="flex gap-2 pt-1">
-                      <button disabled={actionLoading} onClick={resetAccountForms} className="flex-1 py-2 bg-gray-50 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-100 disabled:opacity-50">
-                        {t('common.cancel', '取消')}
-                      </button>
-                      <button
-                        disabled={actionLoading || deleteConfirm !== 'DELETE'}
-                        onClick={handleDeleteAccount}
-                        className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-                      >
-                        {actionLoading ? t('common.processing', '处理中...') : t('profile.delete_account_confirm', '永久删除账号')}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
 
               {/* Cancel subscription (only for paid users) */}
               {isPro && (
