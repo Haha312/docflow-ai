@@ -1965,16 +1965,19 @@ function Home() {
                         )}
                       </>
                     ) : aiState.isThinking ? (
-                      /* 等待开始：极简状态区 */
-                      <div className="h-full flex flex-col items-center justify-center gap-6">
-                        {/* 三点足跡动画 */}
-                        <div className="flex gap-1.5">
-                          {[0, 1, 2].map(i => (
-                            <div
-                              key={i}
-                              className="w-2 h-2 rounded-full bg-gray-300"
-                              style={{ animation: `bounce 1.4s ease-in-out ${i * 0.16}s infinite` }}
-                            />
+                      /* 等待开始：骨架纸 + 进度，呈现"文档正在排版"的感受 */
+                      <div className="h-full flex flex-col items-center justify-center gap-5 py-6">
+                        {/* 骨架 A4 纸：标题 + 段落占位行 + 流动 shimmer */}
+                        <div className="w-[300px] max-w-[78%] bg-white border border-gray-200 rounded-sm shadow-sm px-7 py-6 relative overflow-hidden">
+                          <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-100 to-transparent animate-[shimmer_1.6s_ease-in-out_infinite] z-10" />
+                          <div className="h-4 w-2/3 mx-auto bg-gray-200 rounded mb-6" />
+                          <div className="h-2.5 w-2/5 bg-gray-200 rounded mb-3" />
+                          {[0.95, 0.88, 0.6].map((w, i) => (
+                            <div key={`a${i}`} className="h-2 bg-gray-100 rounded mb-2.5" style={{ width: `${w * 100}%` }} />
+                          ))}
+                          <div className="h-2.5 w-2/5 bg-gray-200 rounded mb-3 mt-6" />
+                          {[0.9, 0.5].map((w, i) => (
+                            <div key={`b${i}`} className="h-2 bg-gray-100 rounded mb-2.5" style={{ width: `${w * 100}%` }} />
                           ))}
                         </div>
                         <div className="text-center">
