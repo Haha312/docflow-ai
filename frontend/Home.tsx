@@ -78,6 +78,8 @@ function Home() {
   const [showPRD, setShowPRD] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'preview'>('preview');
   const [downloadHighlight, setDownloadHighlight] = useState(false);
+  // P0-4: 完整性提示(后端报告显示截断/保留率低/有非 info 问题时给用户一个可关闭的轻提示)
+  const [integrityNotice, setIntegrityNotice] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [pricingReason, setPricingReason] = useState<'quota' | undefined>(undefined);
@@ -385,6 +387,7 @@ function Home() {
     });
     setOutputText('');
     setImageMap({});
+    setIntegrityNotice(null);
 
     // ── 客户端预处理：在发送给后端之前完成，避免传输大量 base64 图片数据 ──
     // 1. 提取图片：把 <img ...> 替换为 __IMG_N__ 占位符（与后端 imageUtils 逻辑一致）
@@ -487,6 +490,15 @@ function Home() {
         setAiState(prev => ({ ...prev, progressStep: t('home.rendering', '正在应用排版格式...') }));
         await new Promise(r => setTimeout(r, 300));
         setAiState({ isThinking: false, error: null, stopMessage: null, progressStep: t('home.done', '完成'), progress: 0, estimatedSec: null, startedAt: null });
+        // P0-4: 据后端完整性报告决定是否给"可能不完整"提示
+        const report = genResult?.integrityReport;
+        if (report && (report.truncated || report.charRetentionPct < 90 || (report.issues ?? []).some(x => x.severity !== 'info'))) {
+          setIntegrityNotice(
+            report.truncated
+              ? t('home.integrity_truncated', '生成可能不完整(检测到截断或重复失控),建议重新生成或缩短文档')
+              : t('home.integrity_low_retention', '成稿内容与原文差异较大(约 {{pct}}%),请核对是否有遗漏', { pct: report.charRetentionPct })
+          );
+        }
         setViewMode('preview'); // 生成完成后自动切换到全宽预览模式
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
@@ -1522,6 +1534,16 @@ function Home() {
               <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
                 <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
                 <p className="text-xs text-gray-500">{aiState.stopMessage}</p>
+              </div>
+            )}
+            {/* P0-4 完整性提示条:后端报告显示生成可能不完整时 */}
+            {integrityNotice && !aiState.isThinking && (
+              <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="flex-shrink-0 text-amber-600">⚠</span>
+                  <p className="text-xs text-amber-700 flex-1 min-w-0">{integrityNotice}</p>
+                </div>
+                <button onClick={() => setIntegrityNotice(null)} title={t('home.dismiss', '关闭')} className="flex-shrink-0 text-amber-500 hover:text-amber-700 text-xs leading-none">✕</button>
               </div>
             )}
 

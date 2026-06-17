@@ -13,7 +13,7 @@ const router = Router();
 import OpenAI from 'openai';
 import { extractImagesAsPlaceholders, restoreImages } from '../utils/imageUtils';
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
-import { IntegrityIssue, countStructure, buildIntegrityReport } from '../utils/integrity';
+import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies } from '../utils/integrity';
 import { postProcess } from '../utils/postProcess';
 
 
@@ -1518,12 +1518,37 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         // (历史记录功能已下线;如需恢复需同时加回读取接口与前端界面。)
 
         // 估算 token 使用量(输入 + 输出) 当 API 未返回时备用
+        // ── P0-3 确定性后处理 → P0-1 权威全文 → P0-4 完整性放行闸 ──
+        // 先把 AI 漂移的编号/标题/图表号用代码重新盖准(覆盖 AI 产出),再据完整性报告决定是否计费,
+        // 最后把【服务端权威全文】+ 报告发给前端(此前前端只拿到原始 delta,所有清洗/统计都到不了用户)。
+        const pp = postProcess(fullRestoredText, {
+            scheme: styleConfig.headingNumbering,
+            figureChapterRelative: styleConfig.figureNumbering === 'chapter-relative',
+            tableChapterRelative: styleConfig.tableNumbering === 'chapter-relative',
+            expectedImagePlaceholders: Object.keys(imageMap),
+        });
+        const finalText = pp.text;
+        integrityIssues.push(...pp.issues);
+        integrityIssues.push(...detectStructuralAnomalies(finalText)); // 后处理回归绊线(>1 标题等)
+
+        let integrityReport: ReturnType<typeof buildIntegrityReport> | undefined;
+        try {
+            const inputCounts = countStructure(contentForChunking);
+            const outputCounts = countStructure(finalText);
+            integrityReport = buildIntegrityReport(inputCounts, outputCounts, integrityIssues);
+        } catch (e) {
+            console.warn('[INTEGRITY] report build failed (non-fatal):', e);
+        }
+        // 明显残缺:有 critical 事件(截断/失控/多标题)或字符保留率过低 → 不计费(复用"客户端断开不计费"思路)
+        const QUALITY_FLOOR = 85;
+        const hasCritical = !!integrityReport && integrityReport.issues.some(x => x.severity === 'critical');
+        const lowQuality = !!integrityReport && (hasCritical || integrityReport.charRetentionPct < QUALITY_FLOOR);
+
         // Gemini 计费: 约 1 token ~= 0.75 个中文字符
         let finalReportedTokens = totalExactTokens;
         if (finalReportedTokens === 0) {
-            // Gemini with Chinese text: ~3 chars per token (vs GPT's ~0.75 for English)
             const inputTokens = Math.ceil(contentWithoutImages.length / 3);
-            const outputTokens = Math.ceil(fullRestoredText.length / 3);
+            const outputTokens = Math.ceil(finalText.length / 3);
             finalReportedTokens = inputTokens + outputTokens;
             console.log(`[WARN] Using estimated tokens instead of API reported tokens.`);
         }
@@ -1534,44 +1559,26 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             return;
         }
 
-        // 记录使用日志
-        await prisma.usageLog.create({
-            data: {
-                userId: user.id,
-                actionType: 'generate_document',
-                presetUsed: preset,
-                tokenUsage: finalReportedTokens
-            }
-        });
-
-        // 失效额度缓存,让下一次额度查询立即反映本次消耗
-        await invalidateUsageCount(user.id);
-
-        console.log(`[DONE] Document generated. Tokens: ${finalReportedTokens}`);
-
-        // P0-1: 把服务端合并/清洗后的【权威全文】+ 完整性报告发给前端。
-        // 此前前端最终 HTML 只由原始流式 delta 拼成,服务端的去重复循环/补标签/补图片占位
-        // 以及完整性统计全都到不了用户;这里在 {done} 之前用 {text} 全量替换 + {integrityReport}。
-        // P0-3: 确定性后处理 —— 单标题 + 按方案重编号 + 图表号 + 图片占位校验(覆盖 AI 产出的号)。
-        const pp = postProcess(fullRestoredText, {
-            scheme: styleConfig.headingNumbering,
-            figureChapterRelative: styleConfig.figureNumbering === 'chapter-relative',
-            tableChapterRelative: styleConfig.tableNumbering === 'chapter-relative',
-            expectedImagePlaceholders: Object.keys(imageMap),
-        });
-        const finalText = pp.text;
-        integrityIssues.push(...pp.issues);
-        try {
-            const inputCounts = countStructure(contentForChunking);
-            const outputCounts = countStructure(finalText);
-            const integrityReport = buildIntegrityReport(inputCounts, outputCounts, integrityIssues);
-            res.write(`data: ${JSON.stringify({ integrityReport })}\n\n`);
-        } catch (e) {
-            console.warn('[INTEGRITY] report build failed (non-fatal):', e);
+        // 记录使用日志(明显残缺的结果不扣额度)
+        if (lowQuality) {
+            console.log(`[INTEGRITY] low-quality result (critical=${hasCritical}, retention=${integrityReport?.charRetentionPct}%), skipping UsageLog for user ${user.id}`);
+        } else {
+            await prisma.usageLog.create({
+                data: {
+                    userId: user.id,
+                    actionType: 'generate_document',
+                    presetUsed: preset,
+                    tokenUsage: finalReportedTokens
+                }
+            });
+            await invalidateUsageCount(user.id);
         }
-        res.write(`data: ${JSON.stringify({ text: finalText })}\n\n`);
 
-        // 发送完成事件
+        console.log(`[DONE] Document generated. Tokens: ${finalReportedTokens} lowQuality=${lowQuality}`);
+
+        // 发送完整性报告 → 权威全文(全量替换流式预览)→ 完成
+        if (integrityReport) res.write(`data: ${JSON.stringify({ integrityReport })}\n\n`);
+        res.write(`data: ${JSON.stringify({ text: finalText })}\n\n`);
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         res.end();
 

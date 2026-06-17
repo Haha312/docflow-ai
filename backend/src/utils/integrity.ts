@@ -65,6 +65,20 @@ export const countStructure = (html: string): StructuralCounts => {
 };
 
 /**
+ * 后处理后的结构绊线:断言"最多一个文档大标题"等不变量。
+ * postProcess(P0-3)已保证编号连续、单标题;这里在它之后再断言一次,
+ * 触发即说明后处理出现回归 → critical,让问题可见而非静默。
+ */
+export const detectStructuralAnomalies = (html: string): IntegrityIssue[] => {
+    const issues: IntegrityIssue[] = [];
+    const docTitleCount = (html.match(/class\s*=\s*"[^"]*\bdoc-title\b[^"]*"/gi) ?? []).length;
+    if (docTitleCount > 1) {
+        issues.push({ type: 'multiple_titles', severity: 'critical', detail: `检测到 ${docTitleCount} 个文档大标题(应为 1 个),排版可能异常` });
+    }
+    return issues;
+};
+
+/**
  * 组装最终报告。inputCounts/outputCounts 由调用方用 countStructure 算好后传入,
  * 这里只做派生字段(保留率 / 标题是否齐 / 是否截断)。
  */

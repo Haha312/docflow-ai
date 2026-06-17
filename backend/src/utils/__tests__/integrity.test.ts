@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { countStructure, buildIntegrityReport } from '../integrity';
+import { countStructure, buildIntegrityReport, detectStructuralAnomalies } from '../integrity';
 
 describe('countStructure', () => {
   it('按级统计标题并跳过 doc-title', () => {
@@ -61,5 +61,17 @@ describe('buildIntegrityReport', () => {
 
   it('输入字符为 0 → 保留率兜底 100', () => {
     expect(buildIntegrityReport(counts(0), counts(50), []).charRetentionPct).toBe(100);
+  });
+});
+
+describe('detectStructuralAnomalies', () => {
+  it('单个 doc-title → 无异常', () => {
+    expect(detectStructuralAnomalies('<h1 class="doc-title">标题</h1><h2>章</h2>')).toHaveLength(0);
+  });
+  it('多个 doc-title → critical 绊线', () => {
+    const issues = detectStructuralAnomalies('<h1 class="doc-title">A</h1><h2>x</h2><h1 class="doc-title">B</h1>');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].type).toBe('multiple_titles');
+    expect(issues[0].severity).toBe('critical');
   });
 });
