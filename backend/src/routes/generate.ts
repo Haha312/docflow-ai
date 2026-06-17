@@ -14,6 +14,7 @@ import OpenAI from 'openai';
 import { extractImagesAsPlaceholders, restoreImages } from '../utils/imageUtils';
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
 import { IntegrityIssue, countStructure, buildIntegrityReport } from '../utils/integrity';
+import { postProcess } from '../utils/postProcess';
 
 
 type PreComputedHeading = { level: number; text: string; number: string };
@@ -1117,7 +1118,6 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         }
 
         let totalExactTokens = 0;
-        let consecutiveCoveredSkips = 0;
         let finalChunksUsed = 0;
         // 完整性证明:收集生成期间触发的(原本静默的)丢失/截断/跳过事件,最后随 SSE 发给前端
         const integrityIssues: IntegrityIssue[] = [];
@@ -1131,42 +1131,35 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             const overlap = calcTailHeadOverlap(fullRestoredText, chunkContent, 2600);
             const chunkHeadLen = Math.min(normalizeText(chunkContent).length, 2600);
             const coverageRatio = chunkHeadLen > 0 ? overlap / chunkHeadLen : 0;
-            // Heading-fingerprint skip: if ≥90% of this chunk's headings already appear in
-            // the last 8000 chars of output, and there are at least 2 headings to compare,
-            // the chunk is almost certainly already covered — skip it.
+            // 重复块判定:仅当本块开头与已生成内容【正文长程逐字重叠】(overlap≥320 且覆盖率≥0.78)
+            // 且首标题已出现时,才判定为重复并跳过。
+            // 已移除两个会"静默丢正文"的危险分支:
+            //   ① 仅凭"标题文本相似(≥0.9)"就跳 → 撞名章节(概述/小结/附录)被整块删掉;
+            //   ② 连跳 2 次就 break → 直接放弃整条尾巴。
+            // 残留重复改由 truncateAtRepetitionLoop + 流式护栏兜底(可见可恢复,优于静默丢失)。
             const chunkHeadings = extractHeadingFingerprints(chunkContent);
             const outputHeadings = extractHeadingFingerprints(fullRestoredText.slice(-8000));
             const matchedHeadings = [...chunkHeadings].filter(h => outputHeadings.has(h));
             const headingCoverageRatio = chunkHeadings.size > 0 ? matchedHeadings.length / chunkHeadings.size : 0;
-            const skippedByFingerprint = i > 0 && chunkHeadings.size >= 2 && headingCoverageRatio >= 0.9;
-            if (i > 0 && (skippedByFingerprint || (headingCovered && overlap >= 320 && coverageRatio >= 0.78))) {
-                consecutiveCoveredSkips += 1;
+            const isDuplicateChunk = i > 0 && headingCovered && overlap >= 320 && coverageRatio >= 0.78;
+            if (isDuplicateChunk) {
                 console.log(`[SKIP_COVERED_CHUNK] part=${i + 1}/${chunks.length} heading="${chunkFirstHeading}" overlap=${overlap} coverage=${coverageRatio.toFixed(3)} fingerprint=${headingCoverageRatio.toFixed(2)}(${matchedHeadings.length}/${chunkHeadings.size})`);
                 integrityIssues.push({ type: 'chunk_skipped', severity: 'info', detail: `第 ${i + 1} 部分与已生成内容高度重复,已跳过(避免重复)` });
-                // Sync heading counter state from preComputedHeadings for skipped chunks,
-                // so the continuation prompt for the next processed chunk stays accurate.
+                // 同步 preComputedHeadings 的编号状态,保证后续 chunk 续接提示词准确
                 if (preComputedHeadings.length > 0) {
                     const key = chunkFirstHeading.toLowerCase().trim();
                     const idx = preComputedHeadings.findIndex(h => h.text.toLowerCase().trim() === key);
                     if (idx >= 0) {
-                        // Walk forward through preComputed until the chunk boundary to update state
                         for (let k = idx; k < preComputedHeadings.length; k++) {
                             const h = preComputedHeadings[k];
-                            // Stop when we reach a heading that belongs to the NEXT chunk
                             const nextHeading = extractFirstHeading(chunks[i + 1] ?? '');
                             if (nextHeading && h.text.toLowerCase().trim() === nextHeading.toLowerCase().trim() && k > idx) break;
                             headingCounterState[h.level] = `${h.number} ${h.text}`;
                         }
                     }
                 }
-                if (consecutiveCoveredSkips >= 2) {
-                    console.log(`[EARLY_STOP_COVERAGE] stop_at_part=${i + 1} total=${chunks.length}`);
-                    integrityIssues.push({ type: 'early_stop', severity: 'warning', detail: `第 ${i + 1} 部分起内容疑似重复,已提前结束(若后续仍有内容可能遗漏)` });
-                    break;
-                }
                 continue;
             }
-            consecutiveCoveredSkips = 0;
 
             console.log(`[CHUNK] Processing ${i + 1}/${chunks.length} (${chunkContent.length} chars) Model: ${currentModel}`);
 
@@ -1559,8 +1552,15 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         // P0-1: 把服务端合并/清洗后的【权威全文】+ 完整性报告发给前端。
         // 此前前端最终 HTML 只由原始流式 delta 拼成,服务端的去重复循环/补标签/补图片占位
         // 以及完整性统计全都到不了用户;这里在 {done} 之前用 {text} 全量替换 + {integrityReport}。
-        // (P0-3 会把 finalText 改为确定性后处理的结果)
-        const finalText = fullRestoredText;
+        // P0-3: 确定性后处理 —— 单标题 + 按方案重编号 + 图表号 + 图片占位校验(覆盖 AI 产出的号)。
+        const pp = postProcess(fullRestoredText, {
+            scheme: styleConfig.headingNumbering,
+            figureChapterRelative: styleConfig.figureNumbering === 'chapter-relative',
+            tableChapterRelative: styleConfig.tableNumbering === 'chapter-relative',
+            expectedImagePlaceholders: Object.keys(imageMap),
+        });
+        const finalText = pp.text;
+        integrityIssues.push(...pp.issues);
         try {
             const inputCounts = countStructure(contentForChunking);
             const outputCounts = countStructure(finalText);
