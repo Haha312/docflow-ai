@@ -13,7 +13,7 @@ const router = Router();
 import OpenAI from 'openai';
 import { extractImagesAsPlaceholders, restoreImages } from '../utils/imageUtils';
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
-import { IntegrityIssue } from '../utils/integrity';
+import { IntegrityIssue, countStructure, buildIntegrityReport } from '../utils/integrity';
 
 
 type PreComputedHeading = { level: number; text: string; number: string };
@@ -1555,6 +1555,21 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         await invalidateUsageCount(user.id);
 
         console.log(`[DONE] Document generated. Tokens: ${finalReportedTokens}`);
+
+        // P0-1: 把服务端合并/清洗后的【权威全文】+ 完整性报告发给前端。
+        // 此前前端最终 HTML 只由原始流式 delta 拼成,服务端的去重复循环/补标签/补图片占位
+        // 以及完整性统计全都到不了用户;这里在 {done} 之前用 {text} 全量替换 + {integrityReport}。
+        // (P0-3 会把 finalText 改为确定性后处理的结果)
+        const finalText = fullRestoredText;
+        try {
+            const inputCounts = countStructure(contentForChunking);
+            const outputCounts = countStructure(finalText);
+            const integrityReport = buildIntegrityReport(inputCounts, outputCounts, integrityIssues);
+            res.write(`data: ${JSON.stringify({ integrityReport })}\n\n`);
+        } catch (e) {
+            console.warn('[INTEGRITY] report build failed (non-fatal):', e);
+        }
+        res.write(`data: ${JSON.stringify({ text: finalText })}\n\n`);
 
         // 发送完成事件
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
