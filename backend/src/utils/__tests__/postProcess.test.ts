@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { postProcess, enforceSingleTitleAndDemote, PostProcessOptions } from '../postProcess';
+import { buildSkeleton } from '../skeleton';
 
 const opts = (over: Partial<PostProcessOptions> = {}): PostProcessOptions => ({
     scheme: 'decimal-nested',
@@ -37,6 +38,31 @@ describe('renumberStructure — 决定性重编号覆盖 AI 漂移', () => {
         expect(text).toContain('<h2>3. 又一章</h2>');
         expect(text).toContain('<h3>3.1 节二</h3>');
         expect(text).not.toMatch(/<h[23]>5[.\s]/); // 旧的"5"已被覆盖
+    });
+
+    it('分块边界重复吐出的同名标题 → 整段丢弃(非降级),编号连续无跳号,残留"研究报告"行清除', () => {
+        // 复刻真实 bug:3 块生成,2/3 块开头又吐了一遍标题(+研究报告)。
+        const html = [
+            '<h1 class="doc-title">平台设计</h1>',
+            '<p class="cover-meta">研究报告</p>',          // 真封面副行 → 应保留
+            '<h2>目标</h2><p>a</p>',
+            '<h2>架构</h2><p>b</p>',
+            '<h1 class="doc-title">平台设计</h1>',          // 第2块边界重复标题 → 丢弃
+            '<p>研究报告</p>',                                // 紧邻残留行(纯 <p>)→ 一并丢弃
+            '<h2>功能</h2><p>c</p>',
+            '<h1 class="doc-title">平台设计</h1>',          // 第3块边界重复标题 → 丢弃
+            '<h2>总结</h2><p>d</p>',
+        ].join('');
+        const { text } = postProcess(html, opts({ scheme: 'decimal' }));
+        expect((text.match(/doc-title/g) ?? []).length).toBe(1);     // 只剩一个大标题
+        expect((text.match(/平台设计/g) ?? []).length).toBe(1);       // 标题文本不再作为正文出现
+        expect((text.match(/研究报告/g) ?? []).length).toBe(1);       // 真封面的保留,两处残留清除
+        expect(text).toContain('<h2>1. 目标</h2>');
+        expect(text).toContain('<h2>2. 架构</h2>');
+        expect(text).toContain('<h2>3. 功能</h2>');                   // 不跳号(旧 bug 会变 4/跳号)
+        expect(text).toContain('<h2>4. 总结</h2>');
+        expect(text).not.toMatch(/<h2>5\./);                         // 没有被"偷走"的号
+        expect(text).not.toMatch(/<h[2-6][^>]*>\s*\d+[.\s]*平台设计/); // 标题没被盖成章节号
     });
 
     it('decimal-nested: 章/节/小节 1. / 1.1 / 1.1.1,进入新章重置子号', () => {
@@ -101,12 +127,20 @@ describe('renumberStructure — 决定性重编号覆盖 AI 漂移', () => {
     });
 });
 
-describe('reconcileImages', () => {
-    it('丢失/重复占位符 → 报 issue,不改文本', () => {
+describe('reconcileImages(修复器)', () => {
+    it('重复→只留首次;缺失→附录补回;每个期望占位符最终恰好一次', () => {
         const html = '<h2>章</h2><p>__IMG_0__</p><p>__IMG_0__</p>'; // IMG_1 缺失, IMG_0 重复
-        const { issues } = postProcess(html, opts({ expectedImagePlaceholders: ['__IMG_0__', '__IMG_1__'] }));
+        const { text, issues } = postProcess(html, opts({ expectedImagePlaceholders: ['__IMG_0__', '__IMG_1__'] }));
         expect(issues.some((x) => x.type === 'image_missing')).toBe(true);
         expect(issues.some((x) => x.type === 'image_duplicated')).toBe(true);
+        // 修复后:每个期望占位符在结果中恰好出现一次
+        expect(text.split('__IMG_0__').length - 1).toBe(1);
+        expect(text.split('__IMG_1__').length - 1).toBe(1);
+    });
+    it('无 expected → 文本原样返回(不动)', () => {
+        const html = '<h2>章</h2><p>正文</p>';
+        const { text } = postProcess(html, opts());
+        expect(text).toContain('正文');
     });
 });
 
@@ -119,4 +153,192 @@ describe('幂等性', () => {
             expect(twice).toBe(once);
         }
     });
+});
+
+describe('结构先行:reconcileHeadingsToSkeleton 根治章节漂移(6→10)', () => {
+    it('骨架3章,AI 多吐2个误升 h2 → 恰好3章,多出的降级为子节', () => {
+        const skeleton = buildSkeleton([
+            { level: 1, text: '概述', number: '1' },
+            { level: 1, text: '架构', number: '2' },
+            { level: 1, text: '总结', number: '3' },
+        ]);
+        const html = [
+            '<h1 class="doc-title">设计方案</h1>',
+            '<h2>概述</h2><p>a</p>',
+            '<h2>子项一</h2><p>b</p>',   // 不在骨架 → 误升的小节
+            '<h2>架构</h2><p>c</p>',
+            '<h2>子项二</h2><p>d</p>',   // 不在骨架 → 误升的小节
+            '<h2>总结</h2><p>e</p>',
+        ].join('');
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        expect(text).toContain('<h2>1. 概述</h2>');
+        expect(text).toContain('<h2>2. 架构</h2>');
+        expect(text).toContain('<h2>3. 总结</h2>');
+        expect(text).not.toContain('data-sk'); // 内部标记不泄漏进权威全文
+        // 恰好 3 个章级,没有第 4、5 章
+        expect((text.match(/<h2\b/g) ?? []).length).toBe(3);
+        expect(text).not.toMatch(/<h2[^>]*>\s*4\./);
+        // 误升的两个被降级为 h3
+        expect(text).toContain('子项一</h3>');
+        expect(text).toContain('子项二</h3>');
+    });
+
+    it('AI 把节误标成 h2 → 按骨架纠正为 h3', () => {
+        const skeleton = buildSkeleton([
+            { level: 1, text: '主章', number: '1' },
+            { level: 2, text: '子节', number: '1.1' }, // section → outputLevel 3
+        ]);
+        const html = '<h1 class="doc-title">T</h1><h2>主章</h2><h2>子节</h2>';
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        expect(text).toContain('<h2>1. 主章</h2>');
+        expect(text).toContain('<h3>1.1 子节</h3>'); // 节被纠正为 h3
+    });
+
+    it('个别缺章(单章)→ heading_missing 仅 warning(不阻断计费)', () => {
+        const skeleton = buildSkeleton([
+            { level: 1, text: '甲章', number: '1' },
+            { level: 1, text: '乙章', number: '2' },
+        ]);
+        const html = '<h1 class="doc-title">T</h1><h2>甲章</h2><p>x</p>'; // 乙章缺失(1/2)
+        const { issues } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        const hm = issues.find((i) => i.type === 'heading_missing');
+        expect(hm?.severity).toBe('warning');
+    });
+
+    it('大面积缺章(>15%)→ heading_missing(critical)', () => {
+        const titles = ['系统概述', '需求分析', '总体设计', '详细设计', '测试方案', '部署运维'];
+        const skeleton = buildSkeleton(titles.map((t, i) => ({ level: 1, text: t, number: String(i + 1) })));
+        const html = '<h1 class="doc-title">T</h1><h2>系统概述</h2><h2>需求分析</h2>'; // 缺 4/6 章
+        const { issues } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        expect(issues.some((i) => i.type === 'heading_missing' && i.severity === 'critical')).toBe(true);
+    });
+
+    it('审计#1 标题陷阱:源文标题(Heading1)进骨架 → 不误报缺章', () => {
+        // 源文标题被标成 Heading 1 → preComputedHeadings[0] 即标题;输出里它是 <h1 class=doc-title>。
+        const skeleton = buildSkeleton([
+            { level: 1, text: '关于XX的研究报告', number: '1' }, // 实为文档标题
+            { level: 1, text: '引言', number: '2' },
+            { level: 1, text: '方法', number: '3' },
+        ]);
+        const html = '<h1 class="doc-title">关于XX的研究报告</h1><h2>引言</h2><h2>方法</h2>';
+        const { text, issues } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        expect(issues.some((i) => i.type === 'heading_missing')).toBe(false); // 标题被消费,不算缺章
+        expect(text).toContain('<h2>1. 引言</h2>');
+        expect(text).toContain('<h2>2. 方法</h2>');
+    });
+
+    it('审计#2 改写标题:模糊匹配命中 → 不降级、不误报缺失', () => {
+        const skeleton = buildSkeleton([
+            { level: 1, text: '风场尾流效应分析', number: '1' },
+            { level: 1, text: '结论', number: '2' },
+        ]);
+        const html = '<h1 class="doc-title">T</h1><h2>风场尾流效应的分析</h2><h2>结论</h2>'; // 加了"的"
+        const { text, issues } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        expect(text).not.toMatch(/风场尾流效应的分析<\/h3>/);     // 模糊命中 → 保留为章(未被降级到 h3)
+        expect(text).toMatch(/<h2[^>]*>1\.\s*风场尾流效应的分析<\/h2>/);
+        expect(issues.some((i) => i.type === 'heading_missing')).toBe(false);
+    });
+
+    it('审计#5 章0泄漏:摘要下的子标题不产生 0.1', () => {
+        const html = '<h1 class="doc-title">T</h1><h2>摘要</h2><h3>研究背景</h3><h2>引言</h2>';
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested' }));
+        expect(text).not.toContain('0.1');
+        expect(text).toContain('<h3>研究背景</h3>'); // 前置内容子标题不编号
+        expect(text).toContain('<h2>1. 引言</h2>');
+    });
+
+    it('审计#6 章相对图号:目录下的图退回全局序号,不与正文首图撞号', () => {
+        const html = '<h2>目录</h2><div class="figure-caption">封面图</div><h2>引言</h2><div class="figure-caption">架构图</div>';
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', figureChapterRelative: true }));
+        expect((text.match(/图1-1/g) ?? []).length).toBeLessThanOrEqual(1); // 不再出现两个"图1-1"
+    });
+
+    it('审计#7 位置敏感:正文里真有一节叫「关键词」(出现在某章后)仍正常编号', () => {
+        const html = '<h1 class="doc-title">T</h1><h2>引言</h2><h2>关键词</h2>';
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested' }));
+        expect(text).toContain('<h2>1. 引言</h2>');
+        expect(text).toContain('<h2>2. 关键词</h2>'); // 章后的"关键词"是正文章,编号
+    });
+
+    it('无骨架 → 保持旧行为(信任 AI 标签)', () => {
+        const html = '<h1 class="doc-title">T</h1><h2>A</h2><h2>B</h2>';
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested' }));
+        expect(text).toContain('<h2>1. A</h2>');
+        expect(text).toContain('<h2>2. B</h2>');
+    });
+
+    it('目录/前言等前置标题不编号,引言才是第1章', () => {
+        const html = '<h1 class="doc-title">T</h1><h2>目录</h2><h2>前言</h2><h2>引言</h2><h2>系统设计</h2>';
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested' }));
+        expect(text).toContain('<h2>目录</h2>');        // 不编号
+        expect(text).toContain('<h2>前言</h2>');        // 不编号
+        expect(text).toContain('<h2>1. 引言</h2>');     // 引言才是第1章
+        expect(text).toContain('<h2>2. 系统设计</h2>');
+        expect(text).not.toMatch(/<h2>\d+\.\s*目录/);   // 绝不出现"1. 目录"
+    });
+
+    it('chapter 方案:目录不编号,引言为第一章', () => {
+        const html = '<h1 class="doc-title">T</h1><h2>目录</h2><h2>引言</h2>';
+        const { text } = postProcess(html, opts({ scheme: 'chapter' }));
+        expect(text).toContain('<h2>目录</h2>');
+        expect(text).toContain('<h2>第一章 引言</h2>');
+    });
+
+    it('审计#3 编号前缀不吞真实数字(年份/5G/小数)', () => {
+        const html = '<h1 class="doc-title">T</h1><h2>2024年度总结</h2><h2>5G通信技术</h2>';
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested' }));
+        expect(text).toContain('1. 2024年度总结'); // "2024" 保留,不被当编号吃掉
+        expect(text).toContain('2. 5G通信技术');    // "5" 保留
+    });
+
+    it('幂等:带骨架跑两次结果一致', () => {
+        const skeleton = buildSkeleton([
+            { level: 1, text: '概述', number: '1' },
+            { level: 1, text: '总结', number: '2' },
+        ]);
+        const html = '<h1 class="doc-title">T</h1><h2>概述</h2><h2>多余</h2><h2>总结</h2>';
+        const once = postProcess(html, opts({ scheme: 'decimal-nested', skeleton })).text;
+        const twice = postProcess(once, opts({ scheme: 'decimal-nested', skeleton })).text;
+        expect(twice).toBe(once);
+    });
+});
+
+// 全局后处理改动会作用于「所有预设(TAB)」。本矩阵用各预设真实的 scheme + 图/表编号配置,
+// 跑同一份代表性文档(标题 + 目录/摘要前置 + 摘要子节 + 两章各带一图),验证:
+//  - 前置标题不编号;真正第一章按各自 scheme 正确起编;
+//  - 无"章0泄漏"(0.1 / 0-1);图号互不重复(章相对 vs 顺序都对)。
+describe('多预设(各TAB)生成逻辑正确性矩阵', () => {
+    const PRESETS = [
+        { name: 'ACADEMIC 报告', scheme: 'decimal-nested', fig: true, tab: true, firstChapter: '1. 引言', secondChapter: '2. 系统设计' },
+        { name: 'ACADEMIC_JOURNAL 学术期刊', scheme: 'decimal-nested', fig: false, tab: false, firstChapter: '1. 引言', secondChapter: '2. 系统设计' },
+        { name: 'CREATIVE', scheme: 'chapter', fig: true, tab: true, firstChapter: '第一章 引言', secondChapter: '第二章 系统设计' },
+        { name: 'CORPORATE 商务公文', scheme: 'chinese-hierarchical', fig: false, tab: false, firstChapter: '一、 引言', secondChapter: '二、 系统设计' },
+        { name: 'MINIMALIST', scheme: 'decimal', fig: false, tab: false, firstChapter: '1. 引言', secondChapter: '2. 系统设计' },
+    ];
+    const html = [
+        '<h1 class="doc-title">某某设计方案</h1>',
+        '<h2>目录</h2>',
+        '<h2>摘要</h2><h3>研究背景</h3>',
+        '<h2>引言</h2><div class="figure-caption">系统架构</div>',
+        '<h2>系统设计</h2><div class="figure-caption">模块图</div>',
+    ].join('');
+
+    for (const p of PRESETS) {
+        it(`${p.name}: 前置不编号 / 第一章起编正确 / 无章0泄漏 / 图号不撞`, () => {
+            const { text } = postProcess(html, opts({ scheme: p.scheme, figureChapterRelative: p.fig, tableChapterRelative: p.tab }));
+            // 前置事务性标题不编号
+            expect(text).toContain('<h2>目录</h2>');
+            expect(text).toContain('<h2>摘要</h2>');
+            // 摘要下的子节不产生"章0"编号
+            expect(text).not.toContain('0.1');
+            expect(text).not.toContain('0-1');
+            // 真正的第一/第二章按各自 scheme 起编
+            expect(text).toContain(`<h2>${p.firstChapter}</h2>`);
+            expect(text).toContain(`<h2>${p.secondChapter}</h2>`);
+            // 图号互不重复(章相对 → 图1-1/图2-1;顺序 → 图1/图2)
+            const figs = [...text.matchAll(/图\d+(?:-\d+)?/g)].map((m) => m[0]);
+            expect(figs.length).toBe(2);
+            expect(new Set(figs).size).toBe(2);
+        });
+    }
 });

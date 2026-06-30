@@ -12,7 +12,8 @@ export type FigureNumberingStyle = 'sequential' | 'chapter-relative'; // 图1 vs
 export type Alignment = 'left' | 'center' | 'right' | 'justify';
 
 // 页边距(cm 字符串,如 "3.7cm"),docx 库的 UniversalMeasure 直接接受
-export interface PageMargins { top: string; bottom: string; left: string; right: string }
+// header/footer = 页眉/页脚距页边(可选,旧预设缺省时引擎兜底)
+export interface PageMargins { top: string; bottom: string; left: string; right: string; header?: string; footer?: string }
 export type PageSizeName = 'A4' | 'A3' | 'Letter';
 
 // ===== 内容完整性报告(镜像 backend/src/utils/integrity.ts,需手动保持一致)=====
@@ -130,6 +131,7 @@ export interface StyleConfig {
 
   // Layout
   columns?: number; // 分栏数量
+  columnGap?: string; // 栏间距 (e.g. "0.78cm");缺省时引擎用默认
 
   // Page setup(可选:旧预设缺省时 docxGenerator 用默认值兜底)
   pageMargins?: PageMargins; // 页边距 (GB/T 9704: 上3.7 下3.5 左2.8 右2.6cm)
@@ -137,6 +139,48 @@ export interface StyleConfig {
 
   // TOC Generation
   generateToc?: boolean; // 导出 DOCX 时是否自动生成目录页
+
+  // ===== 期刊精细排版(PST 等;全部可选,缺省时引擎回退到通用逻辑)=====
+  // 中英分字体:中文用 fontFamily/headingFont,英文与数字用下列字体(按字符类型拆 run)
+  bodyFontEn?: string;      // 正文英文/数字字体 (Times New Roman)
+  headingFontEn?: string;   // 标题英文/数字字体 (Arial)
+
+  // 每级标题段前/段后(pt 字符串,如 "6pt"/"12pt"),覆盖按字号算的默认行比例
+  h1SpacingBefore?: string; h1SpacingAfter?: string;
+  h2SpacingBefore?: string; h2SpacingAfter?: string;
+  h3SpacingBefore?: string; h3SpacingAfter?: string;
+  h4SpacingBefore?: string; h4SpacingAfter?: string;
+
+  // 篇首(标题/作者/摘要)行距,与正文 lineHeight 分区(PST 篇首 1.25 倍)
+  frontMatterLineHeight?: string;
+
+  // 专用元素加黑/行距/段首缩进
+  englishTitleBold?: boolean;
+  tableCaptionBold?: boolean;
+  figureCaptionBold?: boolean;
+  abstractLineHeight?: string;       // 中文摘要固定行距 (e.g. "14pt")
+  abstractIndentChars?: number;      // 中文摘要段首缩进字符数 (PST: 6pt≈不足1字,按需)
+  englishAbstractLineHeight?: string;
+  keywordsLineHeight?: string;
+
+  // DOI / 英文关键词 独立样式
+  doiFont?: string; doiSize?: string; doiBold?: boolean;
+  englishKeywordsFont?: string; englishKeywordsSize?: string;
+
+  // 图:图内文字 与 图宽(半栏/通栏)
+  inFigureFont?: string; inFigureSize?: string;
+  figureWidthHalf?: string;  // 半栏图宽 (e.g. "6.5cm")
+  figureWidthFull?: string;  // 通栏图宽 (e.g. "14cm")
+
+  // 参考文献专用排版(六号宋体 + 0.63cm 悬挂缩进 + 12pt 行距)
+  referencesFont?: string; referencesSize?: string;
+  referencesLineHeight?: string; referencesHangingIndent?: string;
+
+  // 三线表:内线/外框线宽(pt 数值,如 0.5 / 0.75)
+  tableInnerBorderPt?: number; tableOuterBorderPt?: number;
+
+  // 行×字网格(w:docGrid):每页行数 / 每行字数(对齐网格的单倍行距基础)
+  linesPerPage?: number; charsPerLine?: number;
 }
 
 export interface PresetConfig {

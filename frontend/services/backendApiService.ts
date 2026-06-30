@@ -1,7 +1,7 @@
 // 后端 API 调用服务 (替换直接调用 Gemini)
 import { DocPreset, StyleConfig, IntegrityReport } from '../types';
 import { authService } from './authService';
-import i18n from '../i18n';
+import i18n, { translateBackendError } from '../i18n';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -54,7 +54,7 @@ export async function generateDocumentViaBackend(
             throw new Error('LOGIN_REQUIRED');
         }
 
-        throw new Error(data.message || i18n.t('errors.generate_failed', '文档生成失败'));
+        throw new Error(translateBackendError(data.message) || i18n.t('errors.generate_failed', '文档生成失败'));
     }
 
     // 处理 SSE 流式响应
@@ -85,7 +85,11 @@ export async function generateDocumentViaBackend(
                         try {
                             const data = JSON.parse(dataStr);
 
-                            if (data.error) throw new Error(data.error);
+                            if (data.error) {
+                                // 技术细节(dev 才回传)只进控制台,UI 只显示翻译后的中文
+                                if (data.errorDetail) console.warn('[generate] error detail:', data.errorDetail);
+                                throw new Error(translateBackendError(data.error));
+                            }
                             if (data.done) return { html: fullText, integrityReport: capturedReport };
 
                             // integrityReport 事件 — 内容完整性报告(done 之前送达)

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
+import { translateBackendError } from '../i18n';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -82,7 +83,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         });
       }, 1000);
     } catch (e: any) {
-      setError(e.message || t('auth.error_send_failed', '发送失败'));
+      setError(translateBackendError(e.message) || t('auth.error_send_failed', '发送失败'));
       refreshCaptcha();
     } finally {
       setIsLoading(false);
@@ -104,7 +105,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       setCaptchaInput('');
       setCountdown(0);
     } catch (err: any) {
-      setError(err.message || t('auth.error_operation_failed', '操作失败,请重试'));
+      setError(translateBackendError(err.message) || t('auth.error_operation_failed', '操作失败,请重试'));
     } finally {
       setIsLoading(false);
     }

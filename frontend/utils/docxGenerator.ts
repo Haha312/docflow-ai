@@ -723,6 +723,16 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             afterTwips = isCorporate ? 0 : getSpacingTwips(`0.2${linesUnit}`, getPtSize(styleConfig.h4Size));
             indent = getIndentConfig(styleConfig.h4Indent, getPtSize(styleConfig.h4Size)); bold = styleConfig.h4Bold; italics = styleConfig.h4Italic; fontName = h4Font;
         }
+        // 期刊等:若为该级标题配置了固定 pt 段前/段后(如 PST: H1段前12pt、章段前后6pt、三/四级0),
+        // 覆盖上面按"行比例"算出的默认值(缺省字段则保持原行为,不影响其他预设)。
+        const ptToTwips = (v?: string): number | undefined => {
+            const m = (v || '').match(/([\d.]+)\s*pt/i);
+            return m ? Math.round(parseFloat(m[1]) * 20) : undefined;
+        };
+        const ovBefore = ptToTwips(level === 1 ? styleConfig.h1SpacingBefore : level === 2 ? styleConfig.h2SpacingBefore : level === 3 ? styleConfig.h3SpacingBefore : styleConfig.h4SpacingBefore);
+        const ovAfter = ptToTwips(level === 1 ? styleConfig.h1SpacingAfter : level === 2 ? styleConfig.h2SpacingAfter : level === 3 ? styleConfig.h3SpacingAfter : styleConfig.h4SpacingAfter);
+        if (ovBefore !== undefined) beforeTwips = ovBefore;
+        if (ovAfter !== undefined) afterTwips = ovAfter;
         // For CORPORATE, apply fixed 28pt line height to headings too
         const headingLine = isCorporate ? { line: corporateLine28, lineRule: LineRuleType.EXACT } : {};
         return new Paragraph({ heading: headingLevel, alignment: align, spacing: { before: beforeTwips, after: afterTwips, ...headingLine }, indent: indent, children: [new TextRun({ text: text, font: makeFont(fontName), color: primaryColor, bold: bold, italics: italics, size: size })] });
@@ -841,7 +851,12 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 const rowsArr: TableRow[] = [];
                 const trs = Array.from(el.querySelectorAll('tr'));
                 const isNoBorder = el.classList.contains('no-border') || el.style.border === 'none';
-                const borderConfig = isNoBorder ? { style: BorderStyle.NONE, size: 0, color: "auto" } : { style: BorderStyle.SINGLE, size: 1, color: "auto" };
+                // 线宽:docx 的 size 单位是 1/8 pt。期刊(PST)要求 内线0.5pt / 外框0.75pt;
+                // 缺省时回退 size:1(≈0.125pt,旧行为),不影响其他预设。
+                const innerSz = styleConfig.tableInnerBorderPt ? Math.max(1, Math.round(styleConfig.tableInnerBorderPt * 8)) : 1;
+                const outerSz = styleConfig.tableOuterBorderPt ? Math.max(1, Math.round(styleConfig.tableOuterBorderPt * 8)) : innerSz;
+                const innerBorder = isNoBorder ? { style: BorderStyle.NONE, size: 0, color: "auto" } : { style: BorderStyle.SINGLE, size: innerSz, color: "auto" };
+                const outerBorder = isNoBorder ? { style: BorderStyle.NONE, size: 0, color: "auto" } : { style: BorderStyle.SINGLE, size: outerSz, color: "auto" };
                 const margins = isNoBorder ? { top: 20, bottom: 20, left: 0, right: 0 } : { top: 100, bottom: 100, left: 100, right: 100 };
 
                 trs.forEach(tr => {
@@ -851,11 +866,12 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                         if (cellChildren.length === 0) cellChildren.push(createBodyParagraph([], { inTable: true, inHeader: td.tagName === 'TH' }));
                         const rowspan = parseInt(td.getAttribute('rowspan') || '1');
                         const colspan = parseInt(td.getAttribute('colspan') || '1');
-                        cells.push(new TableCell({ children: cellChildren, columnSpan: colspan, rowSpan: rowspan, borders: { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig }, margins: margins }));
+                        // 单元格边框用内线宽;外框由 Table 级 top/bottom/left/right 提供
+                        cells.push(new TableCell({ children: cellChildren, columnSpan: colspan, rowSpan: rowspan, borders: { top: innerBorder, bottom: innerBorder, left: innerBorder, right: innerBorder }, margins: margins }));
                     });
                     rowsArr.push(new TableRow({ children: cells }));
                 });
-                elements.push(new Table({ rows: rowsArr, width: { size: 100, type: WidthType.PERCENTAGE }, borders: isNoBorder ? { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig, insideHorizontal: borderConfig, insideVertical: borderConfig } : undefined }));
+                elements.push(new Table({ rows: rowsArr, width: { size: 100, type: WidthType.PERCENTAGE }, borders: { top: outerBorder, bottom: outerBorder, left: outerBorder, right: outerBorder, insideHorizontal: innerBorder, insideVertical: innerBorder } }));
                 return;
             }
 
@@ -971,7 +987,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             }
 
             if (text.includes("image-placeholder") || (text.startsWith(i18n.t('generator.figure', '图')) && text.length < 50 && !tagName.startsWith('H'))) {
-                elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.figureAlign), spacing: { before: 240, after: 240 }, children: [new TextRun({ text: text, font: makeFont(figureFont), size: getHalfPtSize(styleConfig.figureSize), color: "000000" })] }));
+                elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.figureAlign), spacing: { before: 240, after: 240 }, children: [new TextRun({ text: text, font: makeFont(figureFont), size: getHalfPtSize(styleConfig.figureSize), bold: !!styleConfig.figureCaptionBold, color: "000000" })] }));
                 return;
             }
 
@@ -1017,6 +1033,12 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 const isEnAbs = className.includes('abstract-en');
                 const absFont = isEnAbs ? abstractEnFont : abstractCnFont;
                 const absSz = isEnAbs ? abstractEnSize : abstractCnSize;
+                // 摘要固定行距(PST: 14pt);缺省时不强制行距
+                const absLineRaw = isEnAbs ? styleConfig.englishAbstractLineHeight : styleConfig.abstractLineHeight;
+                const absLineM = (absLineRaw || '').match(/([\d.]+)\s*pt/i);
+                const absSpacing = absLineM
+                    ? { before: 0, after: 60, line: Math.round(parseFloat(absLineM[1]) * 20), lineRule: LineRuleType.EXACT }
+                    : { before: 0, after: 60 };
                 Array.from(el.childNodes).forEach(child => {
                     if (child.nodeType === Node.ELEMENT_NODE) {
                         const p = child as HTMLElement;
@@ -1033,15 +1055,20 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                             runs.push(new TextRun({ text: p.textContent, font: makeFont(absFont), size: absSz }));
                         }
                         if (runs.length > 0) {
-                            elements.push(new Paragraph({ alignment: currentAlign, indent: { firstLine: 0 }, spacing: { before: 0, after: 60 }, children: runs }));
+                            elements.push(new Paragraph({ alignment: currentAlign as any, indent: { firstLine: 0 }, spacing: absSpacing, children: runs }));
                         }
                     } else if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').trim()) {
-                        elements.push(new Paragraph({ alignment: currentAlign, indent: { firstLine: 0 }, spacing: { before: 0, after: 60 }, children: [new TextRun({ text: child.textContent || '', font: makeFont(absFont), size: absSz })] }));
+                        elements.push(new Paragraph({ alignment: currentAlign as any, indent: { firstLine: 0 }, spacing: absSpacing, children: [new TextRun({ text: child.textContent || '', font: makeFont(absFont), size: absSz })] }));
                     }
                 });
                 return;
             }
-            if (className.includes('keywords')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 120 }, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(keywordsFont), size: getHalfPtSize(styleConfig.keywordsSize || styleConfig.abstractSize || styleConfig.baseSize), color: "000000" })] })); return; }
+            if (className.includes('keywords')) {
+                const kwM = (styleConfig.keywordsLineHeight || '').match(/([\d.]+)\s*pt/i);
+                const kwSpacing: any = kwM ? { before: 60, after: 120, line: Math.round(parseFloat(kwM[1]) * 20), lineRule: LineRuleType.EXACT } : { before: 60, after: 120 };
+                elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: kwSpacing, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(keywordsFont), size: getHalfPtSize(styleConfig.keywordsSize || styleConfig.abstractSize || styleConfig.baseSize), color: "000000" })] }));
+                return;
+            }
             if (className.includes('table-caption') || tagName === 'CAPTION' || (tagName === 'P' && text.startsWith(i18n.t('generator.table', '表')) && text.length < 40 && !tableContext.inTable)) { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: true, color: "000000" })] })); return; }
 
             if (tagName === 'H1') elements.push(createHeading(text, 1));
@@ -1208,8 +1235,13 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             bottom: convertMillimetersToTwip(toMm(_mg.bottom)),
             left: convertMillimetersToTwip(toMm(_mg.left)),
             right: convertMillimetersToTwip(toMm(_mg.right)),
+            // 页眉/页脚距页边(可选;期刊如 PST 要求 页眉1.8cm/页脚0)
+            ...(_mg.header != null ? { header: convertMillimetersToTwip(toMm(_mg.header)) } : {}),
+            ...(_mg.footer != null ? { footer: convertMillimetersToTwip(toMm(_mg.footer)) } : {}),
         },
     };
+    // 栏间距(双栏):优先用 styleConfig.columnGap,缺省 425 twips(≈0.75cm)
+    const columnSpace = styleConfig.columnGap ? convertMillimetersToTwip(toMm(styleConfig.columnGap)) : 425;
 
     // ===== 构建多节文档 =====
     let sections = [];
@@ -1289,7 +1321,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     properties: {
                         page: pageProps,
                         type: SectionType.CONTINUOUS,
-                        column: { count: styleConfig.columns, space: 425 }
+                        column: { count: styleConfig.columns, space: columnSpace }
                     },
                     children: processNodes(bodyNodes2 as unknown as NodeList),
                     footers: { default: createBodyFooter() }
@@ -1316,7 +1348,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
 
             sections = [
                 { properties: { page: pageProps, column: { count: 1 }, type: SectionType.CONTINUOUS }, children: processNodes(hdrNodes2 as unknown as NodeList), footers: { default: createBodyFooter() } },
-                { properties: { page: pageProps, column: { count: styleConfig.columns, space: 425 }, type: SectionType.CONTINUOUS }, children: processNodes(bodyNodes3 as unknown as NodeList), footers: { default: createBodyFooter() } }
+                { properties: { page: pageProps, column: { count: styleConfig.columns, space: columnSpace }, type: SectionType.CONTINUOUS }, children: processNodes(bodyNodes3 as unknown as NodeList), footers: { default: createBodyFooter() } }
             ];
         } else {
             sections = [{

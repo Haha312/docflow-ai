@@ -56,8 +56,8 @@ class AuthService {
         return !!this.getToken();
     }
 
-    // 获取图形验证码
-    async getCaptcha(): Promise<{ image: string; sessionId: string }> {
+    // 获取图形验证码(dev 环境后端会附带 devCaptcha 明文,便于本地联调自动填)
+    async getCaptcha(): Promise<{ image: string; sessionId: string; devCaptcha?: string }> {
         const response = await fetch(`${API_BASE_URL}/api/auth/captcha`);
         const data = await response.json();
         if (!response.ok) {

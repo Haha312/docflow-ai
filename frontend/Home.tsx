@@ -20,7 +20,6 @@ import systemLogo from './image/image.jpg';
 // useTypewriter removed: SSE stream is already incremental, no need for secondary typing animation
 import { PRESETS } from './constants';
 import { DocPreset, AIState, StyleConfig } from './types';
-import { diffContent } from './utils/contentDiff';
 import katex from 'katex';
 import DOMPurify from 'dompurify';
 import 'katex/dist/katex.min.css';
@@ -140,7 +139,7 @@ function Home() {
   const [editMode, setEditMode] = useState(false);
   const [downloadHighlight, setDownloadHighlight] = useState(false);
   // P0-4: 完整性提示(后端报告显示截断/保留率低/有非 info 问题时给用户一个可关闭的轻提示)
-  const [integrityNotice, setIntegrityNotice] = useState<string | null>(null);
+  const [integrityNotice, setIntegrityNotice] = useState<{ level: 'critical' | 'warning'; text: string; details: string[] } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [pricingReason, setPricingReason] = useState<'quota' | undefined>(undefined);
@@ -190,6 +189,9 @@ function Home() {
 
   // Rich editor states
   const previewContentRef = useRef<HTMLDivElement>(null);
+  // 流式实时分页的节流(避免逐字重排卡顿/抖动;完成态则立即精确分页)
+  const lastPaginateAtRef = useRef(0);
+  const paginateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isContentEdited, setIsContentEdited] = useState(false);
   const savedRangeRef = useRef<Range | null>(null);
   // 当前展示/导出用的「干净」内容 HTML(扁平、含 KaTeX/图片,不含 .a4-page 包裹)。
@@ -223,12 +225,6 @@ function Home() {
   const activePresetConfig = isCustom ? customBaseConfig : selectedPresetConfig!;
   // 送后端的模板 id(自定义 → 沿用其 base 的排版行为)
   const backendPreset: DocPreset = isCustom ? customBase : (selectedPreset as DocPreset);
-
-  // 「仅格式改动」对比(只在生成结束后算一次,避免流式期间每 80ms 重算)
-  const contentDiff = useMemo(
-    () => (outputText && inputText && !aiState.isThinking ? diffContent(inputText, outputText) : null),
-    [inputText, outputText, aiState.isThinking]
-  );
 
   // 空状态(大气 hero):还没有生成结果、也没在生成时,中间显示居中大输入区而非空白 A4
   const showHero = !outputText && !aiState.isThinking;
@@ -557,11 +553,18 @@ function Home() {
         // P0-4: 据后端完整性报告决定是否给"可能不完整"提示
         const report = genResult?.integrityReport;
         if (report && (report.truncated || report.charRetentionPct < 90 || (report.issues ?? []).some(x => x.severity !== 'info'))) {
-          setIntegrityNotice(
-            report.truncated
-              ? t('home.integrity_truncated', '生成可能不完整(检测到截断或重复失控),建议重新生成或缩短文档')
-              : t('home.integrity_low_retention', '成稿内容与原文差异较大(约 {{pct}}%),请核对是否有遗漏', { pct: report.charRetentionPct })
-          );
+          const issues = report.issues ?? [];
+          const hasCritical = issues.some(x => x.severity === 'critical');
+          // 标题文案:只在「确实截断」或「保留率确实偏低(<90%)」时用对应措辞;
+          // 否则用中性"有需核对项",避免保留率~100% 时还显示"内容差异较大(约100%)"这种自相矛盾。
+          const text = report.truncated
+            ? t('home.integrity_truncated', '生成可能不完整(检测到截断或重复失控),建议重新生成或缩短文档')
+            : report.charRetentionPct < 90
+              ? t('home.integrity_low_retention', '成稿内容与原文差异较大(约 {{pct}}%),请核对是否有遗漏', { pct: report.charRetentionPct })
+              : t('home.integrity_check', '生成结果有需要核对的项(见下),请检查');
+          // 明细:列出后端给的非 info 问题说明,让用户知道具体是什么,而非只看一句笼统提示。
+          const details = issues.filter(x => x.severity !== 'info').map(x => x.detail).filter(Boolean);
+          setIntegrityNotice({ level: hasCritical ? 'critical' : 'warning', text, details });
         }
         setViewMode('preview'); // 生成完成后自动切换到全宽预览模式
         setShowToast(true);
@@ -928,13 +931,36 @@ function Home() {
       return;
     }
 
-    // 只读分页(preview + 非编辑 + 非流式)→ 切成多张 A4 纸;否则扁平写入单 div
-    const paginated = viewMode === 'preview' && !editMode && !aiState.isThinking;
+    // 分页(预览 + 非编辑)→ 切成多张真·A4 纸;生成过程中也实时分页(节流);仅编辑态用扁平单 div
+    const paginated = viewMode === 'preview' && !editMode;
     if (paginated) {
       // 以「干净内容」为源:未编辑用 renderedContent,编辑过用捕获的 displayHtmlRef
       if (!isContentEditedRef.current) displayHtmlRef.current = renderedContent;
-      const total = paginateIntoSheets(el, displayHtmlRef.current || renderedContent);
-      setContentPageCount(total);
+      const doPaginate = () => {
+        const node = previewContentRef.current;
+        if (!node) return;
+        // 重排会重建 DOM、改变高度 → 先记下滚动位置,排完立刻钉回去,消除"乱跳"。
+        // 仅当用户本就贴在底部(shouldAutoScroll)时才跟随到最新内容;否则严格保持原位。
+        const container = previewContainerRef.current;
+        const prevTop = container ? container.scrollTop : 0;
+        const followBottom = !!container && aiState.isThinking && shouldAutoScroll;
+        setContentPageCount(paginateIntoSheets(node, displayHtmlRef.current || renderedContent));
+        lastPaginateAtRef.current = Date.now();
+        if (container) {
+          isProgrammaticScrollRef.current = true;
+          container.scrollTop = followBottom ? container.scrollHeight : prevTop;
+          requestAnimationFrame(() => { isProgrammaticScrollRef.current = false; });
+        }
+      };
+      if (paginateTimerRef.current) { clearTimeout(paginateTimerRef.current); paginateTimerRef.current = null; }
+      if (aiState.isThinking) {
+        // 流式期间最多每 ~600ms 分一次页(留出测量/重排开销),完成的页保持稳定、只有正在写的最后一页会动
+        const since = Date.now() - lastPaginateAtRef.current;
+        if (since >= 600) doPaginate();
+        else paginateTimerRef.current = setTimeout(doPaginate, 600 - since);
+      } else {
+        doPaginate(); // 完成态:立即精确分页
+      }
     } else {
       if (!isContentEditedRef.current) {
         el.innerHTML = renderedContent;
@@ -1276,7 +1302,7 @@ function Home() {
         <div ref={workspaceRef} className="flex flex-col md:flex-row gap-4 md:gap-6 h-auto md:h-[calc(100vh-88px)]">
 
           {/* Left Panel(已隐藏:控件上移到预览顶部栏,预览全宽) */}
-          {false && (
+          {import.meta.env.VITE_SHOW_LEGACY_SIDEBAR === 'true' && (
           <div
             className="hidden md:flex flex-col flex-shrink-0 relative"
             style={{
@@ -1647,54 +1673,28 @@ function Home() {
                 <p className="text-xs text-gray-500">{aiState.stopMessage}</p>
               </div>
             )}
-            {/* P0-4 完整性提示条:后端报告显示生成可能不完整时 */}
-            {integrityNotice && !aiState.isThinking && (
-              <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="flex-shrink-0 text-amber-600">⚠</span>
-                  <p className="text-xs text-amber-700 flex-1 min-w-0">{integrityNotice}</p>
-                </div>
-                <button onClick={() => setIntegrityNotice(null)} title={t('home.dismiss', '关闭')} className="flex-shrink-0 text-amber-500 hover:text-amber-700 text-xs leading-none">✕</button>
-              </div>
-            )}
-
-            {/* 「仅格式改动」对比断言条(仅原文对比视图) */}
-            {viewMode === 'split' && contentDiff && (
-              <div className={`px-4 py-2 border-b text-xs ${contentDiff.identical ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-amber-50 border-amber-100 text-amber-700'}`}>
-                <div className="flex items-start gap-2">
-                  <span className="flex-shrink-0">{contentDiff.identical ? '✓' : '⚠'}</span>
-                  {contentDiff.identical ? (
-                    <span>{t('home.diff_ok', '仅格式调整:正文内容与原文一致')}</span>
-                  ) : (
-                    <span>{t('home.diff_warn', '检测到 {{r}} 处疑似删减、{{a}} 处疑似新增,请复核(AI 重排改写措辞可能导致误报)', { r: contentDiff.removed.length, a: contentDiff.added.length })}</span>
-                  )}
-                </div>
-                {!contentDiff.identical && (contentDiff.removed.length > 0 || contentDiff.added.length > 0) && (
-                  <div className="mt-1.5 space-y-1 pl-5">
-                    {contentDiff.removed.length > 0 && (
-                      <details>
-                        <summary className="cursor-pointer text-amber-700/80 hover:text-amber-800">{t('home.diff_removed', '疑似删减 {{n}} 处', { n: contentDiff.removed.length })}</summary>
-                        <ul className="mt-1 space-y-0.5">
-                          {contentDiff.removed.map((s, i) => (
-                            <li key={i} className="text-gray-500 truncate before:content-['−_'] before:text-red-400">{s}</li>
+            {/* P0-4 完整性提示条:按严重度配色(critical=红 / warning=琥珀),并列出具体问题明细 */}
+            {integrityNotice && !aiState.isThinking && (() => {
+              const crit = integrityNotice.level === 'critical';
+              return (
+                <div className={`px-4 py-2 border-b flex items-start justify-between gap-3 ${crit ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
+                  <div className="flex items-start gap-2 min-w-0">
+                    <span className={`flex-shrink-0 ${crit ? 'text-red-600' : 'text-amber-600'}`}>{crit ? '⛔' : '⚠'}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-xs ${crit ? 'text-red-700' : 'text-amber-700'}`}>{integrityNotice.text}</p>
+                      {integrityNotice.details.length > 0 && (
+                        <ul className={`mt-1 space-y-0.5 text-[11px] ${crit ? 'text-red-600/80' : 'text-amber-600/80'}`}>
+                          {integrityNotice.details.map((d, i) => (
+                            <li key={i} className="truncate before:content-['·_']">{d}</li>
                           ))}
                         </ul>
-                      </details>
-                    )}
-                    {contentDiff.added.length > 0 && (
-                      <details>
-                        <summary className="cursor-pointer text-amber-700/80 hover:text-amber-800">{t('home.diff_added', '疑似新增 {{n}} 处', { n: contentDiff.added.length })}</summary>
-                        <ul className="mt-1 space-y-0.5">
-                          {contentDiff.added.map((s, i) => (
-                            <li key={i} className="text-gray-500 truncate before:content-['+_'] before:text-blue-400">{s}</li>
-                          ))}
-                        </ul>
-                      </details>
-                    )}
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-            )}
+                  <button onClick={() => setIntegrityNotice(null)} title={t('home.dismiss', '关闭')} className={`flex-shrink-0 text-xs leading-none ${crit ? 'text-red-500 hover:text-red-700' : 'text-amber-500 hover:text-amber-700'}`}>✕</button>
+                </div>
+              );
+            })()}
 
             {/* Content */}
             <div className="flex-1 flex min-h-0">
@@ -1873,8 +1873,8 @@ function Home() {
                         )}
                         {viewMode === 'preview' ? (
                           /* A4 纸张模式 */
-                          (!editMode && !aiState.isThinking) ? (
-                            /* 只读真·分页:灰桌面 + 多张独立 A4 纸(由 paginateIntoSheets 填充 #preview-content) */
+                          !editMode ? (
+                            /* 真·分页:灰桌面 + 多张独立 A4 纸(生成中也实时分页,由 paginateIntoSheets 填充 #preview-content) */
                             <div
                               id="preview-content"
                               ref={previewContentRef}
@@ -2059,19 +2059,13 @@ function Home() {
       {/* Custom Confirm Dialog */}
       {ConfirmDialogComponent}
 
-      {/* 极简 footer (固定右下角,不影响布局) */}
-      <div className="fixed bottom-2 right-4 text-[10px] text-gray-400 z-30 flex items-center gap-1.5 pointer-events-auto">
-        <a href="/terms" target="_blank" rel="noopener" className="hover:text-gray-600 transition-colors">{t('footer.terms', '用户协议')}</a>
-        <span>·</span>
-        <a href="/privacy" target="_blank" rel="noopener" className="hover:text-gray-600 transition-colors">{t('footer.privacy', '隐私政策')}</a>
-        {/* ICP 备案号:配置 VITE_ICP_BEIAN 后展示,链接工信部备案系统 */}
-        {import.meta.env.VITE_ICP_BEIAN && (
-          <>
-            <span>·</span>
-            <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" className="hover:text-gray-600 transition-colors">{import.meta.env.VITE_ICP_BEIAN}</a>
-          </>
-        )}
-      </div>
+      {/* 极简 footer (固定右下角)。用户协议/隐私政策只在登录弹窗展示(AuthModal 的同意条款里),主页面不再重复。
+          这里仅保留 ICP 备案号(法律要求),且仅在配置 VITE_ICP_BEIAN 后才渲染。 */}
+      {import.meta.env.VITE_ICP_BEIAN && (
+        <div className="fixed bottom-2 right-4 text-[10px] text-gray-400 z-30 flex items-center gap-1.5 pointer-events-auto">
+          <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer" className="hover:text-gray-600 transition-colors">{import.meta.env.VITE_ICP_BEIAN}</a>
+        </div>
+      )}
     </div>
   );
 }

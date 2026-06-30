@@ -52,6 +52,23 @@ export const extractFirstHeading = (chunkContent: string): string => {
     return normalizeText(chunkContent).slice(0, 80);
 };
 
+// 若切点 idx 落在 __IMG_N__ 占位符内部 → 回退到该占位符的开头(整体归入下一块),
+// 避免把占位符切成两半(如 __IMG_12__ → __IMG_1 | 2__)导致图片彻底丢失。占位符很短,扫 idx 两侧窗口即可。
+const snapOffPlaceholder = (content: string, idx: number): number => {
+    if (idx <= 0 || idx >= content.length) return idx;
+    const winStart = Math.max(0, idx - 20);
+    const win = content.slice(winStart, idx + 20);
+    const local = idx - winStart;
+    const re = /__IMG_\d+__/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(win)) !== null) {
+        const s = m.index;
+        const e = m.index + m[0].length;
+        if (s < local && local < e) return winStart + s; // 切点在占位符内部 → 退到其开头
+    }
+    return idx;
+};
+
 export const splitContentBySemantics = (content: string, maxChars: number = CHUNK_SIZE_CHARS): string[] => {
     if (content.length <= maxChars) return [content];
 
@@ -72,52 +89,52 @@ export const splitContentBySemantics = (content: string, maxChars: number = CHUN
         const targetEnd = processed + maxChars;
         const searchStart70 = processed + Math.floor(maxChars * 0.7);
 
+        // ── 选切点(策略级联),先不切片 ──
+        let splitIndex = -1;
+        let strategy = '';
+
         const candidateHeadings = headingPositions.filter((p) => p > searchStart70 && p < targetEnd && p > processed);
         if (candidateHeadings.length > 0) {
-            const splitIndex = candidateHeadings[candidateHeadings.length - 1];
-            const chunk = content.slice(processed, splitIndex);
-            chunks.push(chunk);
-            console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${splitIndex}) len=${chunk.length} strategy=heading-tag`);
-            processed = splitIndex;
-            continue;
+            splitIndex = candidateHeadings[candidateHeadings.length - 1];
+            strategy = 'heading-tag';
+        } else {
+            const candidateSafe = safeBoundaries.filter((p) => p > searchStart70 && p <= targetEnd && p > processed);
+            if (candidateSafe.length > 0) {
+                splitIndex = candidateSafe[candidateSafe.length - 1];
+                strategy = 'html-safe-boundary';
+            } else {
+                const windowStart = Math.max(processed, targetEnd - 1000);
+                const searchWindow = content.slice(windowStart, targetEnd);
+                const lastDoubleNewline = searchWindow.lastIndexOf('\n\n');
+                const lastNewline = searchWindow.lastIndexOf('\n');
+                if (lastDoubleNewline !== -1) {
+                    splitIndex = windowStart + lastDoubleNewline + 2;
+                    strategy = 'double-newline';
+                } else if (lastNewline !== -1) {
+                    splitIndex = windowStart + lastNewline + 1;
+                    strategy = 'newline';
+                } else {
+                    // 兜底:不在行/词中间硬切。从 targetEnd 向后找最近换行(限 2000 字),再退而求其次找空白;
+                    // 实在没有(整段无空白)才在 targetEnd 硬切。
+                    const fwd = content.slice(targetEnd, Math.min(content.length, targetEnd + 2000));
+                    const nl = fwd.indexOf('\n');
+                    const sp = fwd.search(/\s/);
+                    if (nl !== -1) { splitIndex = targetEnd + nl + 1; strategy = 'hard-cut-extend-newline'; }
+                    else if (sp !== -1) { splitIndex = targetEnd + sp + 1; strategy = 'hard-cut-extend-space'; }
+                    else { splitIndex = targetEnd; strategy = 'hard-cut'; }
+                }
+            }
         }
 
-        const candidateSafe = safeBoundaries.filter((p) => p > searchStart70 && p <= targetEnd && p > processed);
-        if (candidateSafe.length > 0) {
-            const splitIndex = candidateSafe[candidateSafe.length - 1];
-            const chunk = content.slice(processed, splitIndex);
-            chunks.push(chunk);
-            console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${splitIndex}) len=${chunk.length} strategy=html-safe-boundary`);
-            processed = splitIndex;
-            continue;
-        }
+        // ── 任何切点都避开半个占位符;死循环兜底 ──
+        const snapped = snapOffPlaceholder(content, splitIndex);
+        if (snapped > processed) splitIndex = snapped;
+        if (splitIndex <= processed) splitIndex = Math.min(content.length, targetEnd);
 
-        const windowStart = Math.max(processed, targetEnd - 1000);
-        const searchWindow = content.slice(windowStart, targetEnd);
-        const lastDoubleNewline = searchWindow.lastIndexOf('\n\n');
-        if (lastDoubleNewline !== -1) {
-            const splitIndex = windowStart + lastDoubleNewline + 2;
-            const chunk = content.slice(processed, splitIndex);
-            chunks.push(chunk);
-            console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${splitIndex}) len=${chunk.length} strategy=double-newline`);
-            processed = splitIndex;
-            continue;
-        }
-
-        const lastNewline = searchWindow.lastIndexOf('\n');
-        if (lastNewline !== -1) {
-            const splitIndex = windowStart + lastNewline + 1;
-            const chunk = content.slice(processed, splitIndex);
-            chunks.push(chunk);
-            console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${splitIndex}) len=${chunk.length} strategy=newline`);
-            processed = splitIndex;
-            continue;
-        }
-
-        const hardChunk = content.slice(processed, targetEnd);
-        chunks.push(hardChunk);
-        console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${targetEnd}) len=${hardChunk.length} strategy=hard-cut`);
-        processed = targetEnd;
+        const chunk = content.slice(processed, splitIndex);
+        chunks.push(chunk);
+        console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${splitIndex}) len=${chunk.length} strategy=${strategy}`);
+        processed = splitIndex;
     }
 
     return chunks;

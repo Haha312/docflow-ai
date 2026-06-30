@@ -5,6 +5,8 @@
  * 注意:这些类型需与前端 frontend/types.ts 中的镜像保持一致(手动同步)。
  */
 
+import { normalizeHeadingText } from './headingText';
+
 export type IntegritySeverity = 'info' | 'warning' | 'critical';
 
 export interface IntegrityIssue {
@@ -75,6 +77,25 @@ export const detectStructuralAnomalies = (html: string): IntegrityIssue[] => {
     if (docTitleCount > 1) {
         issues.push({ type: 'multiple_titles', severity: 'critical', detail: `检测到 ${docTitleCount} 个文档大标题(应为 1 个),排版可能异常` });
     }
+
+    // 文本级绊线:重复标题被降级时会被抹掉 doc-title class,只数 class 会漏检。
+    // 故再按"与文档标题同文本的 h2~h6"检测——分块边界重复吐出的标题若残留,会在此暴露(critical)。
+    const title = normalizeHeadingText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '');
+    if (title) {
+        let dupAsHeading = 0;
+        const re = /<h([2-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(html)) !== null) {
+            if (normalizeHeadingText(m[2]) === title) dupAsHeading += 1;
+        }
+        if (dupAsHeading > 0) {
+            issues.push({
+                type: 'title_text_duplicated_as_heading',
+                severity: 'critical',
+                detail: `检测到 ${dupAsHeading} 处与文档标题同文本的章节标题(疑似重复标题残留),排版可能异常`,
+            });
+        }
+    }
     return issues;
 };
 
@@ -93,11 +114,16 @@ export const buildIntegrityReport = (
     const truncated = issues.some(
         (x) => x.type === 'loop_truncated' || x.type === 'stream_hallucination' || x.type === 'early_stop',
     );
+    // headingsMatched 需与"权威缺失信号"一致:骨架对齐报了 heading_missing,或计数差报了 early_stop/headings_reduced 时,
+    // 即便原始计数 output>=input(例如误升标题被降级后总数不变)也不能宣称"标题齐",否则与 issues 自相矛盾。
+    const hasHeadingLossIssue = issues.some(
+        (x) => x.type === 'heading_missing' || x.type === 'early_stop' || x.type === 'headings_reduced',
+    );
     return {
         input,
         output,
         charRetentionPct,
-        headingsMatched: output.headings >= input.headings,
+        headingsMatched: output.headings >= input.headings && !hasHeadingLossIssue,
         issues,
         truncated,
     };

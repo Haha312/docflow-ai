@@ -130,7 +130,7 @@ export const PRESETS: PresetConfig[] = [
   {
     id: DocPreset.ACADEMIC_JOURNAL,
     title: "学术期刊",
-    description: "《计算机学报》风格。题目2号黑体，作者3号仿宋，摘要小5号宋体。正文5号宋体双栏排版。",
+    description: "《电力系统技术》/《电网技术》(PST)风格。题目二号黑体，作者四号仿宋，摘要小五号宋体。正文五号宋体双栏排版，页边距上2.5/下1.7/左右2.0cm。",
     color: "blue",
     systemInstruction: "Format as a rigorous Chinese Academic Journal (《计算机学报》style). Follow this exact output structure:\n1. Chinese title as <h1>\n2. English title as <h2>\n3. Authors as <p>\n4. Affiliations as <p>\n5. Chinese abstract as <p> (starting with 摘要)\n6. Chinese keywords as <p> (starting with 关键词)\n7. English abstract as <p> (starting with Abstract)\n8. English keywords as <p> (starting with KEY WORDS)\n9. THEN INSERT EXACTLY THIS TAG: <hr class=\"journal-split\">\n10. Body sections: each section heading as <h2>, content as <p>. Include 引言, methodology, experiments/results, discussion, conclusion, references.\nThe <hr class=\"journal-split\"> tag is MANDATORY and must appear between the keywords and the first body section. Do not omit it.",
     icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><line x1="12" y1="6" x2="12" y2="16"></line><line x1="16" y1="6" x2="16" y2="10"></line><line x1="8" y1="6" x2="8" y2="10"></line></svg>`,
@@ -139,24 +139,25 @@ export const PRESETS: PresetConfig[] = [
       headingFont: '"SimHei", sans-serif', // 标题：黑体 (默认)
       baseSize: '10.5pt', // 正文：五号
 
-      h1Size: '14pt', // 一级标题：4号黑体
+      h1Size: '22pt', // 文档标题：二号黑体(PST)
       h1Bold: true,
       h1Italic: false,
-      h1Font: '"SimHei", sans-serif', // Explicitly set H1 to Hei
+      h1Font: '"SimHei", sans-serif', // 标题黑体(EN 应 Arial — 待中英分字体)
 
-      h2Size: '10.5pt', // 二级标题：5号黑体
+      h2Size: '12pt', // 二级/章标题：小四号黑体(PST)
       h2Bold: true,
       h2Italic: false,
-      h2Font: '"SimHei", sans-serif', // Explicitly set H2 to Hei
+      h2Font: '"SimHei", sans-serif', // 黑体(EN 应 Arial)
 
-      h3Size: '10.5pt', // 三级标题：5号
-      h3Bold: false, // 5号宋体 (Normal weight usually)
+      h3Size: '10.5pt', // 三级标题：五号黑体加粗(PST)
+      h3Bold: true, // PST: 三级标题黑体加粗
       h3Italic: false,
-      h3Font: '"SimSun", "Songti SC", serif', // Explicitly set H3 to Song
+      h3Font: '"SimHei", sans-serif', // PST: 三级标题黑体(EN/数字应 Arial)
 
-      h4Size: '10.5pt', // 四级标题：5号
+      h4Size: '10.5pt', // 四级标题：五号宋体(PST)
       h4Bold: false,
       h4Italic: false,
+      h4Font: '"SimSun", "Songti SC", serif', // PST: 四级标题宋体(否则回退黑体)
 
       h5Size: '10.5pt',
       h5Bold: false,
@@ -168,7 +169,7 @@ export const PRESETS: PresetConfig[] = [
       h6Italic: true,
       h6Indent: '0',
 
-      lineHeight: '1.3', // 期刊正文行距约1.3倍
+      lineHeight: '1.0', // PST: 正文单倍行距(篇首1.25倍为分区行距,待引擎)
 
       h1Align: 'left',
       h2Align: 'left',
@@ -185,39 +186,63 @@ export const PRESETS: PresetConfig[] = [
       headingNumbering: 'decimal-nested', // 1. 1.1
 
       // Journal Specifics
-      englishTitleSize: '14pt', // 英文标题：4号
+      englishTitleSize: '12pt', // 英文标题：小四号 Times New Roman 加黑(PST)
       englishTitleFont: '"Times New Roman", serif', // Times New Roman 加粗
 
-      authorFont: '"FangSong", "FangSong_GB2312", serif', // 作者：3号仿宋
-      authorSize: '16pt', // 3号
-      affiliationFont: '"SimSun", serif', // 单位：6号宋体
-      affiliationSize: '7.5pt', // 6号
+      authorFont: '"FangSong", "FangSong_GB2312", serif', // 作者：四号仿宋(PST)
+      authorSize: '14pt', // 四号
+      affiliationFont: '"KaiTi", "KaiTi_GB2312", "STKaiti", serif', // 单位/地址：五号楷体(PST)
+      affiliationSize: '10.5pt', // 五号
 
       abstractFont: '"SimSun", serif', // 中文摘要：小5号宋体
       abstractSize: '9pt', // 小5号
 
       englishAbstractFont: '"Times New Roman", serif', // 英文摘要：Times New Roman
-      englishAbstractSize: '10.5pt', // 英文摘要：5号
+      englishAbstractSize: '9pt', // 英文摘要：小五号(PST)
 
       keywordsFont: '"SimSun", serif', // 关键词：小5号宋体
       keywordsSize: '9pt',            // 小5号
 
       figureNumbering: 'sequential',
-      figureFont: '"SimSun", serif', // 图注：小5号 (9pt)
-      figureSize: '9pt',
+      figureFont: '"SimHei", sans-serif', // 图题：小五号黑体(PST,加黑待字段)
+      figureSize: '9pt', // 小五号
       figureAlign: 'center',
 
       tableNumbering: 'sequential',
       tableFont: '"SimSun", serif',
-      tableSize: '9pt', // 表内：小5号
+      tableSize: '7.5pt', // 表内：六号宋体(PST)
       tableCaptionAlign: 'center',
       generateToc: false, // 期刊不需要目录
       tableCaptionFont: '"SimHei", sans-serif', // 表题：黑体
       tableCaptionSize: '9pt', // 小5号
 
-      pageMargins: { top: '2.54cm', bottom: '2.54cm', left: '3.18cm', right: '3.18cm' },
+      pageMargins: { top: '2.5cm', bottom: '1.7cm', left: '2.0cm', right: '2.0cm', header: '1.8cm', footer: '0cm' }, // PST 页边距+页眉1.8/页脚0
       pageSize: 'A4',
-      columns: 2 // 双栏排版
+      columns: 2, // 双栏排版
+      columnGap: '0.78cm', // PST 栏间距
+
+      // ── PST 精细排版 ──
+      bodyFontEn: '"Times New Roman", serif',   // 正文英文/数字
+      headingFontEn: '"Arial", sans-serif',     // 标题英文/数字
+      h1SpacingBefore: '12pt',                  // 标题段前12pt
+      h2SpacingBefore: '6pt', h2SpacingAfter: '6pt', // 二级/章 段前后6pt
+      h3SpacingBefore: '0pt', h3SpacingAfter: '0pt', // 三级 不空
+      h4SpacingBefore: '0pt', h4SpacingAfter: '0pt', // 四级 不空
+      frontMatterLineHeight: '1.25',            // 篇首通栏 1.25 倍行距
+      englishTitleBold: true,
+      tableCaptionBold: true,                   // 表题加黑
+      figureCaptionBold: true,                  // 图题加黑
+      abstractLineHeight: '14pt',
+      englishAbstractLineHeight: '14pt',
+      keywordsLineHeight: '14pt',
+      doiFont: '"Times New Roman", serif', doiSize: '9pt', doiBold: true, // DOI 小五 TNR 加黑
+      englishKeywordsFont: '"Times New Roman", serif', englishKeywordsSize: '9pt',
+      inFigureFont: '"SimSun", serif', inFigureSize: '7.5pt', // 图内文字六号宋体
+      figureWidthHalf: '6.5cm', figureWidthFull: '14cm',
+      referencesFont: '"SimSun", serif', referencesSize: '7.5pt', // 参考文献六号宋体
+      referencesLineHeight: '12pt', referencesHangingIndent: '0.63cm',
+      tableInnerBorderPt: 0.5, tableOuterBorderPt: 0.75, // 三线表内0.5/外0.75pt
+      linesPerPage: 45, charsPerLine: 45 // 行×字网格
     }
   },
   {

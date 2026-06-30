@@ -70,8 +70,16 @@ describe('detectStructuralAnomalies', () => {
   });
   it('多个 doc-title → critical 绊线', () => {
     const issues = detectStructuralAnomalies('<h1 class="doc-title">A</h1><h2>x</h2><h1 class="doc-title">B</h1>');
-    expect(issues).toHaveLength(1);
-    expect(issues[0].type).toBe('multiple_titles');
-    expect(issues[0].severity).toBe('critical');
+    expect(issues.some((x) => x.type === 'multiple_titles' && x.severity === 'critical')).toBe(true);
+  });
+  it('重复标题被降级成同文本 h2(doc-title class 已抹掉)→ 文本级 critical 绊线', () => {
+    // 旧绊线只数 class 会漏检;文本级检测能抓到。
+    const html = '<h1 class="doc-title">平台设计</h1><h2>目标</h2><h2>平台设计</h2>';
+    const issues = detectStructuralAnomalies(html);
+    expect(issues.some((x) => x.type === 'title_text_duplicated_as_heading' && x.severity === 'critical')).toBe(true);
+  });
+  it('正常文档(章节文本均不等于标题)→ 无绊线', () => {
+    const html = '<h1 class="doc-title">关于XX的通知</h1><h2>1. 引言</h2><h2>2. 现状</h2>';
+    expect(detectStructuralAnomalies(html)).toHaveLength(0);
   });
 });

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
+import { Buffer } from 'node:buffer';
 import JSZip from 'jszip';
 import mammoth from 'mammoth';
 import { sanitizeDocxPreview } from './sanitizeHtml';
@@ -14,7 +15,7 @@ import { sanitizeDocxPreview } from './sanitizeHtml';
 const DATA_URI_PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
-function buildMaliciousDocx(): Promise<Uint8Array> {
+function buildMaliciousDocx(): Promise<Buffer> {
   const zip = new JSZip();
 
   zip.file(
@@ -73,7 +74,7 @@ function buildMaliciousDocx(): Promise<Uint8Array> {
   );
 
   // mammoth 在 Node 运行时(vitest)只认 path/buffer/file —— 用 uint8array 走 buffer 选项最稳。
-  return zip.generateAsync({ type: 'uint8array' });
+  return zip.generateAsync({ type: 'nodebuffer' });
 }
 
 describe('sanitizeDocxPreview — 真实 mammoth 管线端到端', () => {
