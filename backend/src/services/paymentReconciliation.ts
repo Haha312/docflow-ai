@@ -28,6 +28,7 @@ import {
     toXml,
     randomNonceStr,
 } from '../utils/wechatPay';
+import { getWechatV3Config, queryWechatV3Order } from '../utils/wechatPayV3';
 import { getTierFromPlanType } from '../config/tierConfig';
 import { fetch as undiciFetch } from 'undici';
 
@@ -112,6 +113,10 @@ async function queryAlipayOrder(outTradeNo: string): Promise<AlipayState> {
 type WechatState = 'SUCCESS' | 'NOTPAY' | 'CLOSED' | 'PAYERROR' | 'USERPAYING' | 'REFUND' | 'REVOKED' | null;
 
 async function queryWechatOrder(outTradeNo: string): Promise<WechatState> {
+    if (getWechatV3Config()) {
+        return (await queryWechatV3Order(outTradeNo)) as WechatState;
+    }
+
     const cfg = getWechatConfig();
     if (!cfg) return null;
     try {

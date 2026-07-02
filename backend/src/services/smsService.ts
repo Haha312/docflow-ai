@@ -10,14 +10,26 @@
 // 腾讯云 SMS SDK(子包)。延迟 require 避免未装包时影响其它模块。
 let smsClient: any = null;
 
+const env = (...names: string[]): string | undefined => {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  return undefined;
+};
+
+const smsConfig = () => ({
+  secretId: env('TENCENTCLOUD_SECRET_ID', 'TENCENT_SMS_SECRET_ID'),
+  secretKey: env('TENCENTCLOUD_SECRET_KEY', 'TENCENT_SMS_SECRET_KEY'),
+  sdkAppId: env('TENCENT_SMS_SDK_APP_ID', 'SMS_SDK_APP_ID'),
+  signName: env('TENCENT_SMS_SIGN_NAME', 'SMS_SIGN_NAME'),
+  templateId: env('TENCENT_SMS_TEMPLATE_ID', 'SMS_TEMPLATE_ID'),
+  region: env('TENCENT_SMS_REGION') || 'ap-guangzhou',
+});
+
 function isSmsConfigured(): boolean {
-  return !!(
-    process.env.TENCENTCLOUD_SECRET_ID &&
-    process.env.TENCENTCLOUD_SECRET_KEY &&
-    process.env.TENCENT_SMS_SDK_APP_ID &&
-    process.env.TENCENT_SMS_SIGN_NAME &&
-    process.env.TENCENT_SMS_TEMPLATE_ID
-  );
+  const cfg = smsConfig();
+  return !!(cfg.secretId && cfg.secretKey && cfg.sdkAppId && cfg.signName && cfg.templateId);
 }
 
 function getClient(): any {
@@ -25,12 +37,13 @@ function getClient(): any {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const tencentcloud = require('tencentcloud-sdk-nodejs-sms');
   const SmsClient = tencentcloud.sms.v20210111.Client;
+  const cfg = smsConfig();
   smsClient = new SmsClient({
     credential: {
-      secretId: process.env.TENCENTCLOUD_SECRET_ID,
-      secretKey: process.env.TENCENTCLOUD_SECRET_KEY,
+      secretId: cfg.secretId,
+      secretKey: cfg.secretKey,
     },
-    region: process.env.TENCENT_SMS_REGION || 'ap-guangzhou',
+    region: cfg.region,
     profile: { httpProfile: { endpoint: 'sms.tencentcloudapi.com' } },
   });
   return smsClient;
@@ -53,11 +66,12 @@ export async function sendSmsCode(phone: string, code: string): Promise<boolean>
 
   try {
     const client = getClient();
+    const cfg = smsConfig();
     const res = await client.SendSms({
       PhoneNumberSet: [`+86${phone}`],
-      SmsSdkAppId: process.env.TENCENT_SMS_SDK_APP_ID,
-      SignName: process.env.TENCENT_SMS_SIGN_NAME,
-      TemplateId: process.env.TENCENT_SMS_TEMPLATE_ID,
+      SmsSdkAppId: cfg.sdkAppId,
+      SignName: cfg.signName,
+      TemplateId: cfg.templateId,
       TemplateParamSet: [code],
     });
     const status = res?.SendStatusSet?.[0];

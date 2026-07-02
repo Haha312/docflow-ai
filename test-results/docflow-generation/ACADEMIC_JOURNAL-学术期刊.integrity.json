@@ -1,0 +1,34 @@
+{
+  "input": {
+    "paragraphs": 1545,
+    "headings": 143,
+    "headingsByLevel": {
+      "1": 31,
+      "2": 68,
+      "3": 30,
+      "4": 14
+    },
+    "listItems": 78,
+    "charCount": 42808,
+    "images": 61,
+    "tables": 26
+  },
+  "output": {
+    "paragraphs": 991,
+    "headings": 143,
+    "headingsByLevel": {
+      "2": 32,
+      "3": 69,
+      "4": 30,
+      "5": 12
+    },
+    "listItems": 78,
+    "charCount": 41885,
+    "images": 61,
+    "tables": 26
+  },
+  "charRetentionPct": 98,
+  "headingsMatched": true,
+  "issues": [],
+  "truncated": false
+}

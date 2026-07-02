@@ -106,6 +106,9 @@ const mapAlignment = (align: Alignment) => {
     }
 }
 
+const hasElementClass = (el: HTMLElement, className: string): boolean =>
+    Array.from(el.classList || []).some((x) => x.toLowerCase() === className.toLowerCase());
+
 const getIndentConfig = (indentStr: string, fontSizePt: number) => {
     if (!indentStr || indentStr === '0' || indentStr === '0px') {
         return undefined;
@@ -179,17 +182,27 @@ const parseImageSrc = (src: string): { data: Uint8Array; type: 'png' | 'jpeg' | 
     }
 };
 
+const normalizeImageDimensions = (dimensions: { width: number; height: number } | null): { width: number; height: number } | null => {
+    if (!dimensions) return null;
+    const { width, height } = dimensions;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    if (width > 12000 || height > 12000) return null;
+    const ratio = width / height;
+    if (ratio < 0.05 || ratio > 20) return null;
+    return { width: Math.round(width), height: Math.round(height) };
+};
+
 // Get image dimensions from binary data
 const getImageDimensions = (data: Uint8Array, type: 'png' | 'jpeg' | 'gif' | 'bmp'): { width: number; height: number } | null => {
     try {
-        const view = new DataView(data.buffer);
+        const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
         if (type === 'png') {
             // PNG: Width at 16, Height at 20 (Big Endian)
             if (data.length < 24) return null;
             const width = view.getUint32(16, false);
             const height = view.getUint32(20, false);
-            return { width, height };
+            return normalizeImageDimensions({ width, height });
         }
 
         if (type === 'gif') {
@@ -197,7 +210,7 @@ const getImageDimensions = (data: Uint8Array, type: 'png' | 'jpeg' | 'gif' | 'bm
             if (data.length < 10) return null;
             const width = view.getUint16(6, true);
             const height = view.getUint16(8, true);
-            return { width, height };
+            return normalizeImageDimensions({ width, height });
         }
 
         if (type === 'bmp') {
@@ -205,26 +218,35 @@ const getImageDimensions = (data: Uint8Array, type: 'png' | 'jpeg' | 'gif' | 'bm
             if (data.length < 26) return null;
             const width = view.getInt32(18, true);
             const height = view.getInt32(22, true);
-            return { width: Math.abs(width), height: Math.abs(height) };
+            return normalizeImageDimensions({ width: Math.abs(width), height: Math.abs(height) });
         }
 
         if (type === 'jpeg') {
             // JPEG: Scan for SOF markers
+            if (data.length < 4 || data[0] !== 0xFF || data[1] !== 0xD8) return null;
             let i = 2;
-            while (i < data.length) {
-                if (data[i] !== 0xFF) break; // Not a marker
-                const marker = data[i + 1];
-                const length = view.getUint16(i + 2, false);
+            while (i + 3 < data.length) {
+                while (i < data.length && data[i] === 0xFF) i++;
+                if (i >= data.length) break;
+                const marker = data[i];
+                i += 1;
+
+                if (marker === 0xD9 || marker === 0xDA) break;
+                if (marker >= 0xD0 && marker <= 0xD7) continue;
+
+                if (i + 1 >= data.length) break;
+                const length = view.getUint16(i, false);
+                if (length < 2 || i + length > data.length) break;
 
                 // SOF0 (Baseline) to SOF15 (Differential) excluding DHT/JPG/DAC
                 // Common SOF markers: C0, C1, C2, C3, C5, C6, C7, C9, CA, CB, CD, CE, CF
                 if ((marker >= 0xC0 && marker <= 0xCF) && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
-                    const height = view.getUint16(i + 5, false);
-                    const width = view.getUint16(i + 7, false);
-                    return { width, height };
+                    const height = view.getUint16(i + 3, false);
+                    const width = view.getUint16(i + 5, false);
+                    return normalizeImageDimensions({ width, height });
                 }
 
-                i += 2 + length;
+                i += length;
             }
             return null;
         }
@@ -700,28 +722,42 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         // 出版物：章节式标题需要更大留白，让章节换感更明显
         const isChapterStyle = styleConfig.headingNumbering === 'chapter';
         const linesUnit = i18n.t('generator.lines', '行');
-        if (level === 1) {
-            size = getHalfPtSize(styleConfig.h1Size); align = mapAlignment(styleConfig.h1Align); headingLevel = HeadingLevel.HEADING_1;
-            // 章节式（出版物）: 章标题前2行、后1行，营造翻篇感；其他场景保持1行
-            beforeTwips = isCorporate ? corporateLine28 : isChapterStyle ? getSpacingTwips(`2${linesUnit}`, getPtSize(styleConfig.h1Size)) : getSpacingTwips(`1${linesUnit}`, getPtSize(styleConfig.h1Size));
-            afterTwips = isCorporate ? 0 : isChapterStyle ? getSpacingTwips(`1${linesUnit}`, getPtSize(styleConfig.h1Size)) : getSpacingTwips(`1${linesUnit}`, getPtSize(styleConfig.h1Size));
-            indent = getIndentConfig(styleConfig.h1Indent, getPtSize(styleConfig.h1Size)); bold = styleConfig.h1Bold; italics = styleConfig.h1Italic; fontName = h1Font;
-        } else if (level === 2) {
-            size = getHalfPtSize(styleConfig.h2Size); align = mapAlignment(styleConfig.h2Align); headingLevel = HeadingLevel.HEADING_2;
-            beforeTwips = isCorporate ? corporateLine28 : getSpacingTwips(`0.8${linesUnit}`, getPtSize(styleConfig.h2Size));
-            afterTwips = isCorporate ? 0 : getSpacingTwips(`0.5${linesUnit}`, getPtSize(styleConfig.h2Size));
+        // HTML <h1> is reserved for .doc-title and is handled before this function.
+        // Any plain <h1> that reaches here is treated defensively as the first body heading.
+        const semanticLevel = level === 1 ? 2 : level;
+        const wordHeadingLevel =
+            semanticLevel === 2 ? HeadingLevel.HEADING_1 :
+                semanticLevel === 3 ? HeadingLevel.HEADING_2 :
+                    semanticLevel === 4 ? HeadingLevel.HEADING_3 :
+                        semanticLevel === 5 ? HeadingLevel.HEADING_4 :
+                            HeadingLevel.HEADING_5;
+
+        if (semanticLevel === 2) {
+            size = getHalfPtSize(styleConfig.h2Size); align = mapAlignment(styleConfig.h2Align); headingLevel = wordHeadingLevel;
+            beforeTwips = isCorporate ? corporateLine28 : isChapterStyle ? getSpacingTwips(`2${linesUnit}`, getPtSize(styleConfig.h2Size)) : getSpacingTwips(`0.8${linesUnit}`, getPtSize(styleConfig.h2Size));
+            afterTwips = isCorporate ? 0 : isChapterStyle ? getSpacingTwips(`1${linesUnit}`, getPtSize(styleConfig.h2Size)) : getSpacingTwips(`0.5${linesUnit}`, getPtSize(styleConfig.h2Size));
             indent = getIndentConfig(styleConfig.h2Indent, getPtSize(styleConfig.h2Size)); bold = styleConfig.h2Bold; italics = styleConfig.h2Italic; fontName = h2Font;
-        } else if (level === 3) {
-            size = getHalfPtSize(styleConfig.h3Size); headingLevel = HeadingLevel.HEADING_3;
+        } else if (semanticLevel === 3) {
+            size = getHalfPtSize(styleConfig.h3Size); headingLevel = wordHeadingLevel;
             // H3 改为相对字号的比例间距，避免在大字号下留白过小
             beforeTwips = isCorporate ? 0 : getSpacingTwips(`0.5${linesUnit}`, getPtSize(styleConfig.h3Size));
             afterTwips = isCorporate ? 0 : getSpacingTwips(`0.3${linesUnit}`, getPtSize(styleConfig.h3Size));
             indent = getIndentConfig(styleConfig.h3Indent, getPtSize(styleConfig.h3Size)); bold = styleConfig.h3Bold; italics = styleConfig.h3Italic; fontName = h3Font;
-        } else {
-            size = getHalfPtSize(styleConfig.h4Size); headingLevel = level === 4 ? HeadingLevel.HEADING_4 : level === 5 ? HeadingLevel.HEADING_5 : HeadingLevel.HEADING_6;
+        } else if (semanticLevel === 4) {
+            size = getHalfPtSize(styleConfig.h4Size); headingLevel = wordHeadingLevel;
             beforeTwips = isCorporate ? 0 : getSpacingTwips(`0.4${linesUnit}`, getPtSize(styleConfig.h4Size));
             afterTwips = isCorporate ? 0 : getSpacingTwips(`0.2${linesUnit}`, getPtSize(styleConfig.h4Size));
             indent = getIndentConfig(styleConfig.h4Indent, getPtSize(styleConfig.h4Size)); bold = styleConfig.h4Bold; italics = styleConfig.h4Italic; fontName = h4Font;
+        } else if (semanticLevel === 5) {
+            size = getHalfPtSize(styleConfig.h5Size); headingLevel = wordHeadingLevel;
+            beforeTwips = isCorporate ? 0 : getSpacingTwips(`0.3${linesUnit}`, getPtSize(styleConfig.h5Size));
+            afterTwips = isCorporate ? 0 : getSpacingTwips(`0.15${linesUnit}`, getPtSize(styleConfig.h5Size));
+            indent = getIndentConfig(styleConfig.h5Indent, getPtSize(styleConfig.h5Size)); bold = styleConfig.h5Bold; italics = styleConfig.h5Italic; fontName = h5Font;
+        } else {
+            size = getHalfPtSize(styleConfig.h6Size); headingLevel = wordHeadingLevel;
+            beforeTwips = isCorporate ? 0 : getSpacingTwips(`0.2${linesUnit}`, getPtSize(styleConfig.h6Size));
+            afterTwips = isCorporate ? 0 : getSpacingTwips(`0.1${linesUnit}`, getPtSize(styleConfig.h6Size));
+            indent = getIndentConfig(styleConfig.h6Indent, getPtSize(styleConfig.h6Size)); bold = styleConfig.h6Bold; italics = styleConfig.h6Italic; fontName = h6Font;
         }
         // 期刊等:若为该级标题配置了固定 pt 段前/段后(如 PST: H1段前12pt、章段前后6pt、三/四级0),
         // 覆盖上面按"行比例"算出的默认值(缺省字段则保持原行为,不影响其他预设)。
@@ -729,8 +765,8 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             const m = (v || '').match(/([\d.]+)\s*pt/i);
             return m ? Math.round(parseFloat(m[1]) * 20) : undefined;
         };
-        const ovBefore = ptToTwips(level === 1 ? styleConfig.h1SpacingBefore : level === 2 ? styleConfig.h2SpacingBefore : level === 3 ? styleConfig.h3SpacingBefore : styleConfig.h4SpacingBefore);
-        const ovAfter = ptToTwips(level === 1 ? styleConfig.h1SpacingAfter : level === 2 ? styleConfig.h2SpacingAfter : level === 3 ? styleConfig.h3SpacingAfter : styleConfig.h4SpacingAfter);
+        const ovBefore = ptToTwips(semanticLevel === 2 ? styleConfig.h2SpacingBefore : semanticLevel === 3 ? styleConfig.h3SpacingBefore : semanticLevel === 4 ? styleConfig.h4SpacingBefore : undefined);
+        const ovAfter = ptToTwips(semanticLevel === 2 ? styleConfig.h2SpacingAfter : semanticLevel === 3 ? styleConfig.h3SpacingAfter : semanticLevel === 4 ? styleConfig.h4SpacingAfter : undefined);
         if (ovBefore !== undefined) beforeTwips = ovBefore;
         if (ovAfter !== undefined) afterTwips = ovAfter;
         // For CORPORATE, apply fixed 28pt line height to headings too
@@ -819,7 +855,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             if (node.nodeType !== Node.ELEMENT_NODE) return;
             const el = node as HTMLElement;
             const tagName = el.tagName.toUpperCase();
-            const text = el.innerText || "";
+            const text = (el.textContent || (el as any).innerText || "").trim();
             const className = el.className || "";
 
             let currentAlign = blockAlign;
@@ -986,8 +1022,8 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 return;
             }
 
-            if (text.includes("image-placeholder") || (text.startsWith(i18n.t('generator.figure', '图')) && text.length < 50 && !tagName.startsWith('H'))) {
-                elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.figureAlign), spacing: { before: 240, after: 240 }, children: [new TextRun({ text: text, font: makeFont(figureFont), size: getHalfPtSize(styleConfig.figureSize), bold: !!styleConfig.figureCaptionBold, color: "000000" })] }));
+            if (className.includes('figure-caption') || text.includes("image-placeholder")) {
+                elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.figureAlign), spacing: { before: 240, after: 240 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(figureFont), size: getHalfPtSize(styleConfig.figureSize), bold: !!styleConfig.figureCaptionBold, color: "000000" })] }));
                 return;
             }
 
@@ -1025,12 +1061,28 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
             if (className.includes('doc-seal')) { elements.push(new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 60, after: 60 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), color: "CC0000" })] })); return; }
             if (className.includes('doc-note')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 240, after: 60 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize('12pt'), color: "666666" })] })); return; }
             if (className.includes('doc-attachment')) { elements.push(...processNodes(el.childNodes, undefined, tableContext, AlignmentType.LEFT)); return; }
-            if (className.includes('doc-title')) { elements.push(new Paragraph({ heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER, spacing: { before: 240, after: 120 }, children: [new TextRun({ text: text, font: makeFont(headingFont), color: primaryColor, bold: true, size: 44 })] })); return; }
-            if (className.includes('doc-title-en')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 240 }, children: [new TextRun({ text: text, font: makeFont(englishTitleFont), color: primaryColor, bold: true, size: getHalfPtSize(styleConfig.englishTitleSize || '14pt') })] })); return; }
-            if (className.includes('author-info')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 100 }, children: [new TextRun({ text: text, font: makeFont(authorFont), size: getHalfPtSize(styleConfig.authorSize || '16pt'), color: "000000" })] })); return; }
-            if (className.includes('affiliation')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 50, after: 200 }, children: [new TextRun({ text: text, font: makeFont(affiliationFont), size: getHalfPtSize(styleConfig.affiliationSize || '9pt'), color: "000000" })] })); return; }
-            if (className.includes('abstract-cn') || className.includes('abstract-en')) {
-                const isEnAbs = className.includes('abstract-en');
+            if (className.includes('doc-subtitle')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 80, after: 80, line: lineValue, lineRule }, children: [new TextRun({ text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize('16pt'), bold: true, color: "000000" })] })); return; }
+            if (className.includes('doc-meta')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 40, after: 40, line: lineValue, lineRule }, children: [new TextRun({ text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize('16pt'), color: "000000" })] })); return; }
+            if (className.includes('meeting-issue')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 80, after: 120 }, children: [new TextRun({ text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize('16pt'), color: "000000" })] })); return; }
+            if (className.includes('meeting-meta')) {
+                Array.from(el.childNodes).forEach((child) => {
+                    const childText = (child.textContent || '').trim();
+                    if (!childText) return;
+                    elements.push(new Paragraph({
+                        alignment: AlignmentType.LEFT,
+                        spacing: { before: 0, after: 0, line: lineValue, lineRule },
+                        indent: { firstLine: 0, left: 0 },
+                        children: [new TextRun({ text: childText, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), color: "000000" })],
+                    }));
+                });
+                return;
+            }
+            if (hasElementClass(el, 'doc-title-en')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 120 }, children: [new TextRun({ text: text, font: makeFont(englishTitleFont), color: primaryColor, bold: !!styleConfig.englishTitleBold, size: getHalfPtSize(styleConfig.englishTitleSize || '12pt') })] })); return; }
+            if (hasElementClass(el, 'doc-title')) { elements.push(new Paragraph({ heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER, spacing: { before: 240, after: 120 }, children: [new TextRun({ text: text, font: makeFont(h1Font), color: primaryColor, bold: styleConfig.h1Bold, size: getHalfPtSize(styleConfig.h1Size || '22pt') })] })); return; }
+            if (hasElementClass(el, 'author-info')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120, after: 80 }, children: [new TextRun({ text: text, font: makeFont(authorFont), size: getHalfPtSize(styleConfig.authorSize || '14pt'), color: "000000" })] })); return; }
+            if (hasElementClass(el, 'affiliation')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 40, after: 160 }, children: [new TextRun({ text: text, font: makeFont(affiliationFont), size: getHalfPtSize(styleConfig.affiliationSize || '10.5pt'), color: "000000" })] })); return; }
+            if (hasElementClass(el, 'abstract-cn') || hasElementClass(el, 'abstract-en')) {
+                const isEnAbs = hasElementClass(el, 'abstract-en');
                 const absFont = isEnAbs ? abstractEnFont : abstractCnFont;
                 const absSz = isEnAbs ? abstractEnSize : abstractCnSize;
                 // 摘要固定行距(PST: 14pt);缺省时不强制行距
@@ -1063,13 +1115,20 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 });
                 return;
             }
-            if (className.includes('keywords')) {
+            if (hasElementClass(el, 'keywords')) {
+                const isEnglishKeywords = hasElementClass(el, 'keywords-en') || /^(KEY\s*WORDS|Keywords)\s*[:：]/i.test(text.trim());
+                const kwFont = isEnglishKeywords
+                    ? cleanFontName(styleConfig.englishKeywordsFont || styleConfig.keywordsFont || styleConfig.englishAbstractFont || 'Times New Roman')
+                    : keywordsFont;
+                const kwSize = isEnglishKeywords
+                    ? getHalfPtSize(styleConfig.englishKeywordsSize || styleConfig.keywordsSize || styleConfig.abstractSize || styleConfig.baseSize)
+                    : getHalfPtSize(styleConfig.keywordsSize || styleConfig.abstractSize || styleConfig.baseSize);
                 const kwM = (styleConfig.keywordsLineHeight || '').match(/([\d.]+)\s*pt/i);
                 const kwSpacing: any = kwM ? { before: 60, after: 120, line: Math.round(parseFloat(kwM[1]) * 20), lineRule: LineRuleType.EXACT } : { before: 60, after: 120 };
-                elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: kwSpacing, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(keywordsFont), size: getHalfPtSize(styleConfig.keywordsSize || styleConfig.abstractSize || styleConfig.baseSize), color: "000000" })] }));
+                elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: kwSpacing, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(kwFont), size: kwSize, color: "000000" })] }));
                 return;
             }
-            if (className.includes('table-caption') || tagName === 'CAPTION' || (tagName === 'P' && text.startsWith(i18n.t('generator.table', '表')) && text.length < 40 && !tableContext.inTable)) { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: true, color: "000000" })] })); return; }
+            if (className.includes('table-caption') || tagName === 'CAPTION') { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: true, color: "000000" })] })); return; }
 
             if (tagName === 'H1') elements.push(createHeading(text, 1));
             else if (tagName === 'H2') elements.push(createHeading(text, 2));
@@ -1119,10 +1178,10 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
     let hasToc = false;
 
     xmlDoc.body.childNodes.forEach(node => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-            const el = node as HTMLElement;
-            const className = el.className || '';
-            const text = el.innerText || '';
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const el = node as HTMLElement;
+                const className = el.className || '';
+                const text = (el.textContent || (el as any).innerText || '').trim();
 
             // 检测封面
             if (className.includes('cover-page')) {
@@ -1246,6 +1305,9 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
     // ===== 构建多节文档 =====
     let sections = [];
     const isJournalLayout = styleConfig.columns && styleConfig.columns > 1;
+    if (styleConfig.generateToc && !hasToc && !isJournalLayout) {
+        hasToc = true;
+    }
 
     if (hasCover || hasToc) {
         // 有封面或目录时,构建多节文档

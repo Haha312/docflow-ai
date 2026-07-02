@@ -8,6 +8,21 @@ const CHUNK_SIZE_CHARS = 12000;
 
 const normalizeText = (s: string): string => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
+export interface ChunkHeading {
+    level: number;
+    text: string;
+    position: number;
+}
+
+export interface StructuredContentChunk {
+    content: string;
+    start: number;
+    end: number;
+    headings: ChunkHeading[];
+    headingPath: string[];
+    strategy: string;
+}
+
 const detectHeadingTagPositions = (content: string): number[] => {
     const positions: number[] = [];
     const headingOpenTag = /<h[1-6]\b[^>]*>/gi;
@@ -16,6 +31,45 @@ const detectHeadingTagPositions = (content: string): number[] => {
         positions.push(match.index);
     }
     return positions;
+};
+
+const extractHeadings = (content: string, offset = 0): ChunkHeading[] => {
+    const headings: ChunkHeading[] = [];
+    const re = /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(content)) !== null) {
+        const text = normalizeText(match[2]);
+        if (!text) continue;
+        headings.push({
+            level: Number(match[1]),
+            text: text.slice(0, 140),
+            position: offset + match.index,
+        });
+    }
+    return headings;
+};
+
+const splitLargeSection = (
+    section: string,
+    sectionStart: number,
+    maxChars: number,
+    headingPath: string[],
+): StructuredContentChunk[] => {
+    const parts = splitContentBySemantics(section, maxChars);
+    let cursor = sectionStart;
+    return parts.map((part, index) => {
+        const start = cursor;
+        const end = cursor + part.length;
+        cursor = end;
+        return {
+            content: part,
+            start,
+            end,
+            headings: extractHeadings(part, start),
+            headingPath,
+            strategy: index === 0 ? 'heading-section-large:first' : 'heading-section-large:continued',
+        };
+    });
 };
 
 const detectHtmlSafeSplitPositions = (content: string): number[] => {
@@ -136,6 +190,92 @@ export const splitContentBySemantics = (content: string, maxChars: number = CHUN
         console.log(`[SPLIT] chunk#${chunks.length} range=[${chunkStart},${splitIndex}) len=${chunk.length} strategy=${strategy}`);
         processed = splitIndex;
     }
+
+    return chunks;
+};
+
+export const splitContentIntoStructuredChunks = (
+    content: string,
+    maxChars: number = CHUNK_SIZE_CHARS,
+): StructuredContentChunk[] => {
+    if (content.length <= maxChars) {
+        return [{
+            content,
+            start: 0,
+            end: content.length,
+            headings: extractHeadings(content, 0),
+            headingPath: [],
+            strategy: 'single',
+        }];
+    }
+
+    const headings = extractHeadings(content, 0);
+    if (headings.length === 0) {
+        let cursor = 0;
+        return splitContentBySemantics(content, maxChars).map((part) => {
+            const start = cursor;
+            const end = cursor + part.length;
+            cursor = end;
+            return {
+                content: part,
+                start,
+                end,
+                headings: extractHeadings(part, start),
+                headingPath: [],
+                strategy: 'semantic-fallback',
+            };
+        });
+    }
+
+    const boundaries = [0, ...headings.map((h) => h.position).filter((p) => p > 0), content.length]
+        .filter((v, i, arr) => i === 0 || v > arr[i - 1]);
+
+    const chunks: StructuredContentChunk[] = [];
+    let current = '';
+    let currentStart = 0;
+    let currentPath: string[] = [];
+    let activePath: string[] = [];
+
+    const flush = (strategy = 'heading-aggregate') => {
+        if (!current) return;
+        chunks.push({
+            content: current,
+            start: currentStart,
+            end: currentStart + current.length,
+            headings: extractHeadings(current, currentStart),
+            headingPath: currentPath,
+            strategy,
+        });
+        current = '';
+    };
+
+    for (let i = 0; i < boundaries.length - 1; i++) {
+        const start = boundaries[i];
+        const end = boundaries[i + 1];
+        const section = content.slice(start, end);
+        const sectionHeading = headings.find((h) => h.position === start);
+        if (sectionHeading) {
+            activePath = activePath.slice(0, Math.max(0, sectionHeading.level - 1));
+            activePath[sectionHeading.level - 1] = sectionHeading.text;
+        }
+        const sectionPath = activePath.filter(Boolean);
+
+        if (section.length > maxChars) {
+            flush();
+            chunks.push(...splitLargeSection(section, start, maxChars, sectionPath));
+            continue;
+        }
+
+        if (current && current.length + section.length > maxChars) {
+            flush();
+        }
+        if (!current) {
+            currentStart = start;
+            currentPath = sectionPath;
+        }
+        current += section;
+    }
+    flush();
 
     return chunks;
 };

@@ -1,0 +1,265 @@
+[
+  {
+    "preset": "ACADEMIC",
+    "label": "报告论文",
+    "ok": true,
+    "startedAt": "2026-07-01T10:28:15.446Z",
+    "ms": 209651,
+    "chars": 20763145,
+    "eventCount": 35816,
+    "integrityReport": {
+      "input": {
+        "paragraphs": 1545,
+        "headings": 143,
+        "headingsByLevel": {
+          "1": 31,
+          "2": 68,
+          "3": 30,
+          "4": 14
+        },
+        "listItems": 78,
+        "charCount": 42808,
+        "images": 61,
+        "tables": 26
+      },
+      "output": {
+        "paragraphs": 994,
+        "headings": 143,
+        "headingsByLevel": {
+          "2": 32,
+          "3": 70,
+          "4": 29,
+          "5": 12
+        },
+        "listItems": 78,
+        "charCount": 42213,
+        "images": 61,
+        "tables": 26
+      },
+      "charRetentionPct": 99,
+      "headingsMatched": true,
+      "issues": [],
+      "truncated": false
+    }
+  },
+  {
+    "preset": "ACADEMIC_JOURNAL",
+    "label": "学术期刊",
+    "ok": true,
+    "startedAt": "2026-07-01T10:33:54.198Z",
+    "ms": 201786,
+    "chars": 20761168,
+    "eventCount": 35042,
+    "integrityReport": {
+      "input": {
+        "paragraphs": 1545,
+        "headings": 143,
+        "headingsByLevel": {
+          "1": 31,
+          "2": 68,
+          "3": 30,
+          "4": 14
+        },
+        "listItems": 78,
+        "charCount": 42808,
+        "images": 61,
+        "tables": 26
+      },
+      "output": {
+        "paragraphs": 991,
+        "headings": 143,
+        "headingsByLevel": {
+          "2": 32,
+          "3": 69,
+          "4": 30,
+          "5": 12
+        },
+        "listItems": 78,
+        "charCount": 41885,
+        "images": 61,
+        "tables": 26
+      },
+      "charRetentionPct": 98,
+      "headingsMatched": true,
+      "issues": [],
+      "truncated": false
+    }
+  },
+  {
+    "preset": "CORPORATE",
+    "label": "机关公文",
+    "ok": true,
+    "startedAt": "2026-07-01T10:37:16.027Z",
+    "ms": 346270,
+    "chars": 20763272,
+    "eventCount": 62328,
+    "integrityReport": {
+      "input": {
+        "paragraphs": 1545,
+        "headings": 143,
+        "headingsByLevel": {
+          "1": 31,
+          "2": 68,
+          "3": 30,
+          "4": 14
+        },
+        "listItems": 78,
+        "charCount": 42808,
+        "images": 61,
+        "tables": 26
+      },
+      "output": {
+        "paragraphs": 989,
+        "headings": 143,
+        "headingsByLevel": {
+          "2": 87,
+          "3": 21,
+          "4": 23,
+          "5": 12
+        },
+        "listItems": 90,
+        "charCount": 41997,
+        "images": 61,
+        "tables": 26
+      },
+      "charRetentionPct": 98,
+      "headingsMatched": true,
+      "issues": [
+        {
+          "type": "chunk_validation_failed",
+          "severity": "warning",
+          "detail": "Part 1 validation warning: missing heading(s): 2.1 编写目的 | 2.2 项目背景 | 2.3 项目目标 | 2.4 项目范围 | 3.1 总体架构"
+        }
+      ],
+      "truncated": false
+    }
+  },
+  {
+    "preset": "WORK_REPORT",
+    "label": "工作汇报方案",
+    "ok": true,
+    "startedAt": "2026-07-01T11:21:21.609Z",
+    "ms": 632823,
+    "chars": 20760377,
+    "eventCount": 104830,
+    "integrityReport": {
+      "input": {
+        "paragraphs": 1545,
+        "headings": 143,
+        "headingsByLevel": {
+          "1": 31,
+          "2": 68,
+          "3": 30,
+          "4": 14
+        },
+        "listItems": 78,
+        "charCount": 42808,
+        "images": 61,
+        "tables": 26
+      },
+      "output": {
+        "paragraphs": 779,
+        "headings": 144,
+        "headingsByLevel": {
+          "2": 31,
+          "3": 69,
+          "4": 30,
+          "5": 14
+        },
+        "listItems": 92,
+        "charCount": 42050,
+        "images": 61,
+        "tables": 26
+      },
+      "charRetentionPct": 98,
+      "headingsMatched": true,
+      "issues": [
+        {
+          "type": "chunk_validation_failed",
+          "severity": "warning",
+          "detail": "Part 1 validation warning: missing heading(s): 2.1 编写目的 | 2.2 项目背景 | 2.3 项目目标 | 2.4 项目范围 | 3.1 总体架构"
+        },
+        {
+          "type": "chunk_validation_failed",
+          "severity": "warning",
+          "detail": "Part 2 validation warning: missing heading(s): 7.1.1 杆塔台账数据模型 | 7.1.2 交跨台账模型 | 7.1.3 隐患台账模型 | 7.2 数据分布设计 | 10.1 功能需求"
+        },
+        {
+          "type": "chunk_validation_failed",
+          "severity": "warning",
+          "detail": "Part 3 validation warning: missing heading(s): 13.1 影像数据加载需求 | 13.2 高程数据加载需求 | 13.3 矢量数据加载需求 | 13.4 模型数据加载需求 | 13.5 加载与渲染流程设计"
+        },
+        {
+          "type": "heading_demoted",
+          "severity": "info",
+          "detail": "已将 1 个不在源文结构中的多余标题降级(规整,未丢内容)"
+        }
+      ],
+      "truncated": false
+    }
+  },
+  {
+    "preset": "MEETING_MINUTES",
+    "label": "会议纪要",
+    "ok": true,
+    "startedAt": "2026-07-01T11:31:54.476Z",
+    "ms": 461583,
+    "chars": 20761779,
+    "eventCount": 81717,
+    "integrityReport": {
+      "input": {
+        "paragraphs": 1545,
+        "headings": 143,
+        "headingsByLevel": {
+          "1": 31,
+          "2": 68,
+          "3": 30,
+          "4": 14
+        },
+        "listItems": 78,
+        "charCount": 42808,
+        "images": 61,
+        "tables": 26
+      },
+      "output": {
+        "paragraphs": 992,
+        "headings": 143,
+        "headingsByLevel": {
+          "2": 16,
+          "3": 89,
+          "4": 24,
+          "5": 14
+        },
+        "listItems": 92,
+        "charCount": 42313,
+        "images": 61,
+        "tables": 26
+      },
+      "charRetentionPct": 99,
+      "headingsMatched": false,
+      "issues": [
+        {
+          "type": "chunk_validation_failed",
+          "severity": "warning",
+          "detail": "Part 1 validation warning: missing heading(s): 2.1 编写目的 | 2.2 项目背景 | 2.3 项目目标 | 2.4 项目范围 | 3.1 总体架构"
+        },
+        {
+          "type": "chunk_validation_failed",
+          "severity": "warning",
+          "detail": "Part 2 validation warning: missing heading(s): 7.1.1 杆塔台账数据模型 | 7.1.2 交跨台账模型 | 7.1.3 隐患台账模型 | 7.2 数据分布设计 | 10.1 功能需求"
+        },
+        {
+          "type": "heading_demoted",
+          "severity": "info",
+          "detail": "已将 54 个不在源文结构中的多余标题降级(规整,未丢内容)"
+        },
+        {
+          "type": "heading_missing",
+          "severity": "critical",
+          "detail": "源文 60 个标题在输出中缺失(其中章级 15 个),疑似内容缺失"
+        }
+      ],
+      "truncated": false
+    }
+  }
+]

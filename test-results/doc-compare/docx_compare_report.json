@@ -1,0 +1,5199 @@
+{
+  "changed_entries": [
+    {
+      "entry": "docProps/core.xml",
+      "orig": [
+        643,
+        "d16003edcccf41c43a0d32408554cd6c5fdd1d3fcab61cc97d449c6507515ce4"
+      ],
+      "gen": [
+        643,
+        "923d9567c03e758cda855581399797543b8deee350cd400890f5887ce4600758"
+      ]
+    },
+    {
+      "entry": "word/_rels/document.xml.rels",
+      "orig": [
+        10204,
+        "29c8b28454baac4240f26f2ed281c13084923e1f4b02cbd49e03da5f8ef20fb3"
+      ],
+      "gen": [
+        10204,
+        "0b00bad854d65ba1af08a65c2655ca379417d883f191affc9aed9a03be3b2fde"
+      ]
+    },
+    {
+      "entry": "word/document.xml",
+      "orig": [
+        1258763,
+        "a8199d00e39245d903595e54f11894cf1205fdce906e4364aefaedfd9893e873"
+      ],
+      "gen": [
+        1260669,
+        "474f989058312b5b6dddbfe2e98d1498ee93aca4d994c1cff4e770393bdba679"
+      ]
+    },
+    {
+      "entry": "word/media/-4akql-6c-m431crat33s.png",
+      "orig": [
+        136207,
+        "8af0a52be5e7ded174ee7668d167797d6a7ae1834da02e76e5c349fdf4109b4c"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/-jdgwwma41rvr0_ry9azm.png",
+      "orig": null,
+      "gen": [
+        803487,
+        "ceb33693621529a87dce599a0bdb658fb2e76e00e848b79ae431a1897b70202b"
+      ]
+    },
+    {
+      "entry": "word/media/-lweczk4dnicptkcuyzij.png",
+      "orig": [
+        203561,
+        "dad193be425e41d853daff725c164d30eccda8c0bbc44c6016b0e8cfdb14ca39"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/-wotmby73d_w40vnnp4re.png",
+      "orig": null,
+      "gen": [
+        318094,
+        "cc00a51a55d4cb8e97dde10e5f8dc2e9e741a18c9e93a2f66ba8c1519943cd51"
+      ]
+    },
+    {
+      "entry": "word/media/04ltfwtwe0tqteky9lqab.png",
+      "orig": [
+        36240,
+        "734ff5b260ed9b18e536314897526197675b3e0042124dba8f2de1bb51efe391"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/0albuzby3figqr2zvup2j.png",
+      "orig": null,
+      "gen": [
+        36240,
+        "734ff5b260ed9b18e536314897526197675b3e0042124dba8f2de1bb51efe391"
+      ]
+    },
+    {
+      "entry": "word/media/0d7htguk1-_kgjll9rvic.png",
+      "orig": null,
+      "gen": [
+        11689,
+        "55428d66eb535d1c0b47234502d6e760f65ab771d74c8e5cc78ee1b999843c1c"
+      ]
+    },
+    {
+      "entry": "word/media/0ielx1owexjalpyyhmgrt.png",
+      "orig": [
+        142363,
+        "b14dfbefe7c0fe3bcce34774aa3ea0962e24c292ea5771dc73870f1dcd08ac13"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/1kc4djo5ss3yif2fyrrez.png",
+      "orig": [
+        12143,
+        "cbc7360830e1bd82e186c139e5d3ec24e9b8da100df74d653cbb01bb3165a998"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/2e2kyqfyihkmyzrfg4ufu.png",
+      "orig": null,
+      "gen": [
+        141444,
+        "8f2889d0bc4138eacbf4b7d771c0291f113a694f701444798bab672cccaa3c14"
+      ]
+    },
+    {
+      "entry": "word/media/2hwidpidn1yfsoazmnua8.png",
+      "orig": null,
+      "gen": [
+        274063,
+        "43f4035b62b594a52830ceabff20a0d41b3551e81dab50dd9bbf3a90e9a04862"
+      ]
+    },
+    {
+      "entry": "word/media/3lx7n_mf78zzkyidclah_.png",
+      "orig": null,
+      "gen": [
+        509849,
+        "ac942f76cd4a31b916883d1be19a8c8dee96981fcfda0312cb20cfd69d2a46ff"
+      ]
+    },
+    {
+      "entry": "word/media/4q4jka0tyseg9bimti8hh.png",
+      "orig": null,
+      "gen": [
+        136369,
+        "c93c2e232b6bc68b77a36ab7b3537c992c4f17a2b2842cadccd02f2e9a9128da"
+      ]
+    },
+    {
+      "entry": "word/media/51hharjudjatwjshgrs0x.png",
+      "orig": [
+        147598,
+        "2fed54b642257e31875562705c978d213f26af4e0c1871774c084d6962380794"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/5enzclqrhgvbqe5ggv9gy.png",
+      "orig": [
+        44944,
+        "3901cc5948d1dbec2d534c81c1e5e709bb7d681c5f0daf36adc8c39894769445"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/5unngyh-f-ovhhtveqj28.png",
+      "orig": null,
+      "gen": [
+        612493,
+        "791e691c529591f5aef4ccebec7b96f4f8fffe857b068079ecd587f0a86f1c32"
+      ]
+    },
+    {
+      "entry": "word/media/5zorqohmep5o069p5cvzw.png",
+      "orig": [
+        1019444,
+        "8c158fe7b3828138385c29d990cc68eb5feed8d2b465e0bb8bf5ac338c376159"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/6efhwc0nzq01w2oziy8rx.png",
+      "orig": null,
+      "gen": [
+        243293,
+        "7418e61cb3621b0b5b051582dd98eaac101711b6a7e63d5bf00ce1cc0013d537"
+      ]
+    },
+    {
+      "entry": "word/media/6mqw22eip4mrwfwhmrh2q.png",
+      "orig": null,
+      "gen": [
+        142363,
+        "b14dfbefe7c0fe3bcce34774aa3ea0962e24c292ea5771dc73870f1dcd08ac13"
+      ]
+    },
+    {
+      "entry": "word/media/6w_l2aay4z_vkfsqtbiuh.png",
+      "orig": [
+        181887,
+        "ef40ac9afc43bc6feb332ae4a37ac2cc8c50c2b7ea33babb31cf16a43caa33d8"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/6zhjlm5xauvlhiw19owaz.png",
+      "orig": null,
+      "gen": [
+        173674,
+        "962c07a234f51278020193bbe6ee93c832d03ff5822f4aaa8b468c6874639e48"
+      ]
+    },
+    {
+      "entry": "word/media/7k9mc8zv2tsc9gnvb1_tk.png",
+      "orig": [
+        187691,
+        "61bf6e0bc73fa13e70b3f4ab4cafe312e3cea813ad09f8ae2e0f7720530d0f09"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/8ijmitzvrurkln7fqgfxp.png",
+      "orig": [
+        93799,
+        "705710d0bf73f93eb89cef2a7b288d7231756981cd8b91f077a4e465e98099f1"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/8teiwbdfclcirsua4dfrb.png",
+      "orig": [
+        243293,
+        "7418e61cb3621b0b5b051582dd98eaac101711b6a7e63d5bf00ce1cc0013d537"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/8ynaxdmlcsr0_fc3pz7me.png",
+      "orig": [
+        612493,
+        "791e691c529591f5aef4ccebec7b96f4f8fffe857b068079ecd587f0a86f1c32"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/_oeosi6manmufcbg8oo1u.png",
+      "orig": null,
+      "gen": [
+        282100,
+        "53d7b3945b9c8c7aacddd2e755cd76e7a463ca9846de18b7a003694ab25782be"
+      ]
+    },
+    {
+      "entry": "word/media/_yrbjooamimpudhexvlo3.png",
+      "orig": [
+        737102,
+        "f7ba78021e0f2a953521dcb88081c58aefc96028a92d83dd9fc3d13090a913c3"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/al5iltqv_hn7tnquqckw4.png",
+      "orig": null,
+      "gen": [
+        226760,
+        "167ff41cf07f828a0433ae6b9d3e57052f6ca0cf363b12fc995fcff3d10e3f7b"
+      ]
+    },
+    {
+      "entry": "word/media/b9n-6osua2sm_jsji005n.png",
+      "orig": null,
+      "gen": [
+        414966,
+        "60c81c4cbd35e9b9f0bd43675bbf3a9a88e9202a206ce69b1b508d69fc9fda34"
+      ]
+    },
+    {
+      "entry": "word/media/bdkb-17og-0jzglnqxdsh.png",
+      "orig": [
+        55226,
+        "9f0593568b7cc4b89c8195b804f12ff20e2cb3ac651ff1b1ae0aa6eaa1291071"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/bg3ljrfnzxxgel8vxcop7.png",
+      "orig": [
+        55846,
+        "2c41c88222c4c9b7e3c77ed257b8393847a5cf9ffc40039cd0699d949c613db1"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/bywmcd2ymwn_hfakcrvsy.png",
+      "orig": null,
+      "gen": [
+        76263,
+        "a52ed1f6c0b0c810edd97623fbcccf0eaa39abb9a3f4fe95b2423cf9419df6ad"
+      ]
+    },
+    {
+      "entry": "word/media/cag_axhajh9lko7bmskcv.png",
+      "orig": null,
+      "gen": [
+        149951,
+        "ec22b7317b3606aab87b35f62c3e2a768711118d8b8789060fe8611dcc008be3"
+      ]
+    },
+    {
+      "entry": "word/media/cr8qqjkfciy2oobrb_hlf.png",
+      "orig": [
+        490435,
+        "ee75c37f0eb4d97318057214bc0206d317a6802900beb3cdf667b7323359585c"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/csnz-n32o3houutwajrfm.png",
+      "orig": null,
+      "gen": [
+        547117,
+        "fa578bc8374847cddff76e5da4dc85c74ec74db8545646a321dbca24aa8a55ea"
+      ]
+    },
+    {
+      "entry": "word/media/d5r8ovr1jn9ntkni6sebd.png",
+      "orig": [
+        389359,
+        "31d00212b86e79c03ea1968a85309682b63b18f95e6b0477c25835be29445ddc"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/dqdfqirevv4hltsu8z_hi.png",
+      "orig": [
+        134752,
+        "1511895723efb989ce8d12ab49ed621bb8ebb8829199739c01b7681658f5af64"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/e85n7fxmchaiyw_ggqiab.png",
+      "orig": null,
+      "gen": [
+        87799,
+        "d9d350ab7581228e1e250c2350b3bbe208cf2b4ff3397f1fbd7b8fbb7e2a6533"
+      ]
+    },
+    {
+      "entry": "word/media/ecvaklywbzigcnusmno42.png",
+      "orig": null,
+      "gen": [
+        221618,
+        "c1bc9f3aed49354d1ca4a20d9689ace6205f6eb2599b4c3e06643e13e8316ae5"
+      ]
+    },
+    {
+      "entry": "word/media/ecy4kz8c32w8qkpmtgehw.png",
+      "orig": null,
+      "gen": [
+        1610381,
+        "c3b4c6f67a5e18cccb835e98613a06a2d4d4a9cb6876a371f686971f61b3a9f5"
+      ]
+    },
+    {
+      "entry": "word/media/efwcmyrfnvcekin7m8i8p.png",
+      "orig": null,
+      "gen": [
+        490435,
+        "ee75c37f0eb4d97318057214bc0206d317a6802900beb3cdf667b7323359585c"
+      ]
+    },
+    {
+      "entry": "word/media/ekbscyaabs3ndqoiivfew.png",
+      "orig": null,
+      "gen": [
+        226225,
+        "b95161f5fcba5cacd555a8dd2cbefec02780880c98611d6fad6c3612647d6a25"
+      ]
+    },
+    {
+      "entry": "word/media/ercrka9tvullk4nsr0jw7.png",
+      "orig": [
+        51623,
+        "0416b05e040323de5dfd9832615620224b7bc85ec8b934e0b3d06376be938a72"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/esvq-ueqt1oooy8hz65kb.png",
+      "orig": null,
+      "gen": [
+        39092,
+        "524a1633a9e8b97bcaeac8e50cf44e6c1067071762fe47323b96c22afb14f24a"
+      ]
+    },
+    {
+      "entry": "word/media/et2_i_m3321kqbbc8abmn.png",
+      "orig": null,
+      "gen": [
+        121930,
+        "ee9bee7c64e7fcdbd01b6813b441b46fde3b7e48d6d5572926ab9caf36aa7390"
+      ]
+    },
+    {
+      "entry": "word/media/f0tvnldnyq4vpeqt3ucwj.png",
+      "orig": null,
+      "gen": [
+        190358,
+        "1cfa39a41758d934f33117dc88146ad2dd5b5f1b0eac0df685c7957918ff1d51"
+      ]
+    },
+    {
+      "entry": "word/media/fnxhkvy9anfo4zfoddzrg.png",
+      "orig": [
+        76263,
+        "a52ed1f6c0b0c810edd97623fbcccf0eaa39abb9a3f4fe95b2423cf9419df6ad"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/fvlketcp-beaekre2e1xa.png",
+      "orig": [
+        520191,
+        "3910e1264345acb71d894d111b5833bb11effc2061ce88c9561111ed514e9711"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/fzf4oefuhceyihwttuz5r.png",
+      "orig": null,
+      "gen": [
+        111345,
+        "2d5ce2a3f2e5ca75b02b39644364ce3177984f1444460c6137d0202619510614"
+      ]
+    },
+    {
+      "entry": "word/media/g-hfd-lp4w4rheuolo589.png",
+      "orig": [
+        64431,
+        "e570fac77c93619cf991594976bc7248643300ef8719b1aef3e5a4e81747d59d"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/g704odn0eiu2whoeavs3z.png",
+      "orig": null,
+      "gen": [
+        12143,
+        "cbc7360830e1bd82e186c139e5d3ec24e9b8da100df74d653cbb01bb3165a998"
+      ]
+    },
+    {
+      "entry": "word/media/gaybno-h5ylduzk6krfhb.png",
+      "orig": null,
+      "gen": [
+        737102,
+        "f7ba78021e0f2a953521dcb88081c58aefc96028a92d83dd9fc3d13090a913c3"
+      ]
+    },
+    {
+      "entry": "word/media/gsmyif_fcqdvtlda8rnkw.png",
+      "orig": [
+        58388,
+        "2838e52e535fa8ea8edbdb8a90634455740e08f198813ee6f6124bfa53d1d839"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/hgviglqiorhebs4jt_qye.png",
+      "orig": [
+        221618,
+        "c1bc9f3aed49354d1ca4a20d9689ace6205f6eb2599b4c3e06643e13e8316ae5"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/hzmbhs7czs22m0ebb9bvt.png",
+      "orig": null,
+      "gen": [
+        55226,
+        "9f0593568b7cc4b89c8195b804f12ff20e2cb3ac651ff1b1ae0aa6eaa1291071"
+      ]
+    },
+    {
+      "entry": "word/media/iaccpfpdnjjxawsy2a-dj.png",
+      "orig": [
+        414966,
+        "60c81c4cbd35e9b9f0bd43675bbf3a9a88e9202a206ce69b1b508d69fc9fda34"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/ihi-w-gglxed35b255bap.png",
+      "orig": [
+        134518,
+        "ac886da0da6fccfcba815b1d39142ea27d7b6df781c9c071f5e0a931939f1f32"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/ipycb75bfu2j7w4tnq-ym.png",
+      "orig": [
+        62533,
+        "958a95f8eb72533de9becae7a55459a5141622c45c2da7c47d88af5014083772"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/itmin8ea_vgbr-z5buahx.png",
+      "orig": null,
+      "gen": [
+        1019444,
+        "8c158fe7b3828138385c29d990cc68eb5feed8d2b465e0bb8bf5ac338c376159"
+      ]
+    },
+    {
+      "entry": "word/media/j8j_ofbzofvmdm3j64xpv.png",
+      "orig": [
+        143834,
+        "7684fb7db6a31cc1a41805d5ef81fff038f710485435e71080dc1697ba778e8e"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/jmi5uefxbtgmqpesfmyid.png",
+      "orig": [
+        149951,
+        "ec22b7317b3606aab87b35f62c3e2a768711118d8b8789060fe8611dcc008be3"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/jtjbsbkkg-m_ogsqshsfq.png",
+      "orig": [
+        73052,
+        "6784788b57b9dad6acd1fa96024c2e573369a2611b0dfb780c58ed84d9df1dab"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/jwyj-txs3fph9jbfrzdj6.png",
+      "orig": [
+        67691,
+        "1f5d01641c0b05018ceda16e6bf7c09ae189f31fd6bf672c9ac66e05506b29b5"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/kezu05yoqwu5ksi0-qtjl.png",
+      "orig": null,
+      "gen": [
+        44944,
+        "3901cc5948d1dbec2d534c81c1e5e709bb7d681c5f0daf36adc8c39894769445"
+      ]
+    },
+    {
+      "entry": "word/media/kllu52kqffwbia1zrci2s.png",
+      "orig": null,
+      "gen": [
+        77365,
+        "1f5197d516c26c8b15efb78aab9a28f11e0cc6c73e212b0aa0be9755fceaca50"
+      ]
+    },
+    {
+      "entry": "word/media/kozlyu7dsl9iokcppkzru.png",
+      "orig": [
+        77365,
+        "1f5197d516c26c8b15efb78aab9a28f11e0cc6c73e212b0aa0be9755fceaca50"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/kqnsvieorexob_pizjvit.png",
+      "orig": null,
+      "gen": [
+        147598,
+        "2fed54b642257e31875562705c978d213f26af4e0c1871774c084d6962380794"
+      ]
+    },
+    {
+      "entry": "word/media/krnbotxnjgtude52plfyo.png",
+      "orig": null,
+      "gen": [
+        802355,
+        "e4978015b08f415ddc38a0abac0f83013a0c4fd63c7ff26d93682b3d23624722"
+      ]
+    },
+    {
+      "entry": "word/media/kzhm7nznovx6gwwnpkefh.png",
+      "orig": null,
+      "gen": [
+        64431,
+        "e570fac77c93619cf991594976bc7248643300ef8719b1aef3e5a4e81747d59d"
+      ]
+    },
+    {
+      "entry": "word/media/lrd70nv3k-79esflpgbof.png",
+      "orig": [
+        226760,
+        "167ff41cf07f828a0433ae6b9d3e57052f6ca0cf363b12fc995fcff3d10e3f7b"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/lu6i-6rvj-axyp_y-ois2.png",
+      "orig": null,
+      "gen": [
+        389359,
+        "31d00212b86e79c03ea1968a85309682b63b18f95e6b0477c25835be29445ddc"
+      ]
+    },
+    {
+      "entry": "word/media/m3n0mwkacrhdqksafdw-o.png",
+      "orig": [
+        87799,
+        "d9d350ab7581228e1e250c2350b3bbe208cf2b4ff3397f1fbd7b8fbb7e2a6533"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/mjdfw_zrow0_sqjqbk8f7.png",
+      "orig": [
+        111345,
+        "2d5ce2a3f2e5ca75b02b39644364ce3177984f1444460c6137d0202619510614"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/nj6hnqxwhktefibiuhpqz.png",
+      "orig": [
+        12143,
+        "cbc7360830e1bd82e186c139e5d3ec24e9b8da100df74d653cbb01bb3165a998"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/ntla23irfy8n7_9uhs_0h.png",
+      "orig": null,
+      "gen": [
+        100142,
+        "d0d7db17a7e86bea71ebc89bb6c60d671b4c5f026a828ab7149876aee9a1b474"
+      ]
+    },
+    {
+      "entry": "word/media/o3rjcdvnkp_sygm9lrouo.png",
+      "orig": null,
+      "gen": [
+        62533,
+        "958a95f8eb72533de9becae7a55459a5141622c45c2da7c47d88af5014083772"
+      ]
+    },
+    {
+      "entry": "word/media/o5zieigyuvv7jiodr1ul7.png",
+      "orig": [
+        152544,
+        "6c2eddc7e5bce1b2e02cf07f80bff162562ef7e1610b27a73724220b06ad4bb1"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/ol9lsbmb8eawegn2gwg-t.png",
+      "orig": null,
+      "gen": [
+        136207,
+        "8af0a52be5e7ded174ee7668d167797d6a7ae1834da02e76e5c349fdf4109b4c"
+      ]
+    },
+    {
+      "entry": "word/media/ovel6uyi6dddlff2iovkt.png",
+      "orig": [
+        282100,
+        "53d7b3945b9c8c7aacddd2e755cd76e7a463ca9846de18b7a003694ab25782be"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/p9uqwq7xyys8gn1kqn3j4.png",
+      "orig": [
+        547117,
+        "fa578bc8374847cddff76e5da4dc85c74ec74db8545646a321dbca24aa8a55ea"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/pgj6x7mrpuyfku25ehpwl.png",
+      "orig": null,
+      "gen": [
+        12143,
+        "cbc7360830e1bd82e186c139e5d3ec24e9b8da100df74d653cbb01bb3165a998"
+      ]
+    },
+    {
+      "entry": "word/media/pjn6to48hluq2kim4otgp.png",
+      "orig": null,
+      "gen": [
+        152544,
+        "6c2eddc7e5bce1b2e02cf07f80bff162562ef7e1610b27a73724220b06ad4bb1"
+      ]
+    },
+    {
+      "entry": "word/media/psedmog5euv3p0lj0texy.png",
+      "orig": [
+        139149,
+        "9791a824d3c2bc73518348d81babba577e130e7805a75cf26ca61ad2ec813ab9"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/qj3sq3d_hs9kuaof94dmi.png",
+      "orig": [
+        141444,
+        "8f2889d0bc4138eacbf4b7d771c0291f113a694f701444798bab672cccaa3c14"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/qjdz3jgcrl7-p9wrxhgbo.png",
+      "orig": [
+        173674,
+        "962c07a234f51278020193bbe6ee93c832d03ff5822f4aaa8b468c6874639e48"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/qpa5_h87z3yj-edrnnxae.png",
+      "orig": null,
+      "gen": [
+        67691,
+        "1f5d01641c0b05018ceda16e6bf7c09ae189f31fd6bf672c9ac66e05506b29b5"
+      ]
+    },
+    {
+      "entry": "word/media/qq0dpp27rhao-zouu6uze.png",
+      "orig": null,
+      "gen": [
+        51623,
+        "0416b05e040323de5dfd9832615620224b7bc85ec8b934e0b3d06376be938a72"
+      ]
+    },
+    {
+      "entry": "word/media/qujhek5ztbl5gun_qsbf-.png",
+      "orig": null,
+      "gen": [
+        3456,
+        "2dd3c155fcfba02544115fce408ac4fec8dba1a3320c5e7be6b5ef2b84ac7bc7"
+      ]
+    },
+    {
+      "entry": "word/media/qv9tsuj4xdifab2b4-ign.png",
+      "orig": null,
+      "gen": [
+        520191,
+        "3910e1264345acb71d894d111b5833bb11effc2061ce88c9561111ed514e9711"
+      ]
+    },
+    {
+      "entry": "word/media/qyerjrhrm06xwkc6ufjtx.png",
+      "orig": [
+        190358,
+        "1cfa39a41758d934f33117dc88146ad2dd5b5f1b0eac0df685c7957918ff1d51"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/rmmm3t73aeisjrtdtg5sw.png",
+      "orig": [
+        121930,
+        "ee9bee7c64e7fcdbd01b6813b441b46fde3b7e48d6d5572926ab9caf36aa7390"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/rp3k0mcbycas4fssyfdrw.png",
+      "orig": null,
+      "gen": [
+        58388,
+        "2838e52e535fa8ea8edbdb8a90634455740e08f198813ee6f6124bfa53d1d839"
+      ]
+    },
+    {
+      "entry": "word/media/sdczxdk8xh0-j-lajaibp.png",
+      "orig": null,
+      "gen": [
+        134752,
+        "1511895723efb989ce8d12ab49ed621bb8ebb8829199739c01b7681658f5af64"
+      ]
+    },
+    {
+      "entry": "word/media/sficojpf_eeml3aedtcav.png",
+      "orig": [
+        39092,
+        "524a1633a9e8b97bcaeac8e50cf44e6c1067071762fe47323b96c22afb14f24a"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/sjp6hkkvixkltlenrecry.png",
+      "orig": [
+        509849,
+        "ac942f76cd4a31b916883d1be19a8c8dee96981fcfda0312cb20cfd69d2a46ff"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/tei9xmvkcuxufyhirve75.png",
+      "orig": null,
+      "gen": [
+        73052,
+        "6784788b57b9dad6acd1fa96024c2e573369a2611b0dfb780c58ed84d9df1dab"
+      ]
+    },
+    {
+      "entry": "word/media/tgw-c9794i4c6_2u0itgr.png",
+      "orig": [
+        140708,
+        "292ca873e92d19f5256c14674904e299a650acc789f02720c5ce125aa2cd4334"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/u3sf_vnpeuezudujhajtt.png",
+      "orig": null,
+      "gen": [
+        140091,
+        "56651903d1be837c814a081c2402854763e0e5bd48985c8b709346c671e6c6bd"
+      ]
+    },
+    {
+      "entry": "word/media/unzfstfvrcplvp1-s3wqb.png",
+      "orig": [
+        100142,
+        "d0d7db17a7e86bea71ebc89bb6c60d671b4c5f026a828ab7149876aee9a1b474"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/uqlqdfzx0smivat1rtn-w.png",
+      "orig": null,
+      "gen": [
+        187691,
+        "61bf6e0bc73fa13e70b3f4ab4cafe312e3cea813ad09f8ae2e0f7720530d0f09"
+      ]
+    },
+    {
+      "entry": "word/media/utkfwxy-msdcueguzgneu.png",
+      "orig": [
+        11689,
+        "55428d66eb535d1c0b47234502d6e760f65ab771d74c8e5cc78ee1b999843c1c"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/v_yu81vupulpnrxyuefkk.png",
+      "orig": null,
+      "gen": [
+        55846,
+        "2c41c88222c4c9b7e3c77ed257b8393847a5cf9ffc40039cd0699d949c613db1"
+      ]
+    },
+    {
+      "entry": "word/media/vh3r6ukfhbhn_8g0izedm.png",
+      "orig": null,
+      "gen": [
+        157594,
+        "6ec39b08b63edc867097b7851db7ad5bcf1efb58fbddf5e38b4bd0783aba071e"
+      ]
+    },
+    {
+      "entry": "word/media/vnhhvnfhbkm_kntbeamah.png",
+      "orig": null,
+      "gen": [
+        1018202,
+        "7db42375addd00f042d0254b89eebbc3f1cde4971f68f8962b6104f7c7c9f4d3"
+      ]
+    },
+    {
+      "entry": "word/media/vnpjltlzh365q47c3ohe0.png",
+      "orig": [
+        318094,
+        "cc00a51a55d4cb8e97dde10e5f8dc2e9e741a18c9e93a2f66ba8c1519943cd51"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/vpyktpojjt-xo2zj_3u4h.png",
+      "orig": null,
+      "gen": [
+        93799,
+        "705710d0bf73f93eb89cef2a7b288d7231756981cd8b91f077a4e465e98099f1"
+      ]
+    },
+    {
+      "entry": "word/media/vs6sdiqfxiuqteh0ugblk.png",
+      "orig": [
+        1610381,
+        "c3b4c6f67a5e18cccb835e98613a06a2d4d4a9cb6876a371f686971f61b3a9f5"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/w4trpsy60av0htpobrpjh.png",
+      "orig": [
+        3456,
+        "2dd3c155fcfba02544115fce408ac4fec8dba1a3320c5e7be6b5ef2b84ac7bc7"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/wqfoiqjfvr4bqihpcvfkr.png",
+      "orig": null,
+      "gen": [
+        134518,
+        "ac886da0da6fccfcba815b1d39142ea27d7b6df781c9c071f5e0a931939f1f32"
+      ]
+    },
+    {
+      "entry": "word/media/xhof7dm_bzz8ibsmwrdre.png",
+      "orig": [
+        803487,
+        "ceb33693621529a87dce599a0bdb658fb2e76e00e848b79ae431a1897b70202b"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/xhpzej9vyjbcc9w4z69dy.png",
+      "orig": null,
+      "gen": [
+        143834,
+        "7684fb7db6a31cc1a41805d5ef81fff038f710485435e71080dc1697ba778e8e"
+      ]
+    },
+    {
+      "entry": "word/media/xmglk0uio6vwpi9clj7js.png",
+      "orig": null,
+      "gen": [
+        203561,
+        "dad193be425e41d853daff725c164d30eccda8c0bbc44c6016b0e8cfdb14ca39"
+      ]
+    },
+    {
+      "entry": "word/media/xmxznn-r3lqam6xuyh_z5.png",
+      "orig": null,
+      "gen": [
+        181887,
+        "ef40ac9afc43bc6feb332ae4a37ac2cc8c50c2b7ea33babb31cf16a43caa33d8"
+      ]
+    },
+    {
+      "entry": "word/media/xs_ida_j4gyjec4oigmzg.png",
+      "orig": [
+        136369,
+        "c93c2e232b6bc68b77a36ab7b3537c992c4f17a2b2842cadccd02f2e9a9128da"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/y2jnomydmsbevhbfl5xab.png",
+      "orig": [
+        140091,
+        "56651903d1be837c814a081c2402854763e0e5bd48985c8b709346c671e6c6bd"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/y6z_p62ps3rxmssbuyjv9.png",
+      "orig": [
+        274063,
+        "43f4035b62b594a52830ceabff20a0d41b3551e81dab50dd9bbf3a90e9a04862"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/ynznvx_-lxamvyg7ac5oq.png",
+      "orig": null,
+      "gen": [
+        139149,
+        "9791a824d3c2bc73518348d81babba577e130e7805a75cf26ca61ad2ec813ab9"
+      ]
+    },
+    {
+      "entry": "word/media/yseiw1jl_filjnxmqmupd.png",
+      "orig": [
+        226225,
+        "b95161f5fcba5cacd555a8dd2cbefec02780880c98611d6fad6c3612647d6a25"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/yvvf23z6korpcu4_dyata.png",
+      "orig": null,
+      "gen": [
+        140708,
+        "292ca873e92d19f5256c14674904e299a650acc789f02720c5ce125aa2cd4334"
+      ]
+    },
+    {
+      "entry": "word/media/zii-prohiyyttygd8be9b.png",
+      "orig": [
+        802355,
+        "e4978015b08f415ddc38a0abac0f83013a0c4fd63c7ff26d93682b3d23624722"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/ztg15cuqglykhrfls1owu.png",
+      "orig": [
+        157594,
+        "6ec39b08b63edc867097b7851db7ad5bcf1efb58fbddf5e38b4bd0783aba071e"
+      ],
+      "gen": null
+    },
+    {
+      "entry": "word/media/zxrg-23q2o1yxj85yfphg.png",
+      "orig": [
+        1018202,
+        "7db42375addd00f042d0254b89eebbc3f1cde4971f68f8962b6104f7c7c9f4d3"
+      ],
+      "gen": null
+    }
+  ],
+  "original": {
+    "size": 15186015,
+    "paragraphs": 858,
+    "nonempty_paragraphs": 794,
+    "chars_no_ws": 34538,
+    "tables": 26,
+    "drawings": 61,
+    "headings_count": 144,
+    "captions_count": 97,
+    "figure_captions": 70,
+    "table_captions": 27,
+    "style_counts": [
+      [
+        "(none)",
+        714
+      ],
+      [
+        "Heading3",
+        68
+      ],
+      [
+        "Heading2",
+        31
+      ],
+      [
+        "Heading4",
+        30
+      ],
+      [
+        "Heading5",
+        14
+      ],
+      [
+        "Title",
+        1
+      ]
+    ],
+    "headings": [
+      {
+        "i": 1,
+        "text": "2020-总部基建全过程综合数字化管理平台项目-数字化知识管理和共享服务",
+        "style": "Title",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 9,
+        "text": "1. 目  录",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 10,
+        "text": "2. 引言",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 11,
+        "text": "2.1 编写目的",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 16,
+        "text": "2.2 项目背景",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 19,
+        "text": "2.3 项目目标",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 31,
+        "text": "2.4 项目范围",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 38,
+        "text": "3. 总体设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 39,
+        "text": "3.1 总体架构",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 51,
+        "text": "3.2 功能模块划分",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 54,
+        "text": "3.2.1 GIS-Server服务管理和数据共享服务",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 57,
+        "text": "3.2.1.1 地形切片服务",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 66,
+        "text": "3.2.1.2 影像切片服务",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 75,
+        "text": "3.2.1.3 点云切片服务",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 84,
+        "text": "3.2.1.4 模型切片服务",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 93,
+        "text": "3.2.2 EV-Creator数据处理服务",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 96,
+        "text": "3.2.2.1 max模型转glb模型",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 109,
+        "text": "3.2.2.2 revit模型转glb模型",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 114,
+        "text": "3.2.2.3 mesh模型转glb模型",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 122,
+        "text": "3.2.2.4 glb模型转mesh模型",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 126,
+        "text": "3.2.2.5 模型简化工具",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 130,
+        "text": "3.2.2.6 通用模型转换工具",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 134,
+        "text": "3.2.2.7 模型坐标转换工具",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 138,
+        "text": "3.2.2.8 osgb模型转e3m模型",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 142,
+        "text": "3.2.3 glb模型转e3m模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 146,
+        "text": "3.2.4 影像高程切片工具",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 150,
+        "text": "3.2.5 las点云转e3m",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 154,
+        "text": "3.3 EV-Globe WebGL引擎服务",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 156,
+        "text": "3.3.1 加载影像",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 165,
+        "text": "3.3.2 加载高程",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 170,
+        "text": "3.3.3 加载矢量",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 175,
+        "text": "3.3.4 加载建筑模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 189,
+        "text": "3.4 电网工程数字化管理和共享应用",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 192,
+        "text": "3.4.1 系统登录方式",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 200,
+        "text": "3.4.2 系统登录提示",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 207,
+        "text": "3.4.3 系统登录界面",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 211,
+        "text": "3.4.4 选择单位",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 215,
+        "text": "3.4.5 登录",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 219,
+        "text": "3.4.6 系统简介",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 230,
+        "text": "3.5 EV-Engine电力引擎服务",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 254,
+        "text": "3.6 GIM工程数据自动化解析服务",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 257,
+        "text": "3.6.1 输电GIM格式转换",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 265,
+        "text": "3.6.2 变电GIM格式转换",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 273,
+        "text": "3.6.3 GIM质检",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 277,
+        "text": "3.7 GIM通用模型数据自动化解析服务",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 282,
+        "text": "3.7.1 查询功能",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 293,
+        "text": "3.7.2 模型查看",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 305,
+        "text": "3.7.3 重置功能",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 307,
+        "text": "4. 业务架构",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 310,
+        "text": "5. 业务组织及角色",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 312,
+        "text": "6. 技术选型",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 318,
+        "text": "7. 数据库设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 325,
+        "text": "7.1 数据模型设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 350,
+        "text": "7.1.1 杆塔台账数据模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 377,
+        "text": "7.1.2 交跨台账模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 379,
+        "text": "7.1.3 隐患台账模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 419,
+        "text": "7.1.3.1 用户台账模型",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 421,
+        "text": "7.1.3.2 点云数据模型",
+        "style": "Heading5",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 438,
+        "text": "7.2 数据分布设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 447,
+        "text": "8. 接口设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 458,
+        "text": "9. 功能设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 459,
+        "text": "10. 电网工程数据发布模块设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 460,
+        "text": "10.1 功能需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 477,
+        "text": "10.2 界面设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 483,
+        "text": "10.3 数据上传与发布流程设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 490,
+        "text": "10.4 数据访问与分享设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 494,
+        "text": "10.5 权限与安全设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 499,
+        "text": "11. 通用模型数据发布模块设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 500,
+        "text": "11.1 功能需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 506,
+        "text": "11.2 界面设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 513,
+        "text": "11.3 数据上传与发布流程设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 520,
+        "text": "11.4 数据访问与分享设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 525,
+        "text": "11.5 权限与安全设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 532,
+        "text": "12. EV-Creator数据处理服务模块设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 533,
+        "text": "12.1 影像数据切片处理需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 539,
+        "text": "12.2 高程数据切片处理需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 545,
+        "text": "12.3 矢量数据切片处理需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 550,
+        "text": "12.4 切片处理流程设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 557,
+        "text": "12.5 性能优化设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 564,
+        "text": "12.6 异常处理与监控设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 569,
+        "text": "13. EV-Globe WebGL引擎服务模块设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 570,
+        "text": "13.1 影像数据加载需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 575,
+        "text": "13.2 高程数据加载需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 580,
+        "text": "13.3 矢量数据加载需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 585,
+        "text": "13.4 模型数据加载需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 590,
+        "text": "13.5 加载与渲染流程设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 597,
+        "text": "13.6 性能优化设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 603,
+        "text": "13.7 异常处理与监控设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 609,
+        "text": "14. 电网工程数据管理需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 610,
+        "text": "14.1 电网工程数据共享服务需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 615,
+        "text": "14.2 三维可视化应用设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 621,
+        "text": "14.3 查询与显示电网工程和通用模型信息设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 626,
+        "text": "14.4 权限与安全设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 633,
+        "text": "15. EV-Engine电力引擎服务模块设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 634,
+        "text": "15.1 多源电网工程快速构建服务需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 639,
+        "text": "15.2 电网工程数据查询共享服务需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 643,
+        "text": "15.3 解析与构建服务设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 647,
+        "text": "15.4 查询与共享服务设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 651,
+        "text": "15.5 异常处理与监控设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 657,
+        "text": "16. GIM工程数据自动化解析服务模块设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 658,
+        "text": "16.1 线路工程GIM数据解析及质检需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 662,
+        "text": "16.2 变电工程数据解析及质检需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 666,
+        "text": "16.3 GIM通用模型数据解析及质检需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 670,
+        "text": "16.4 解析与质检流程设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 675,
+        "text": "16.5 异常处理与监控设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 681,
+        "text": "17. GIM通用模型数据自动化解析服务模块设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 682,
+        "text": "17.1 通用模型解析及质检需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 686,
+        "text": "17.2 通用模型转化需求",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 690,
+        "text": "17.3 解析与转化流程设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 695,
+        "text": "17.4 异常处理与监控设计",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 700,
+        "text": "18. 系统集成",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 701,
+        "text": "19. 系统集成需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 703,
+        "text": "20. 集成方案设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 704,
+        "text": "20.1 与统一权限认证平台集成",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 706,
+        "text": "20.2 与PMS系统集成",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 709,
+        "text": "20.3 与统一地理信息平台集成",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 711,
+        "text": "21. 系统负载均衡及并发性设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 716,
+        "text": "22. 公用功能设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 717,
+        "text": "22.1 系统日志",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 721,
+        "text": "22.1.1 级别定义",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 724,
+        "text": "22.1.2 记录内容",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 732,
+        "text": "22.1.3 实现方式",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 739,
+        "text": "22.2 异常处理",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 750,
+        "text": "23. 性能与安全设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 751,
+        "text": "24. 性能需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 769,
+        "text": "25. 性能测试与优化设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 787,
+        "text": "26. 安全需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 793,
+        "text": "27. 安全机制与控制设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 801,
+        "text": "27.1 应用安全功能",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 804,
+        "text": "27.2 应用交互安全",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 815,
+        "text": "27.3 应用边界安全",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 817,
+        "text": "27.4 数据安全",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 818,
+        "text": "27.4.1 机密性",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 821,
+        "text": "27.4.2 完整性",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 825,
+        "text": "27.4.3 可用性",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 829,
+        "text": "28. 系统部署与运维",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 830,
+        "text": "29. 部署架构设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 831,
+        "text": "29.1 物理部署图",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 839,
+        "text": "29.2 能力架构图",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 844,
+        "text": "30. 配置要求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 845,
+        "text": "30.1 基础软件需求表",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 847,
+        "text": "30.2 基础环境需求表",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 849,
+        "text": "30.3 第三方组件",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 851,
+        "text": "31. 总结",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      }
+    ],
+    "captions": [
+      {
+        "i": 34,
+        "text": "表2-1 需求阶段工作内容及成果",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 36,
+        "text": "表2-2 系统编码阶段工作内容及成果",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 42,
+        "text": "图3-1 数字化知识管理和共享服务平台架构",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 53,
+        "text": "表3-1 平台服务域服务方式",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 65,
+        "text": "图3-2 地形切片服务",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 74,
+        "text": "图3-3 影像切片服务",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 83,
+        "text": "图3-4 点云切片服务",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 92,
+        "text": "图3-5 模型切片服务",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 98,
+        "text": "图3-6",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 102,
+        "text": "图3-7",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 104,
+        "text": "图3-8",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 107,
+        "text": "图3-9",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 113,
+        "text": "图3-10",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 117,
+        "text": "图3-11",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 119,
+        "text": "图3-12",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 121,
+        "text": "图3-13",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 125,
+        "text": "图3-14",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 129,
+        "text": "图3-15",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 133,
+        "text": "图3-16",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 137,
+        "text": "图3-17",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 141,
+        "text": "图3-18",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 144,
+        "text": "图3-19 glb模型转e3m模型",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 149,
+        "text": "图3-20 影像高程切片工具",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 153,
+        "text": "图3-21 las点云转e3m",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 159,
+        "text": "图3-22 未添加影像",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 162,
+        "text": "图3-23 添加全球表皮",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 164,
+        "text": "图3-24 添加武汉表皮",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 169,
+        "text": "图3-25 加载高程",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 174,
+        "text": "图3-26 加载矢量",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 178,
+        "text": "图3-27 变电站列表",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 182,
+        "text": "图3-28 定位变电站",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 185,
+        "text": "图3-29 偏移调整",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 188,
+        "text": "图3-30 隐藏变电站",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 203,
+        "text": "图3-31 安全提示",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 206,
+        "text": "图3-32 继续访问",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 210,
+        "text": "图3-33 登录界面",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 214,
+        "text": "图3-34 选择单位",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 218,
+        "text": "图3-35 登录",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 223,
+        "text": "图3-36 系统主界面",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 226,
+        "text": "图3-37 运行控件",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 229,
+        "text": "图3-38 三维场景操作",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 240,
+        "text": "图3-39 数据共享申请页面",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 244,
+        "text": "图3-40 创建共享申请",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 248,
+        "text": "图3-41 选择审核人",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 252,
+        "text": "图3-42 流程记录",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 260,
+        "text": "图3-43 输电GIM格式转换",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 262,
+        "text": "图3-44 输变电工程全景图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 264,
+        "text": "图3-45 输电属性图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 268,
+        "text": "图3-46 变电GIM格式转换",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 270,
+        "text": "图3-47 变电全景图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 272,
+        "text": "图3-48 变电属性图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 276,
+        "text": "图3-49 GIM质检",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 281,
+        "text": "图3-50 通用模型库页面",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 285,
+        "text": "图3-51 工程类型选择",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 287,
+        "text": "图3-52 查询结果",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 290,
+        "text": "图3-53 设备类型选择",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 292,
+        "text": "图3-54 设备类型关联",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 296,
+        "text": "图3-55 模型详情",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 303,
+        "text": "图3-56 三维模型展示",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 304,
+        "text": "图3-61",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 309,
+        "text": "图4-1 业务架构图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 311,
+        "text": "表5-1 业务角色",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 315,
+        "text": "图6-1 总体技术路线",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 317,
+        "text": "表6-1 总体技术路线描述",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 323,
+        "text": "图7-1 点云、三维矢量模型数据存储策略",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 331,
+        "text": "图7-2 影像数据",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 335,
+        "text": "图7-3 地形数据",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 339,
+        "text": "图7-4 点云数据",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 345,
+        "text": "图7-5 GIM模型数据",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 348,
+        "text": "表7-1 运行线路表（t_yxxl）",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 349,
+        "text": "表7-2 线路运行表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 351,
+        "text": "表7-3 运行杆塔表（t_yxgt）",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 352,
+        "text": "表7-4 物理杆塔表（t_wlgt）",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 376,
+        "text": "表7-5 物理杆塔表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 378,
+        "text": "表7-6 交跨台账表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 380,
+        "text": "表7-7 隐患台账表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 418,
+        "text": "表7-8 隐患台账表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 420,
+        "text": "表7-9 用户台账表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 422,
+        "text": "表7-10 点云发布表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 423,
+        "text": "表7-11 点云瓦片索引表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 442,
+        "text": "表7-12 非结构数据",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 444,
+        "text": "图7-6 数据分布及交互",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 446,
+        "text": "表7-13 业务数据详细列表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 708,
+        "text": "表20-1 PMS系统台账数据实体",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 715,
+        "text": "图21-1 Kubernetes的负载均衡",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 723,
+        "text": "表22-1 日志级别定义表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 768,
+        "text": "表24-1 性能指标需求表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 786,
+        "text": "表25-1 性能测试与优化策略表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 803,
+        "text": "表27-1 应用安全功能防护策略",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 834,
+        "text": "图29-1 容器化部署拓扑图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 836,
+        "text": "图29-2 平台部署模式示意图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 838,
+        "text": "表29-1 平台部署模式说明表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 841,
+        "text": "图29-3 能力架构图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 843,
+        "text": "图29-4 能力架构图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 846,
+        "text": "表30-1 平台部署软件要求",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 848,
+        "text": "表30-2 平台基础环境需求表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 850,
+        "text": "表30-3 第三方组件列表",
+        "style": "",
+        "kind": "表"
+      }
+    ],
+    "table_heads": [
+      [
+        [
+          "序号",
+          "工作内容",
+          "主要工作成果"
+        ],
+        [
+          "1",
+          "需求调研：结合各实施单位实际情况，开展功能调研，应与实施单位一起通过现场需求调研、联络会等方式明确需求内容，形成需求调研报告，并根据需求调研内容，编制需求规格说明书，",
+          "《需求调研报告》《软件需求说明书》"
+        ]
+      ],
+      [
+        [
+          "序号",
+          "工作内容",
+          "交付成果"
+        ],
+        [
+          "1",
+          "需求调研：调研相关业务及信息化现状，包括：相关管理制度，业务流程、典型业务场景、功能建设与应用情况、关键技术及运行维护管理等；详细调研本项目的业务功能需求，",
+          "《现状调研报告》"
+        ]
+      ],
+      [
+        [
+          "服务名称",
+          "服务方式",
+          "说明"
+        ],
+        [
+          "GIS-Server服务管理和数据共享服务",
+          "√对外服务□平台应用",
+          "以接口方式对外提供服务"
+        ]
+      ],
+      [
+        [
+          "业务角色名称",
+          "业务角色编码",
+          "可对应组织性质"
+        ],
+        [
+          "省级领导",
+          "Provincial-Leader",
+          "单位（所有单位类的性质）"
+        ]
+      ],
+      [
+        [
+          "层次",
+          "描述"
+        ],
+        [
+          "业务应用",
+          "通过调用和组合各类服务，为最终用户提供生产域、基建域、资产域的业务应用，生产域包括航迹自主规划、三维虚拟巡检、通道隐患分析等；基建域包括基建信息总览、移交评审、基建施工管理等；资产域包括资产信息核查、资产信息统计等。"
+        ]
+      ],
+      [
+        [
+          "运行线路表（t_yxxl）"
+        ],
+        [
+          "字段名",
+          "数据类型",
+          "说明"
+        ]
+      ],
+      [
+        [
+          "字段名",
+          "数据类型",
+          "说明"
+        ],
+        [
+          "psrId",
+          "VARCHAR2",
+          "资源ID"
+        ]
+      ],
+      [
+        [
+          "字段名",
+          "数据类型",
+          "说明"
+        ],
+        [
+          "astId",
+          "VARCHAR2",
+          "资产ID"
+        ]
+      ],
+      [
+        [
+          "交跨台账表（SW_TLC_LEDGER）"
+        ],
+        [
+          "字段名",
+          "数据类型",
+          "名称"
+        ]
+      ],
+      [
+        [
+          "隐患台账（SW_DEFECT）"
+        ],
+        [
+          "字段名",
+          "数据类型",
+          "说明"
+        ]
+      ],
+      [
+        [
+          "用户台账（user）"
+        ],
+        [
+          "代码",
+          "数据类型",
+          "名称"
+        ]
+      ],
+      [
+        [
+          "点云发布表（Cloud_Publish）"
+        ],
+        [
+          "列名",
+          "类型",
+          "说明"
+        ]
+      ],
+      [
+        [
+          "点云瓦片索引表（Cloud_ Idx）"
+        ],
+        [
+          "列名",
+          "类型",
+          "说明"
+        ]
+      ],
+      [
+        [
+          "点云瓦片索引表（Cloud__Idx_Detail）"
+        ],
+        [
+          "列名",
+          "类型",
+          "说明"
+        ]
+      ],
+      [
+        [
+          "绝缘子串公共属性(evmodel_insurunparams)"
+        ],
+        [
+          "字段名",
+          "描述",
+          "备注"
+        ]
+      ],
+      [
+        [
+          "数据类型",
+          "原始数据格式",
+          "发布的数据格式"
+        ],
+        [
+          "激光点云数据",
+          "las",
+          "3dtiles、e3m"
+        ]
+      ],
+      [
+        [
+          "业务主题域",
+          "数据类型",
+          "存储方式"
+        ],
+        [
+          "数字化知识管理和共享服务平台",
+          "•系统数据：用户信息、组织信息、人员信息、•配置信息：定时策略配置•台帐信息：线路、杆塔、危险点、交跨等",
+          "MySQL数据库"
+        ]
+      ],
+      [
+        [
+          "系统",
+          "类型",
+          "数据实体",
+          "数据类型"
+        ],
+        [
+          "PMS系统",
+          "台账类",
+          "主线（物理）表",
+          "结构化数据"
+        ]
+      ],
+      [
+        [
+          "日志等级",
+          "说明"
+        ],
+        [
+          "ERROR",
+          "错误但系统能继续运行的事件"
+        ]
+      ],
+      [
+        [
+          "指标",
+          "描述",
+          "单位"
+        ],
+        [
+          "最大响应时间",
+          "解析一个数据模型的最大时间限制",
+          "毫秒"
+        ]
+      ],
+      [
+        [
+          "步骤",
+          "描述"
+        ],
+        [
+          "性能测试计划",
+          "确定测试范围、目标和方法"
+        ]
+      ],
+      [
+        [
+          "安全项",
+          "防护策略设计"
+        ],
+        [
+          "身份认证机制",
+          "平台不单独做用户身份认证，平台同步一体化平台用户信息，用户登录时统一通过由一体化平台进行验证，系统不存储用户口令，和一体化平台之间采用加密传输。"
+        ]
+      ],
+      [
+        [
+          "服务名称",
+          "部署方式",
+          "功能描述"
+        ],
+        [
+          "MySQL数据库",
+          "省级部署（虚拟机）",
+          "结构化数据存储"
+        ]
+      ],
+      [
+        [
+          "序号",
+          "软件名称",
+          "版本要求",
+          "说明"
+        ],
+        [
+          "1",
+          "Centos",
+          "7",
+          "操作系统"
+        ]
+      ],
+      [
+        [
+          "序号",
+          "服务",
+          "单个容器资源配置",
+          "容器个数",
+          "备注"
+        ],
+        [
+          "1",
+          "内存缓存Redis",
+          "vCPU：4000m内存：32G存储：200G",
+          "3",
+          "数据缓存"
+        ]
+      ],
+      [
+        [
+          "序号",
+          "第三方组件",
+          "开源/商用",
+          "版本号",
+          "部署位置",
+          "功能介绍"
+        ],
+        [
+          "1",
+          "MySQL",
+          "开源",
+          "8.0.21",
+          "数据库服务器",
+          "关系型数据存储"
+        ]
+      ]
+    ]
+  },
+  "generated": {
+    "size": 15186227,
+    "paragraphs": 860,
+    "nonempty_paragraphs": 796,
+    "chars_no_ws": 35484,
+    "tables": 26,
+    "drawings": 61,
+    "headings_count": 145,
+    "captions_count": 100,
+    "figure_captions": 70,
+    "table_captions": 30,
+    "style_counts": [
+      [
+        "(none)",
+        715
+      ],
+      [
+        "Heading2",
+        69
+      ],
+      [
+        "Heading1",
+        31
+      ],
+      [
+        "Heading3",
+        30
+      ],
+      [
+        "Heading4",
+        14
+      ],
+      [
+        "Title",
+        1
+      ]
+    ],
+    "headings": [
+      {
+        "i": 1,
+        "text": "2020-总部基建全过程综合数字化管理平台项目-数字化知识管理和共享服务",
+        "style": "Title",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 9,
+        "text": "目  录",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 10,
+        "text": "1. 引言",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 11,
+        "text": "1.1 编写目的",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 16,
+        "text": "1.2 项目背景",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 19,
+        "text": "1.3 项目目标",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 31,
+        "text": "1.4 项目范围",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 38,
+        "text": "2. 总体设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 39,
+        "text": "2.1 总体设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 40,
+        "text": "2.2 总体架构",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 52,
+        "text": "2.3 功能模块划分",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 55,
+        "text": "2.3.1 GIS-Server服务管理和数据共享服务",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 58,
+        "text": "2.3.1.1 地形切片服务",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 67,
+        "text": "2.3.1.2 影像切片服务",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 76,
+        "text": "2.3.1.3 点云切片服务",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 85,
+        "text": "2.3.1.4 模型切片服务",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 94,
+        "text": "2.3.2 EV-Creator数据处理服务",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 97,
+        "text": "2.3.2.1 max模型转glb模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 110,
+        "text": "2.3.2.2 revit模型转glb模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 115,
+        "text": "2.3.2.3 mesh模型转glb模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 123,
+        "text": "2.3.2.4 glb模型转mesh模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 127,
+        "text": "2.3.2.5 模型简化工具",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 131,
+        "text": "2.3.2.6 通用模型转换工具",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 135,
+        "text": "2.3.2.7 模型坐标转换工具",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 139,
+        "text": "2.3.2.8 osgb模型转e3m模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 143,
+        "text": "2.3.3 glb模型转e3m模型",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 147,
+        "text": "2.3.4 影像高程切片工具",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 151,
+        "text": "2.3.5 las点云转e3m",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 155,
+        "text": "2.4 EV-Globe WebGL引擎服务",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 157,
+        "text": "2.4.1 加载影像",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 166,
+        "text": "2.4.2 加载高程",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 171,
+        "text": "2.4.3 加载矢量",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 176,
+        "text": "2.4.4 加载建筑模型",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 190,
+        "text": "2.5 电网工程数字化管理和共享应用",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 193,
+        "text": "2.5.1 系统登录方式",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 201,
+        "text": "2.5.2 系统登录提示",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 208,
+        "text": "2.5.3 系统登录界面",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 212,
+        "text": "2.5.4 选择单位",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 216,
+        "text": "2.5.5 登录",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 220,
+        "text": "2.5.6 系统简介",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 231,
+        "text": "2.6 EV-Engine电力引擎服务",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 255,
+        "text": "2.7 GIM工程数据自动化解析服务",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 258,
+        "text": "2.7.1 输电GIM格式转换",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 266,
+        "text": "2.7.2 变电GIM格式转换",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 274,
+        "text": "2.7.3 GIM质检",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 278,
+        "text": "2.8 GIM通用模型数据自动化解析服务",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 283,
+        "text": "2.8.1 查询功能",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 294,
+        "text": "2.8.2 模型查看",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 306,
+        "text": "2.8.3 重置功能",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 308,
+        "text": "3. 业务架构",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 311,
+        "text": "4. 业务组织及角色",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 313,
+        "text": "5. 技术选型",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 319,
+        "text": "6. 数据库设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 326,
+        "text": "6.1 数据模型设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 351,
+        "text": "6.1.1 杆塔台账数据模型",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 378,
+        "text": "6.1.2 交跨台账模型",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 380,
+        "text": "6.1.3 隐患台账模型",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 420,
+        "text": "6.1.3.1 用户台账模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 422,
+        "text": "6.1.3.2 点云数据模型",
+        "style": "Heading4",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 440,
+        "text": "6.2 数据分布设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 449,
+        "text": "7. 接口设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 460,
+        "text": "8. 功能设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 461,
+        "text": "9. 电网工程数据发布模块设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 462,
+        "text": "9.1 功能需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 479,
+        "text": "9.2 界面设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 485,
+        "text": "9.3 数据上传与发布流程设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 492,
+        "text": "9.4 数据访问与分享设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 496,
+        "text": "9.5 权限与安全设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 501,
+        "text": "10. 通用模型数据发布模块设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 502,
+        "text": "10.1 功能需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 508,
+        "text": "10.2 界面设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 515,
+        "text": "10.3 数据上传与发布流程设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 522,
+        "text": "10.4 数据访问与分享设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 527,
+        "text": "10.5 权限与安全设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 534,
+        "text": "11. EV-Creator数据处理服务模块设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 535,
+        "text": "11.1 影像数据切片处理需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 541,
+        "text": "11.2 高程数据切片处理需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 547,
+        "text": "11.3 矢量数据切片处理需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 552,
+        "text": "11.4 切片处理流程设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 559,
+        "text": "11.5 性能优化设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 566,
+        "text": "11.6 异常处理与监控设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 571,
+        "text": "12. EV-Globe WebGL引擎服务模块设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 572,
+        "text": "12.1 影像数据加载需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 577,
+        "text": "12.2 高程数据加载需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 582,
+        "text": "12.3 矢量数据加载需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 587,
+        "text": "12.4 模型数据加载需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 592,
+        "text": "12.5 加载与渲染流程设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 599,
+        "text": "12.6 性能优化设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 605,
+        "text": "12.7 异常处理与监控设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 611,
+        "text": "13. 电网工程数据管理需求",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 612,
+        "text": "13.1 电网工程数据共享服务需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 617,
+        "text": "13.2 三维可视化应用设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 623,
+        "text": "13.3 查询与显示电网工程和通用模型信息设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 628,
+        "text": "13.4 权限与安全设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 635,
+        "text": "14. EV-Engine电力引擎服务模块设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 636,
+        "text": "14.1 多源电网工程快速构建服务需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 641,
+        "text": "14.2 电网工程数据查询共享服务需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 645,
+        "text": "14.3 解析与构建服务设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 649,
+        "text": "14.4 查询与共享服务设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 653,
+        "text": "14.5 异常处理与监控设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 659,
+        "text": "15. GIM工程数据自动化解析服务模块设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 660,
+        "text": "15.1 线路工程GIM数据解析及质检需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 664,
+        "text": "15.2 变电工程数据解析及质检需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 668,
+        "text": "15.3 GIM通用模型数据解析及质检需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 672,
+        "text": "15.4 解析与质检流程设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 677,
+        "text": "15.5 异常处理与监控设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 683,
+        "text": "16. GIM通用模型数据自动化解析服务模块设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 684,
+        "text": "16.1 通用模型解析及质检需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 688,
+        "text": "16.2 通用模型转化需求",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 692,
+        "text": "16.3 解析与转化流程设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 697,
+        "text": "16.4 异常处理与监控设计",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 702,
+        "text": "17. 系统集成",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 703,
+        "text": "18. 系统集成需求",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 705,
+        "text": "19. 集成方案设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 706,
+        "text": "19.1 与统一权限认证平台集成",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 708,
+        "text": "19.2 与PMS系统集成",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 711,
+        "text": "19.3 与统一地理信息平台集成",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 713,
+        "text": "20. 系统负载均衡及并发性设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 718,
+        "text": "21. 公用功能设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 719,
+        "text": "21.1 系统日志",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 723,
+        "text": "21.1.1 级别定义",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 726,
+        "text": "21.1.2 记录内容",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 734,
+        "text": "21.1.3 实现方式",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 741,
+        "text": "21.2 异常处理",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 752,
+        "text": "22. 性能与安全设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 753,
+        "text": "23. 性能需求",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 771,
+        "text": "24. 性能测试与优化设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 789,
+        "text": "25. 安全需求",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 795,
+        "text": "26. 安全机制与控制设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 803,
+        "text": "26.1 应用安全功能",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 806,
+        "text": "26.2 应用交互安全",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 817,
+        "text": "26.3 应用边界安全",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 819,
+        "text": "26.4 数据安全",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 820,
+        "text": "26.4.1 机密性",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 823,
+        "text": "26.4.2 完整性",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 827,
+        "text": "26.4.3 可用性",
+        "style": "Heading3",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 831,
+        "text": "27. 系统部署与运维",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 832,
+        "text": "28. 部署架构设计",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 833,
+        "text": "28.1 物理部署图",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 841,
+        "text": "28.2 能力架构图",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 846,
+        "text": "29. 配置要求",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 847,
+        "text": "29.1 基础软件需求表",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 849,
+        "text": "29.2 基础环境需求表",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 851,
+        "text": "29.3 第三方组件",
+        "style": "Heading2",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      },
+      {
+        "i": 853,
+        "text": "30. 总结",
+        "style": "Heading1",
+        "outline": "",
+        "numId": "",
+        "ilvl": ""
+      }
+    ],
+    "captions": [
+      {
+        "i": 34,
+        "text": "表1-1 Table 2-1 需求阶段工作内容及成果",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 36,
+        "text": "表1-2 Table 2-2 系统编码阶段工作内容及成果",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 43,
+        "text": "图2-1 Figure 3-1 数字化知识管理和共享服务平台架构",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 54,
+        "text": "表2-1 Table 3-1 平台服务域服务方式",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 66,
+        "text": "图2-2 Figure 3-2 地形切片服务",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 75,
+        "text": "图2-3 Figure 3-3 影像切片服务",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 84,
+        "text": "图2-4 Figure 3-4 点云切片服务",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 93,
+        "text": "图2-5 Figure 3-5 模型切片服务",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 99,
+        "text": "图2-6 Figure 3-6",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 103,
+        "text": "图2-7 Figure 3-7",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 105,
+        "text": "图2-8 Figure 3-8",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 108,
+        "text": "图2-9 Figure 3-9",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 114,
+        "text": "图2-10 Figure 3-10",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 118,
+        "text": "图2-11 Figure 3-11",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 120,
+        "text": "图2-12 Figure 3-12",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 122,
+        "text": "图2-13 Figure 3-13",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 126,
+        "text": "图2-14 Figure 3-14",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 130,
+        "text": "图2-15 Figure 3-15",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 134,
+        "text": "图2-16 Figure 3-16",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 138,
+        "text": "图2-17 Figure 3-17",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 142,
+        "text": "图2-18 Figure 3-18",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 145,
+        "text": "图2-19 Figure 3-19 glb模型转e3m模型",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 150,
+        "text": "图2-20 Figure 3-20 影像高程切片工具",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 154,
+        "text": "图2-21 Figure 3-21 las点云转e3m",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 160,
+        "text": "图2-22 Figure 3-22 未添加影像",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 163,
+        "text": "图2-23 Figure 3-23 添加全球表皮",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 165,
+        "text": "图2-24 Figure 3-24 添加武汉表皮",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 170,
+        "text": "图2-25 Figure 3-25 加载高程",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 175,
+        "text": "图2-26 Figure 3-26 加载矢量",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 179,
+        "text": "图2-27 Figure 3-27 变电站列表",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 183,
+        "text": "图2-28 Figure 3-28 定位变电站",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 186,
+        "text": "图2-29 Figure 3-29 偏移调整",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 189,
+        "text": "图2-30 Figure 3-30 隐藏变电站",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 204,
+        "text": "图2-31 Figure 3-31 安全提示",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 207,
+        "text": "图2-32 Figure 3-32 继续访问",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 211,
+        "text": "图2-33 Figure 3-33 登录界面",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 215,
+        "text": "图2-34 Figure 3-34 选择单位",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 219,
+        "text": "图2-35 Figure 3-35 登录",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 224,
+        "text": "图2-36 Figure 3-36 系统主界面",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 227,
+        "text": "图2-37 Figure 3-37 运行控件",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 230,
+        "text": "图2-38 Figure 3-38 三维场景操作",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 241,
+        "text": "图2-39 Figure 3-39 数据共享申请页面",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 245,
+        "text": "图2-40 Figure 3-40 创建共享申请",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 249,
+        "text": "图2-41 Figure 3-41 选择审核人",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 253,
+        "text": "图2-42 Figure 3-42 流程记录",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 261,
+        "text": "图2-43 Figure 3-43 输电GIM格式转换",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 263,
+        "text": "图2-44 Figure 3-44 输变电工程全景图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 265,
+        "text": "图2-45 Figure 3-45 输电属性图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 269,
+        "text": "图2-46 Figure 3-46 变电GIM格式转换",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 271,
+        "text": "图2-47 Figure 3-47 变电全景图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 273,
+        "text": "图2-48 Figure 3-48 变电属性图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 277,
+        "text": "图2-49 Figure 3-49 GIM质检",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 282,
+        "text": "图2-50 Figure 3-50 通用模型库页面",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 286,
+        "text": "图2-51 Figure 3-51 工程类型选择",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 288,
+        "text": "图2-52 Figure 3-52 查询结果",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 291,
+        "text": "图2-53 Figure 3-53 设备类型选择",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 293,
+        "text": "图2-54 Figure 3-54 设备类型关联",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 297,
+        "text": "图2-55 Figure 3-55 模型详情",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 304,
+        "text": "图2-56 Figure 3-56 三维模型展示",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 305,
+        "text": "图3-61",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 310,
+        "text": "图3-1 Figure 4-1 业务架构图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 312,
+        "text": "表4-1 Table 5-1 业务角色",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 316,
+        "text": "图5-1 Figure 6-1 总体技术路线",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 318,
+        "text": "表5-1 Table 6-1 总体技术路线描述",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 324,
+        "text": "图6-1 Figure 7-1 点云、三维矢量模型数据存储策略",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 332,
+        "text": "图6-2 Figure 7-2 影像数据",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 336,
+        "text": "图6-3 Figure 7-3 地形数据",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 340,
+        "text": "图6-4 Figure 7-4 点云数据",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 346,
+        "text": "图6-5 Figure 7-5 GIM模型数据",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 349,
+        "text": "表6-1 Table 7-1 运行线路表（t_yxxl）",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 350,
+        "text": "表6-2 Table 7-2 线路运行表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 352,
+        "text": "表6-3 Table 7-3 运行杆塔表（t_yxgt）",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 353,
+        "text": "表6-4 Table 7-4 物理杆塔表（t_wlgt）",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 377,
+        "text": "表6-5 Table 7-5 物理杆塔表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 379,
+        "text": "表6-6 Table 7-6 交跨台账表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 381,
+        "text": "表6-7 Table 7-7 隐患台账表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 419,
+        "text": "表6-8 Table 7-8 隐患台账表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 421,
+        "text": "表6-9 Table 7-9 用户台账表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 423,
+        "text": "表6-10 Table 7-10 点云发布表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 424,
+        "text": "表6-11 Table 7-11 点云瓦片索引表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 425,
+        "text": "表6-12 Table 7-12 点云瓦片索引表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 438,
+        "text": "表6-13 Table 7-13 绝缘子串工程属性表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 439,
+        "text": "表6-14 Table 7-14 绝缘子串公共属性表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 444,
+        "text": "表6-15 Table 7-15 非结构数据",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 446,
+        "text": "图6-6 Figure 7-6 数据分布及交互",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 448,
+        "text": "表6-16 Table 7-16 业务数据详细列表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 710,
+        "text": "表19-1 Table 20-1 PMS系统台账数据实体",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 717,
+        "text": "图20-1 Figure 21-1 Kubernetes的负载均衡",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 725,
+        "text": "表21-1 Table 22-1 日志级别定义表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 770,
+        "text": "表23-1 Table 24-1 性能指标需求表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 788,
+        "text": "表24-1 Table 25-1 性能测试与优化策略表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 805,
+        "text": "表26-1 Table 27-1 应用安全功能防护策略",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 836,
+        "text": "图28-1 Figure 29-1 容器化部署拓扑图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 838,
+        "text": "图28-2 Figure 29-2 平台部署模式示意图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 840,
+        "text": "表28-1 Table 29-1 平台部署模式说明表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 843,
+        "text": "图28-3 Figure 29-3 能力架构图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 845,
+        "text": "图28-4 Figure 29-4 能力架构图",
+        "style": "",
+        "kind": "图"
+      },
+      {
+        "i": 848,
+        "text": "表29-1 Table 30-1 平台部署软件要求",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 850,
+        "text": "表29-2 Table 30-2 平台基础环境需求表",
+        "style": "",
+        "kind": "表"
+      },
+      {
+        "i": 852,
+        "text": "表29-3 Table 30-3 第三方组件列表",
+        "style": "",
+        "kind": "表"
+      }
+    ],
+    "table_heads": [
+      [
+        [
+          "序号",
+          "工作内容",
+          "主要工作成果"
+        ],
+        [
+          "1",
+          "需求调研：结合各实施单位实际情况，开展功能调研，应与实施单位一起通过现场需求调研、联络会等方式明确需求内容，形成需求调研报告，并根据需求调研内容，编制需求规格说明书，",
+          "《需求调研报告》《软件需求说明书》"
+        ]
+      ],
+      [
+        [
+          "序号",
+          "工作内容",
+          "交付成果"
+        ],
+        [
+          "1",
+          "需求调研：调研相关业务及信息化现状，包括：相关管理制度，业务流程、典型业务场景、功能建设与应用情况、关键技术及运行维护管理等；详细调研本项目的业务功能需求，",
+          "《现状调研报告》"
+        ]
+      ],
+      [
+        [
+          "服务名称",
+          "服务方式",
+          "说明"
+        ],
+        [
+          "GIS-Server服务管理和数据共享服务",
+          "√对外服务□平台应用",
+          "以接口方式对外提供服务"
+        ]
+      ],
+      [
+        [
+          "业务角色名称",
+          "业务角色编码",
+          "可对应组织性质"
+        ],
+        [
+          "省级领导",
+          "Provincial-Leader",
+          "单位（所有单位类的性质）"
+        ]
+      ],
+      [
+        [
+          "层次",
+          "描述"
+        ],
+        [
+          "业务应用",
+          "通过调用和组合各类服务，为最终用户提供生产域、基建域、资产域的业务应用，生产域包括航迹自主规划、三维虚拟巡检、通道隐患分析等；基建域包括基建信息总览、移交评审、基建施工管理等；资产域包括资产信息核查、资产信息统计等。"
+        ]
+      ],
+      [
+        [
+          "运行线路表（t_yxxl）"
+        ],
+        [
+          "字段名",
+          "数据类型",
+          "说明"
+        ]
+      ],
+      [
+        [
+          "字段名",
+          "数据类型",
+          "说明"
+        ],
+        [
+          "psrId",
+          "VARCHAR2",
+          "资源ID"
+        ]
+      ],
+      [
+        [
+          "字段名",
+          "数据类型",
+          "说明"
+        ],
+        [
+          "astId",
+          "VARCHAR2",
+          "资产ID"
+        ]
+      ],
+      [
+        [
+          "交跨台账表（SW_TLC_LEDGER）"
+        ],
+        [
+          "字段名",
+          "数据类型",
+          "名称"
+        ]
+      ],
+      [
+        [
+          "隐患台账（SW_DEFECT）"
+        ],
+        [
+          "字段名",
+          "数据类型",
+          "说明"
+        ]
+      ],
+      [
+        [
+          "用户台账（user）"
+        ],
+        [
+          "代码",
+          "数据类型",
+          "名称"
+        ]
+      ],
+      [
+        [
+          "点云发布表（Cloud_Publish）"
+        ],
+        [
+          "列名",
+          "类型",
+          "说明"
+        ]
+      ],
+      [
+        [
+          "点云瓦片索引表（Cloud_ Idx）"
+        ],
+        [
+          "列名",
+          "类型",
+          "说明"
+        ]
+      ],
+      [
+        [
+          "点云瓦片索引表（Cloud__Idx_Detail）"
+        ],
+        [
+          "列名",
+          "类型",
+          "说明"
+        ]
+      ],
+      [
+        [
+          "绝缘子串公共属性(evmodel_insurunparams)"
+        ],
+        [
+          "字段名",
+          "描述",
+          "备注"
+        ]
+      ],
+      [
+        [
+          "数据类型",
+          "原始数据格式",
+          "发布的数据格式"
+        ],
+        [
+          "激光点云数据",
+          "las",
+          "3dtiles、e3m"
+        ]
+      ],
+      [
+        [
+          "业务主题域",
+          "数据类型",
+          "存储方式"
+        ],
+        [
+          "数字化知识管理和共享服务平台",
+          "•系统数据：用户信息、组织信息、人员信息、•配置信息：定时策略配置•台帐信息：线路、杆塔、危险点、交跨等",
+          "MySQL数据库"
+        ]
+      ],
+      [
+        [
+          "系统",
+          "类型",
+          "数据实体",
+          "数据类型"
+        ],
+        [
+          "PMS系统",
+          "台账类",
+          "主线（物理）表",
+          "结构化数据"
+        ]
+      ],
+      [
+        [
+          "日志等级",
+          "说明"
+        ],
+        [
+          "ERROR",
+          "错误但系统能继续运行的事件"
+        ]
+      ],
+      [
+        [
+          "指标",
+          "描述",
+          "单位"
+        ],
+        [
+          "最大响应时间",
+          "解析一个数据模型的最大时间限制",
+          "毫秒"
+        ]
+      ],
+      [
+        [
+          "步骤",
+          "描述"
+        ],
+        [
+          "性能测试计划",
+          "确定测试范围、目标和方法"
+        ]
+      ],
+      [
+        [
+          "安全项",
+          "防护策略设计"
+        ],
+        [
+          "身份认证机制",
+          "平台不单独做用户身份认证，平台同步一体化平台用户信息，用户登录时统一通过由一体化平台进行验证，系统不存储用户口令，和一体化平台之间采用加密传输。"
+        ]
+      ],
+      [
+        [
+          "服务名称",
+          "部署方式",
+          "功能描述"
+        ],
+        [
+          "MySQL数据库",
+          "省级部署（虚拟机）",
+          "结构化数据存储"
+        ]
+      ],
+      [
+        [
+          "序号",
+          "软件名称",
+          "版本要求",
+          "说明"
+        ],
+        [
+          "1",
+          "Centos",
+          "7",
+          "操作系统"
+        ]
+      ],
+      [
+        [
+          "序号",
+          "服务",
+          "单个容器资源配置",
+          "容器个数",
+          "备注"
+        ],
+        [
+          "1",
+          "内存缓存Redis",
+          "vCPU：4000m内存：32G存储：200G",
+          "3",
+          "数据缓存"
+        ]
+      ],
+      [
+        [
+          "序号",
+          "第三方组件",
+          "开源/商用",
+          "版本号",
+          "部署位置",
+          "功能介绍"
+        ],
+        [
+          "1",
+          "MySQL",
+          "开源",
+          "8.0.21",
+          "数据库服务器",
+          "关系型数据存储"
+        ]
+      ]
+    ]
+  }
+}

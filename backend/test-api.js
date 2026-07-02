@@ -185,8 +185,8 @@ async function testBackend() {
         console.log('❌ Stripe 支付失败:', error.message);
     }
 
-    // 7. 测试支付接口 (支付宝)
-    console.log('\n7️⃣ 测试支付宝支付接口...');
+    // 7. 测试支付接口 (微信官方 V3 Native)
+    console.log('\n7️⃣ 测试微信官方支付接口...');
     try {
         const response = await fetch('http://localhost:3001/api/payment/create-checkout-session', {
             method: 'POST',
@@ -195,22 +195,23 @@ async function testBackend() {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                planType: 'monthly',
-                paymentMethod: 'alipay'
+                planType: 'plus_monthly',
+                paymentMethod: 'wechat'
             })
         });
         const data = await response.json();
 
         if (data.code === 503) {
-            console.log('⚠️  支付宝未配置 (符合预期)');
+            console.log('⚠️  微信支付未配置或证书不可用:', data.message);
         } else if (data.code === 200) {
-            console.log('✅ 支付宝支付接口正常');
+            console.log('✅ 微信官方支付接口正常');
             console.log('   Order ID:', data.data.orderId);
+            console.log('   Dynamic QR:', String(data.data.qrCode || '').startsWith('weixin://') ? 'yes' : 'check response');
         } else {
-            console.log('❌ 支付宝支付失败:', data.message);
+            console.log('❌ 微信支付失败:', data.message);
         }
     } catch (error) {
-        console.log('❌ 支付宝支付失败:', error.message);
+        console.log('❌ 微信支付失败:', error.message);
     }
 
     // 8. 测试未认证访问

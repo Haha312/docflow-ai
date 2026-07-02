@@ -1,0 +1,55 @@
+{
+  "input": {
+    "paragraphs": 1545,
+    "headings": 143,
+    "headingsByLevel": {
+      "1": 31,
+      "2": 68,
+      "3": 30,
+      "4": 14
+    },
+    "listItems": 78,
+    "charCount": 42808,
+    "images": 61,
+    "tables": 26
+  },
+  "output": {
+    "paragraphs": 992,
+    "headings": 143,
+    "headingsByLevel": {
+      "2": 16,
+      "3": 89,
+      "4": 24,
+      "5": 14
+    },
+    "listItems": 92,
+    "charCount": 42313,
+    "images": 61,
+    "tables": 26
+  },
+  "charRetentionPct": 99,
+  "headingsMatched": false,
+  "issues": [
+    {
+      "type": "chunk_validation_failed",
+      "severity": "warning",
+      "detail": "Part 1 validation warning: missing heading(s): 2.1 编写目的 | 2.2 项目背景 | 2.3 项目目标 | 2.4 项目范围 | 3.1 总体架构"
+    },
+    {
+      "type": "chunk_validation_failed",
+      "severity": "warning",
+      "detail": "Part 2 validation warning: missing heading(s): 7.1.1 杆塔台账数据模型 | 7.1.2 交跨台账模型 | 7.1.3 隐患台账模型 | 7.2 数据分布设计 | 10.1 功能需求"
+    },
+    {
+      "type": "heading_demoted",
+      "severity": "info",
+      "detail": "已将 54 个不在源文结构中的多余标题降级(规整,未丢内容)"
+    },
+    {
+      "type": "heading_missing",
+      "severity": "critical",
+      "detail": "源文 60 个标题在输出中缺失(其中章级 15 个),疑似内容缺失"
+    }
+  ],
+  "truncated": false
+}

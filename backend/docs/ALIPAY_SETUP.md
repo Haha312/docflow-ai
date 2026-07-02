@@ -95,10 +95,12 @@ BACKEND_URL=https://your-domain.com
 
 ## 8. 前端集成
 
-前端调用示例:
+当前线上收款已切到微信支付 V3 Native 动态二维码；支付宝只保留旧订单回调/退款兼容，不再作为新订单入口。
+
+微信支付调用示例:
 
 ```typescript
-// 创建支付宝支付
+// 创建微信官方 Native 支付动态二维码
 const response = await fetch('/api/payment/create-checkout-session', {
   method: 'POST',
   headers: {
@@ -106,14 +108,13 @@ const response = await fetch('/api/payment/create-checkout-session', {
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
-    planType: 'monthly',
-    paymentMethod: 'alipay'  // 指定使用支付宝
+    planType: 'plus_monthly',
+    paymentMethod: 'wechat'
   })
 });
 
 const { data } = await response.json();
-// data.url 是支付宝支付页面链接
-window.location.href = data.url;
+// data.qrCode 是微信官方返回的 code_url，前端将其渲染成动态二维码
 ```
 
 ## 9. 常见问题

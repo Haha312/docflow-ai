@@ -22,6 +22,7 @@ export interface StructuralCounts {
     listItems: number;
     charCount: number;       // 去标签去空白后的纯文本字符数
     images: number;
+    tables: number;
 }
 
 export interface IntegrityReport {
@@ -40,7 +41,10 @@ export const countStructure = (html: string): StructuralCounts => {
     const safe = html || '';
 
     const paragraphs = (safe.match(/<p\b/gi) ?? []).length;
-    const images = (safe.match(/<img\b/gi) ?? []).length;
+    const imgTags = (safe.match(/<img\b/gi) ?? []).length;
+    const imagePlaceholders = (safe.match(/__IMG_\d+__/g) ?? []).length;
+    const images = imgTags + imagePlaceholders;
+    const tables = (safe.match(/<table\b/gi) ?? []).length;
 
     // 列表项:<li> 数 与 (N)/（N）显式编号 取较大者(复用 countNumberedItems 思路)
     const liCount = (safe.match(/<li\b/gi) ?? []).length;
@@ -63,7 +67,7 @@ export const countStructure = (html: string): StructuralCounts => {
     // 纯文本字符数(与 generate.ts line ~1513 的 pureText 口径一致)
     const charCount = safe.replace(/<[^>]+>/g, '').replace(/\s+/g, '').trim().length;
 
-    return { paragraphs, headings, headingsByLevel, listItems, charCount, images };
+    return { paragraphs, headings, headingsByLevel, listItems, charCount, images, tables };
 };
 
 /**
@@ -97,6 +101,130 @@ export const detectStructuralAnomalies = (html: string): IntegrityIssue[] => {
         }
     }
     return issues;
+};
+
+export const validateFinalIntegrity = (
+    input: StructuralCounts,
+    output: StructuralCounts,
+): IntegrityIssue[] => {
+    const issues: IntegrityIssue[] = [];
+
+    if (input.images > 0 && output.images < input.images) {
+        issues.push({
+            type: 'images_reduced',
+            severity: 'critical',
+            detail: `图片数量少于原文: 原文 ${input.images} 张, 成稿 ${output.images} 张, 请检查是否有图片遗漏`,
+        });
+    }
+
+    if (input.tables > 0 && output.tables < input.tables) {
+        const lost = input.tables - output.tables;
+        const severe = output.tables === 0 || lost / input.tables >= 0.3;
+        issues.push({
+            type: 'tables_reduced',
+            severity: severe ? 'critical' : 'warning',
+            detail: `表格数量少于原文: 原文 ${input.tables} 个, 成稿 ${output.tables} 个, 可能有表格遗漏`,
+        });
+    }
+
+    if (input.listItems >= 5 && output.listItems < Math.floor(input.listItems * 0.7)) {
+        const severe = output.listItems < Math.floor(input.listItems * 0.4);
+        issues.push({
+            type: 'list_items_reduced',
+            severity: severe ? 'critical' : 'warning',
+            detail: `列表条目明显减少: 原文 ${input.listItems} 条, 成稿 ${output.listItems} 条, 请核对条款/要点是否完整`,
+        });
+    }
+
+    if (input.paragraphs >= 10 && output.paragraphs < Math.floor(input.paragraphs * 0.35) && output.charCount < input.charCount * 0.9) {
+        issues.push({
+            type: 'paragraphs_reduced',
+            severity: output.charCount < input.charCount * 0.75 ? 'critical' : 'warning',
+            detail: `段落数量明显减少: 原文 ${input.paragraphs} 段, 成稿 ${output.paragraphs} 段, 可能存在正文合并或遗漏`,
+        });
+    }
+
+    if (input.charCount >= 1000 && output.charCount < Math.floor(input.charCount * 0.85)) {
+        issues.push({
+            type: 'content_reduced',
+            severity: output.charCount < Math.floor(input.charCount * 0.7) ? 'critical' : 'warning',
+            detail: `正文保留率偏低: 原文约 ${input.charCount} 字, 成稿约 ${output.charCount} 字, 请核对是否有内容遗漏`,
+        });
+    }
+
+    if (input.charCount >= 1000 && output.charCount > input.charCount * 3) {
+        issues.push({
+            type: 'content_expanded',
+            severity: output.charCount > input.charCount * 4 ? 'critical' : 'warning',
+            detail: `成稿篇幅异常膨胀: 原文约 ${input.charCount} 字, 成稿约 ${output.charCount} 字, 可能存在重复生成`,
+        });
+    }
+
+    return issues;
+};
+
+const extractTables = (html: string): string[] => {
+    const tables: string[] = [];
+    const re = /<table\b[\s\S]*?<\/table>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(html || '')) !== null) tables.push(match[0]);
+    return tables;
+};
+
+const normalizeTableFingerprint = (html: string): string =>
+    html
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/gi, '')
+        .replace(/&amp;/gi, '&')
+        .replace(/\s+/g, '')
+        .toLowerCase();
+
+const tableMatches = (sourceKey: string, outputKey: string): boolean => {
+    if (!sourceKey || !outputKey) return false;
+    if (sourceKey === outputKey || outputKey.includes(sourceKey) || sourceKey.includes(outputKey)) return true;
+    if (sourceKey.length < 160) return false;
+    return outputKey.includes(sourceKey.slice(0, 80)) && outputKey.includes(sourceKey.slice(-80));
+};
+
+export const reconcileMissingTables = (
+    sourceHtml: string,
+    outputHtml: string,
+): { text: string; issues: IntegrityIssue[] } => {
+    const sourceTables = extractTables(sourceHtml);
+    if (sourceTables.length === 0) return { text: outputHtml, issues: [] };
+
+    const outputKeys = extractTables(outputHtml).map(normalizeTableFingerprint);
+    const usedOutputIndexes = new Set<number>();
+    const missingTables: string[] = [];
+
+    for (const table of sourceTables) {
+        const sourceKey = normalizeTableFingerprint(table);
+        if (sourceKey.length < 2) continue;
+        const matchIndex = outputKeys.findIndex((outKey, index) =>
+            !usedOutputIndexes.has(index) && tableMatches(sourceKey, outKey),
+        );
+        if (matchIndex >= 0) {
+            usedOutputIndexes.add(matchIndex);
+        } else {
+            missingTables.push(table);
+        }
+    }
+
+    if (missingTables.length === 0) return { text: outputHtml, issues: [] };
+
+    const appendix = [
+        '<p><strong>附录: 未能定位到原位置的表格</strong></p>',
+        ...missingTables.map((table, index) => `<div class="table-caption">原始表格 ${index + 1}</div>${table}`),
+    ].join('');
+
+    return {
+        text: outputHtml + appendix,
+        issues: [{
+            type: 'table_missing',
+            severity: 'warning',
+            detail: `${missingTables.length} 个原文表格未能定位到成稿正文, 已补到文末附录, 请核对表格位置`,
+        }],
+    };
 };
 
 /**

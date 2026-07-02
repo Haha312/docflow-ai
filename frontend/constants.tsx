@@ -64,7 +64,7 @@ export const TABLE_NUMBERING_OPTIONS = [
 export const PRESETS: PresetConfig[] = [
   {
     id: DocPreset.ACADEMIC,
-    title: "报告/论文",
+    title: "工作报告",
     description: "标准学术规范。层级编号 (1. 1.1 1.1.1)，宋体与Times New Roman混排，图表规范，适合毕业论文、研究报告、项目标书。",
     color: "emerald",
     systemInstruction: "Format as an Academic Paper or Report.",
@@ -73,16 +73,16 @@ export const PRESETS: PresetConfig[] = [
       fontFamily: '"SimSun", "Times New Roman", serif',
       headingFont: '"Microsoft YaHei", "Arial", sans-serif',
       baseSize: '12pt', // 小四
-      h1Size: '15pt', // 小三
+      h1Size: '22pt', // 文档标题：二号
       h1Bold: true,
       h1Italic: false,
-      h2Size: '14pt', // 四号
+      h2Size: '15pt', // 一级标题：小三
       h2Bold: true,
       h2Italic: false,
-      h3Size: '12pt', // 小四
+      h3Size: '14pt', // 二级标题：四号
       h3Bold: true,
       h3Italic: false,
-      h4Size: '12pt', // 小四
+      h4Size: '12pt', // 三级标题：小四
       h4Bold: true,
       h4Italic: false,
       h5Size: '12pt', // 小四
@@ -132,7 +132,7 @@ export const PRESETS: PresetConfig[] = [
     title: "学术期刊",
     description: "《电力系统技术》/《电网技术》(PST)风格。题目二号黑体，作者四号仿宋，摘要小五号宋体。正文五号宋体双栏排版，页边距上2.5/下1.7/左右2.0cm。",
     color: "blue",
-    systemInstruction: "Format as a rigorous Chinese Academic Journal (《计算机学报》style). Follow this exact output structure:\n1. Chinese title as <h1>\n2. English title as <h2>\n3. Authors as <p>\n4. Affiliations as <p>\n5. Chinese abstract as <p> (starting with 摘要)\n6. Chinese keywords as <p> (starting with 关键词)\n7. English abstract as <p> (starting with Abstract)\n8. English keywords as <p> (starting with KEY WORDS)\n9. THEN INSERT EXACTLY THIS TAG: <hr class=\"journal-split\">\n10. Body sections: each section heading as <h2>, content as <p>. Include 引言, methodology, experiments/results, discussion, conclusion, references.\nThe <hr class=\"journal-split\"> tag is MANDATORY and must appear between the keywords and the first body section. Do not omit it.",
+    systemInstruction: "Format as a rigorous Chinese academic journal article. Use the exact semantic HTML classes below:\n1. Chinese title: <h1 class=\"doc-title\">标题</h1>\n2. English title, if present: <h2 class=\"doc-title-en\">English Title</h2>\n3. Authors: <div class=\"author-info\">张三，李四</div>\n4. Affiliations: <div class=\"affiliation\">单位、城市、邮编</div>\n5. Chinese abstract: <div class=\"abstract-cn\"><p>摘要：...</p></div>\n6. English abstract, if present: <div class=\"abstract-en\"><p>Abstract: ...</p></div>\n7. Keywords: <p class=\"keywords\">关键词：...</p> and <p class=\"keywords keywords-en\">KEY WORDS: ...</p> when English keywords exist.\n8. Insert <hr class=\"journal-split\"> between the front matter and the first body section.\n9. Body sections must start at <h2>, then <h3>, <h4>; never use plain <h1> for body sections.\n10. Preserve every sentence, image placeholder, table row, formula, caption, reference, and appendix item. Do not invent missing metadata; if an item is absent, omit that block.",
     icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path><line x1="12" y1="6" x2="12" y2="16"></line><line x1="16" y1="6" x2="16" y2="10"></line><line x1="8" y1="6" x2="8" y2="10"></line></svg>`,
     styleConfig: {
       fontFamily: '"SimSun", "Times New Roman", serif', // 正文：宋体 (五号)
@@ -250,7 +250,7 @@ export const PRESETS: PresetConfig[] = [
     title: "出版物",
     description: "依据新闻出版行业惯例（32开文学类，参照人民文学出版社规范）。宋体五号正文，黑体章节标题，固定行距18磅，首行缩进2字符，适合小说、散文、人文社科类书籍。",
     color: "violet",
-    systemInstruction: "Format as a published book following Chinese literary publishing standards (人民文学出版社 style, 32开). Use '第X章' chapter titles with Chinese numerals. Body text should be concise prose paragraphs.",
+    systemInstruction: "Format as a published Chinese book. Use <h1 class=\"doc-title\"> only for the book title/cover title. Body chapters must start at <h2>, sections at <h3>, and sub-sections at <h4>. Preserve all text, images, tables, captions, formulas, notes, and appendices without summarizing.",
     icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>`,
     styleConfig: {
       // 正文：宋体五号，行业标准出版物字体
@@ -260,23 +260,23 @@ export const PRESETS: PresetConfig[] = [
 
       baseSize: '10.5pt', // 五号：中文图书正文标准字号
 
-      // 章标题（第X章）：黑体小一，居中
+      // 书名/封面标题：黑体小一，居中
       h1Size: '24pt',   // 小一
       h1Bold: true,
       h1Italic: false,
 
-      // 节标题：黑体四号，左对齐
-      h2Size: '14pt',   // 四号
+      // 正文章标题（<h2>，第一章）：黑体小一，居中
+      h2Size: '24pt',   // 小一
       h2Bold: true,
       h2Italic: false,
 
-      // 小节标题：黑体小四
-      h3Size: '12pt',   // 小四
+      // 节标题（<h3>，第一节）：黑体四号，左对齐
+      h3Size: '14pt',   // 四号
       h3Bold: true,
       h3Italic: false,
 
-      // 四级标题：黑体五号（与正文同号加粗）
-      h4Size: '10.5pt', // 五号
+      // 小节标题：黑体小四
+      h4Size: '12pt',   // 小四
       h4Bold: true,
       h4Italic: false,
 
@@ -293,8 +293,8 @@ export const PRESETS: PresetConfig[] = [
       // 固定行距18磅：行业标准（约1.71倍字号），适合五号正文
       lineHeight: '18pt',
 
-      h1Align: 'center',  // 章标题居中
-      h2Align: 'left',
+      h1Align: 'center',
+      h2Align: 'center',  // 章标题居中
       bodyAlign: 'justify', // 正文两端对齐
 
       spacingBefore: '0行',
@@ -304,6 +304,12 @@ export const PRESETS: PresetConfig[] = [
       h2Indent: '0',
       h3Indent: '0',
       h4Indent: '0',
+      h2SpacingBefore: '48pt',
+      h2SpacingAfter: '24pt',
+      h3SpacingBefore: '12pt',
+      h3SpacingAfter: '6pt',
+      h4SpacingBefore: '6pt',
+      h4SpacingAfter: '3pt',
       primaryColor: '#000000', // 出版物标题用黑色，不使用彩色
 
       headingNumbering: 'chapter', // 第一章 / 第二章（汉字章节编号）
@@ -330,10 +336,10 @@ export const PRESETS: PresetConfig[] = [
   },
   {
     id: DocPreset.CORPORATE,
-    title: "商务公文",
-    description: "严谨公文规范。遵循党政机关公文格式，仿宋/黑体搭配，特定层级编号 (一、(一) 1.)，首行缩进2字符，适合红头文件、通知公告。",
+    title: "机关公文",
+    description: "遵循 GB/T 9704-2012 党政机关公文格式。含发文机关标志、红色分隔线、发文字号、主送机关、附件、署名日期等要素，正文三号仿宋、固定28磅行距。",
     color: "indigo",
-    systemInstruction: "Format as a formal Corporate Document.",
+    systemInstruction: "Format as a formal Chinese government document according to GB/T 9704-2012.",
     icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`,
     styleConfig: {
       fontFamily: '"FangSong", "FangSong_GB2312", serif',
@@ -342,15 +348,19 @@ export const PRESETS: PresetConfig[] = [
       h1Size: '22pt', // 二号
       h1Bold: true,
       h1Italic: false,
-      h2Size: '18pt', // 小二
+      h1Font: '"SimSun", "FZXiaoBiaoSong-B05S", serif',
+      h2Size: '16pt', // 三号
       h2Bold: true,
       h2Italic: false,
+      h2Font: '"SimHei", "Heiti SC", sans-serif', // 一级标题：黑体
       h3Size: '16pt', // 三号
-      h3Bold: true,
+      h3Bold: false,
       h3Italic: false,
+      h3Font: '"KaiTi", "KaiTi_GB2312", serif', // 二级标题：楷体
       h4Size: '16pt', // 三号
       h4Bold: true,
       h4Italic: false,
+      h4Font: '"FangSong", "FangSong_GB2312", serif', // 三级标题：仿宋加粗
       h5Size: '16pt',
       h5Bold: true,
       h5Italic: false,
@@ -388,6 +398,134 @@ export const PRESETS: PresetConfig[] = [
       tableCaptionFont: '"SimHei", sans-serif',
       tableCaptionSize: '14pt', // 四号
       pageMargins: { top: '3.7cm', bottom: '3.5cm', left: '2.8cm', right: '2.6cm' }, // GB/T 9704-2012
+      pageSize: 'A4',
+      columns: 1,
+      generateToc: false
+    }
+  },
+  {
+    id: DocPreset.WORK_REPORT,
+    title: "工作方案",
+    description: "适合工作汇报、实施方案、调研报告、项目方案。标题二号黑体居中，正文三号仿宋、固定28磅行距，一级黑体、二级楷体、三级仿宋加粗，自动生成目录。",
+    color: "sky",
+    systemInstruction: "Format as a Chinese work report or implementation plan.",
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg>`,
+    styleConfig: {
+      fontFamily: '"FangSong", "FangSong_GB2312", serif',
+      headingFont: '"SimHei", "Heiti SC", sans-serif',
+      baseSize: '16pt',
+      h1Size: '22pt',
+      h1Bold: true,
+      h1Italic: false,
+      h1Font: '"SimHei", "Heiti SC", sans-serif',
+      h2Size: '16pt',
+      h2Bold: true,
+      h2Italic: false,
+      h2Font: '"SimHei", "Heiti SC", sans-serif',
+      h3Size: '16pt',
+      h3Bold: false,
+      h3Italic: false,
+      h3Font: '"KaiTi", "KaiTi_GB2312", serif',
+      h4Size: '16pt',
+      h4Bold: true,
+      h4Italic: false,
+      h4Font: '"FangSong", "FangSong_GB2312", serif',
+      h5Size: '16pt',
+      h5Bold: false,
+      h5Italic: false,
+      h5Indent: '0',
+      h6Size: '16pt',
+      h6Bold: false,
+      h6Italic: false,
+      h6Indent: '0',
+      lineHeight: '28pt',
+      h1Align: 'center',
+      h2Align: 'left',
+      bodyAlign: 'justify',
+      spacingBefore: '0行',
+      spacingAfter: '0行',
+      textIndent: '2em',
+      h1Indent: '0',
+      h2Indent: '0',
+      h3Indent: '0',
+      h4Indent: '0',
+      primaryColor: '#000000',
+      headingNumbering: 'chinese-hierarchical',
+      figureNumbering: 'sequential',
+      figureFont: '"KaiTi", "KaiTi_GB2312", serif',
+      figureSize: '12pt',
+      figureAlign: 'center',
+      tableNumbering: 'sequential',
+      tableFont: '"FangSong", "FangSong_GB2312", serif',
+      tableSize: '14pt',
+      tableCaptionAlign: 'center',
+      tableCaptionFont: '"SimHei", sans-serif',
+      tableCaptionSize: '14pt',
+      pageMargins: { top: '3.0cm', bottom: '2.8cm', left: '2.8cm', right: '2.6cm' },
+      pageSize: 'A4',
+      columns: 1,
+      generateToc: true
+    }
+  },
+  {
+    id: DocPreset.MEETING_MINUTES,
+    title: "会议纪要",
+    description: "适合会议纪要、专题会纪要、办公会纪要。自动识别会议时间、地点、主持人、参会人员、议题与议定事项，正文三号仿宋、固定28磅行距，不生成目录。",
+    color: "amber",
+    systemInstruction: "Format as formal Chinese meeting minutes.",
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M8 2v4"></path><path d="M16 2v4"></path><path d="M3 10h18"></path><path d="M8 14h8"></path><path d="M8 18h5"></path></svg>`,
+    styleConfig: {
+      fontFamily: '"FangSong", "FangSong_GB2312", serif',
+      headingFont: '"SimHei", "Heiti SC", sans-serif',
+      baseSize: '16pt',
+      h1Size: '22pt',
+      h1Bold: true,
+      h1Italic: false,
+      h1Font: '"SimHei", "Heiti SC", sans-serif',
+      h2Size: '16pt',
+      h2Bold: true,
+      h2Italic: false,
+      h2Font: '"SimHei", "Heiti SC", sans-serif',
+      h3Size: '16pt',
+      h3Bold: false,
+      h3Italic: false,
+      h3Font: '"KaiTi", "KaiTi_GB2312", serif',
+      h4Size: '16pt',
+      h4Bold: true,
+      h4Italic: false,
+      h4Font: '"FangSong", "FangSong_GB2312", serif',
+      h5Size: '16pt',
+      h5Bold: false,
+      h5Italic: false,
+      h5Indent: '0',
+      h6Size: '16pt',
+      h6Bold: false,
+      h6Italic: false,
+      h6Indent: '0',
+      lineHeight: '28pt',
+      h1Align: 'center',
+      h2Align: 'left',
+      bodyAlign: 'justify',
+      spacingBefore: '0行',
+      spacingAfter: '0行',
+      textIndent: '2em',
+      h1Indent: '0',
+      h2Indent: '0',
+      h3Indent: '0',
+      h4Indent: '0',
+      primaryColor: '#000000',
+      headingNumbering: 'chinese-hierarchical',
+      figureNumbering: 'sequential',
+      figureFont: '"KaiTi", "KaiTi_GB2312", serif',
+      figureSize: '12pt',
+      figureAlign: 'center',
+      tableNumbering: 'sequential',
+      tableFont: '"FangSong", "FangSong_GB2312", serif',
+      tableSize: '14pt',
+      tableCaptionAlign: 'center',
+      tableCaptionFont: '"SimHei", sans-serif',
+      tableCaptionSize: '14pt',
+      pageMargins: { top: '3.0cm', bottom: '2.8cm', left: '2.8cm', right: '2.6cm' },
       pageSize: 'A4',
       columns: 1,
       generateToc: false
@@ -460,3 +598,7 @@ export const PRESETS: PresetConfig[] = [
     }
   }
 ];
+
+export const VISIBLE_PRESETS: PresetConfig[] = PRESETS.filter(
+  (preset) => ![DocPreset.CREATIVE, DocPreset.MINIMALIST].includes(preset.id),
+);

@@ -74,6 +74,16 @@ const BASE_SYSTEM_PROMPTS: Record<DocPreset, string> = {
     Task: Apply Narrative structure to the text.
     CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table row from the input. NO OMMISSIONS allowed.
   `,
+  [DocPreset.WORK_REPORT]: `
+    Role: Chinese Work Report / Plan Formatter.
+    Task: Apply formal work-report or implementation-plan structure with Chinese hierarchical numbering.
+    CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table row from the input. NO OMMISSIONS allowed.
+  `,
+  [DocPreset.MEETING_MINUTES]: `
+    Role: Chinese Meeting Minutes Formatter.
+    Task: Apply formal meeting-minutes structure with meeting metadata, topics, decisions, responsibilities, and deadlines.
+    CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, attendee, decision, task owner, deadline, and table row from the input. NO OMMISSIONS allowed.
+  `,
   [DocPreset.MINIMALIST]: `
     Role: Technical Formatter.
     Task: Apply clean structure to the text.

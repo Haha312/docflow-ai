@@ -1,0 +1,40 @@
+{
+  "input": {
+    "paragraphs": 1545,
+    "headings": 143,
+    "headingsByLevel": {
+      "1": 31,
+      "2": 68,
+      "3": 30,
+      "4": 14
+    },
+    "listItems": 78,
+    "charCount": 42808,
+    "images": 61,
+    "tables": 26
+  },
+  "output": {
+    "paragraphs": 989,
+    "headings": 143,
+    "headingsByLevel": {
+      "2": 87,
+      "3": 21,
+      "4": 23,
+      "5": 12
+    },
+    "listItems": 90,
+    "charCount": 41997,
+    "images": 61,
+    "tables": 26
+  },
+  "charRetentionPct": 98,
+  "headingsMatched": true,
+  "issues": [
+    {
+      "type": "chunk_validation_failed",
+      "severity": "warning",
+      "detail": "Part 1 validation warning: missing heading(s): 2.1 编写目的 | 2.2 项目背景 | 2.3 项目目标 | 2.4 项目范围 | 3.1 总体架构"
+    }
+  ],
+  "truncated": false
+}

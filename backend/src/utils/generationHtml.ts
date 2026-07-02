@@ -61,20 +61,30 @@ export const reinjectMissingPlaceholders = (chunkInput: string, chunkOutput: str
     return result;
 };
 
+const hasHtmlClass = (attrs: string, className: string): boolean => {
+    const m = (attrs || '').match(/\bclass\s*=\s*["']([^"']*)["']/i);
+    return !!m && m[1].split(/\s+/).some(x => x.toLowerCase() === className.toLowerCase());
+};
+
+const isNonBodyHeadingAttrs = (attrs: string): boolean =>
+    hasHtmlClass(attrs, 'doc-title') || hasHtmlClass(attrs, 'doc-title-en') || hasHtmlClass(attrs, 'toc-placeholder');
+
 export const extractLastHeadings = (html: string, n: number = 5): string => {
-    const matches = [...html.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi)];
-    return matches.slice(-n).map(m => m[0].replace(/<[^>]+>/g, '').trim()).join(' -> ');
+    const matches = [...html.matchAll(/<h[1-6]\b([^>]*)>([\s\S]*?)<\/h[1-6]>/gi)]
+        .filter(m => !isNonBodyHeadingAttrs(m[1] || ''));
+    return matches.slice(-n).map(m => m[2].replace(/<[^>]+>/g, '').trim()).join(' -> ');
 };
 
 export const extractDocumentHeadingMap = (html: string): { outline: string; levelMap: Map<string, number> } => {
     const levelMap = new Map<string, number>();
     const lines: string[] = [];
     const indent = ['', '', '  ', '    ', '      ', '        ', '          '];
-    const regex = /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+    const regex = /<h([1-6])\b([^>]*)>([\s\S]*?)<\/h\1>/gi;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(html)) !== null) {
         const level = parseInt(match[1]);
-        const text = match[2].replace(/<[^>]+>/g, '').trim().slice(0, 70);
+        if (isNonBodyHeadingAttrs(match[2] || '')) continue;
+        const text = match[3].replace(/<[^>]+>/g, '').trim().slice(0, 70);
         if (!text) continue;
         levelMap.set(text.toLowerCase(), level);
         lines.push(`${indent[level] ?? '  '}H${level}: ${text}`);

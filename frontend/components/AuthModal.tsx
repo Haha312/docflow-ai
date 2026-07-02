@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
 import { translateBackendError } from '../i18n';
+import { LegalModal, LegalType } from './LegalModal';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,6 +17,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [captchaImage, setCaptchaImage] = useState('');
   const [captchaSessionId, setCaptchaSessionId] = useState('');
   const [captchaLoading, setCaptchaLoading] = useState(false);
+  const [showCaptcha, setShowCaptcha] = useState(false); // 图形码「按需」出示:仅当后端(短时间多次发送)返回 AUTH_CAPTCHA_REQUIRED 才显示
+  const [legalType, setLegalType] = useState<LegalType>(null); // 用户协议/隐私「当场弹层」
   const [countdown, setCountdown] = useState(0);
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [devHint, setDevHint] = useState('');
@@ -38,7 +41,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   }, [isOpen, onClose]);
 
   React.useEffect(() => {
-    if (isOpen) refreshCaptcha();
+    // 不再"一打开就弹图形码";仅在后端要求(短时间多次发送)时才出示。
+    if (isOpen) { setShowCaptcha(false); setCaptchaInput(''); }
   }, [isOpen]);
 
   const refreshCaptcha = async () => {
@@ -61,14 +65,14 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       setError(t('auth.error_invalid_phone', '请输入正确的手机号'));
       return;
     }
-    if (!captchaInput) {
+    if (showCaptcha && !captchaInput) {
       setError(t('auth.error_fill_captcha', '请填写图形验证码'));
       return;
     }
     setError('');
     setIsLoading(true);
     try {
-      const { devCode } = await authService.sendSmsCode(phone, captchaInput, captchaSessionId);
+      const { devCode } = await authService.sendSmsCode(phone, showCaptcha ? captchaInput : '', showCaptcha ? captchaSessionId : '');
       // dev mock:自动填入验证码并提示(生产不会有 devCode)
       if (devCode) { setSmsCode(devCode); setDevHint(`开发模式:验证码 ${devCode}(短信未配置,已自动填入)`); }
       setCountdown(60);
@@ -83,8 +87,16 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         });
       }, 1000);
     } catch (e: any) {
-      setError(translateBackendError(e.message) || t('auth.error_send_failed', '发送失败'));
-      refreshCaptcha();
+      // 后端因"短时间多次发送"要求图形码 → 出示图形码并让用户重试(不消耗倒计时)。
+      if (e?.message === 'AUTH_CAPTCHA_REQUIRED') {
+        setShowCaptcha(true);
+        setCaptchaInput('');
+        await refreshCaptcha();
+        setError(t('auth.error_need_captcha', '操作过于频繁,请输入图形验证码后重试'));
+      } else {
+        setError(translateBackendError(e.message) || t('auth.error_send_failed', '发送失败'));
+        if (showCaptcha) refreshCaptcha();
+      }
     } finally {
       setIsLoading(false);
     }
@@ -112,14 +124,20 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+    <div className="prism-modal auth-modal fixed inset-0 z-50 flex items-center justify-center px-4">
+      <button
+        type="button"
+        className="modal-backdrop absolute inset-0"
+        onClick={onClose}
+        aria-label={t('common.close', '关闭')}
+      />
 
-      <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden">
+      <div className="auth-panel modal-surface relative z-10 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
         <div className="px-8 pt-8 pb-6">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="modal-close absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+            aria-label={t('common.close', '关闭')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -128,7 +146,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
           </button>
 
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center">
+            <div className="auth-icon w-10 h-10 rounded-xl flex items-center justify-center">
               <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                 <circle cx="12" cy="7" r="4"></circle>
@@ -159,7 +177,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               />
             </div>
 
-            {/* 图形验证码 */}
+            {/* 图形验证码:仅在后端要求(短时间多次发送)时才出示,不再一上来就弹 */}
+            {showCaptcha && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('auth.captcha', '图形验证码')}</label>
               <div className="flex gap-3">
@@ -170,7 +189,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                 />
                 <div
-                  className="h-[46px] w-[100px] bg-gray-100 rounded-xl overflow-hidden cursor-pointer border border-gray-200 flex items-center justify-center"
+                  className="auth-captcha-box h-[46px] w-[100px] bg-gray-100 rounded-xl overflow-hidden cursor-pointer border border-gray-200 flex items-center justify-center"
                   onClick={refreshCaptcha}
                   title={t('auth.click_to_refresh', '点击刷新')}
                 >
@@ -185,6 +204,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 </div>
               </div>
             </div>
+            )}
 
             {/* 短信验证码 */}
             <div>
@@ -201,7 +221,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 <button
                   type="button"
                   onClick={handleSendCode}
-                  disabled={countdown > 0 || isLoading || !isValidPhone(phone) || !captchaInput}
+                  disabled={countdown > 0 || isLoading || !isValidPhone(phone) || (showCaptcha && !captchaInput)}
                   className="px-4 py-3 bg-gray-900 text-white text-sm font-medium rounded-xl hover:bg-gray-800 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors min-w-[100px]"
                 >
                   {countdown > 0 ? `${countdown}s` : t('auth.get_code', '获取验证码')}
@@ -224,9 +244,9 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               />
               <span>
                 {t('auth.agree_prefix', '我已阅读并同意 ')}
-                <a href="/terms" target="_blank" rel="noopener" className="text-gray-900 underline hover:text-gray-700">{t('auth.terms', '用户协议')}</a>
+                <button type="button" onClick={() => setLegalType('terms')} className="text-gray-900 underline hover:text-gray-700">{t('auth.terms', '用户协议')}</button>
                 {t('auth.agree_and', ' 和 ')}
-                <a href="/privacy" target="_blank" rel="noopener" className="text-gray-900 underline hover:text-gray-700">{t('auth.privacy', '隐私政策')}</a>
+                <button type="button" onClick={() => setLegalType('privacy')} className="text-gray-900 underline hover:text-gray-700">{t('auth.privacy', '隐私与保密条款')}</button>
               </span>
             </label>
 
@@ -240,7 +260,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             <button
               type="submit"
               disabled={isLoading || !agreedTerms}
-              className="w-full py-3 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="prism-primary w-full py-3 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -257,6 +277,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
           </form>
         </div>
       </div>
+      <LegalModal type={legalType} onClose={() => setLegalType(null)} />
     </div>
   );
 }

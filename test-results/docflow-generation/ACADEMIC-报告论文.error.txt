@@ -1,0 +1,4 @@
+Error: HTTP 413: {"code":413,"message":"Document content too large (20764159 chars, limit 2000000). Please shorten it or upgrade your plan."}
+    at generateOne (E:\AI Projects\docflow-ai\scripts\docflow_batch_generate_test.cjs:210:13)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async main (E:\AI Projects\docflow-ai\scripts\docflow_batch_generate_test.cjs:266:22)

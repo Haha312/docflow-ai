@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { OrderHistory } from './OrderHistory';
 import { cancelSubscription, getUserUsage } from '../services/backendApiService';
 import { useTranslation } from 'react-i18next';
+import { AccountTone, UserAvatar } from './UserAvatar';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -51,21 +52,36 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
 
   if (!isOpen || !user) return null;
 
+  const isAdmin = Boolean(user.isAdmin);
   const isPro = user.subscriptionStatus !== 'FREE';
-  const tierLabel = user.subscriptionStatus === 'ULTRA' ? t('admin.tier_ultra_label') :
+  const tierQuotaTotal = user.subscriptionStatus === 'ULTRA' ? 1000 :
+    user.subscriptionStatus === 'PRO' ? 200 :
+      user.subscriptionStatus === 'PLUS' ? 50 : 3;
+  const tierLabel = isAdmin ? t('nav.dashboard', '管理员') :
+    user.subscriptionStatus === 'ULTRA' ? t('admin.tier_ultra_label') :
     user.subscriptionStatus === 'PRO' ? t('admin.tier_pro_label') :
       user.subscriptionStatus === 'PLUS' ? t('admin.tier_plus_label') : t('admin.tier_free_label');
+  const accountTone: AccountTone = isAdmin ? 'admin' : isPro ? 'paid' : 'free';
+  const quotaExplain = user.subscriptionStatus === 'FREE'
+      ? t('profile.quota_free_explain', '免费版仅保留少量体验次数，升级会员后按月获得新的生成额度。')
+      : t('profile.quota_paid_explain', '会员额度按自然月统计，显示为本月剩余次数 / 本月总次数。');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+    <div className="prism-modal profile-modal fixed inset-0 z-50 flex items-center justify-center px-4">
+      <button
+        type="button"
+        className="profile-backdrop absolute inset-0"
+        onClick={onClose}
+        aria-label={t('common.close', '关闭')}
+      />
 
-      <div className="relative z-10 w-full max-w-2xl bg-white rounded-xl shadow-xl overflow-hidden flex flex-col text-sm border border-gray-100" style={{ maxHeight: '70vh' }}>
+      <div className="profile-panel relative z-10 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col text-sm" style={{ maxHeight: '70vh' }}>
         {/* Header */}
-        <div className="px-6 pt-5 pb-0">
+        <div className="profile-header px-6 pt-5 pb-0">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="profile-close absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+            aria-label={t('common.close', '关闭')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -74,17 +90,15 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
           </button>
 
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 font-medium text-xl">
-              {(user.email?.[0] || user.phone?.[0] || '?').toUpperCase()}
-            </div>
+            <UserAvatar tone={accountTone} size="lg" />
             <div>
-              <h2 className="text-xl font-medium text-gray-900">{t('profile.title')}</h2>
-              <p className="text-sm text-gray-500 mt-0.5">{user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : (user.email || '')}</p>
+              <h2 className="profile-title text-xl font-medium">{t('profile.title')}</h2>
+              <p className="profile-subtitle text-sm mt-0.5">{user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : (user.email || '')}</p>
             </div>
           </div>
 
           {/* Tabs - Simple Underline Style */}
-          <div className="flex gap-6 border-b border-gray-200">
+          <div className="profile-tabs flex gap-6">
             {[
               { key: 'profile', label: t('profile.tab_profile') },
               { key: 'orders', label: t('profile.tab_orders') }
@@ -92,14 +106,11 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
-                className={`pb-3 text-sm font-medium transition-colors relative ${activeTab === tab.key
-                  ? 'text-gray-900'
-                  : 'text-gray-500 hover:text-gray-700'
-                  }`}
+                className={`profile-tab pb-3 text-sm font-medium transition-colors relative ${activeTab === tab.key ? 'is-active' : ''}`}
               >
                 {tab.label}
                 {activeTab === tab.key && (
-                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 rounded-t-full" />
+                  <div className="profile-tab-indicator absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full" />
                 )}
               </button>
             ))}
@@ -107,21 +118,33 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+        <div className="profile-body flex-1 overflow-y-auto p-6">
           {activeTab === 'profile' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-sm text-gray-500">{t('profile.current_tier')}</span>
-                  <span className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${isPro ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}>
+              <div className="profile-section rounded-xl p-4">
+                <div className="profile-row flex justify-between items-center py-2">
+                  <span className="profile-label text-sm">{t('profile.current_tier')}</span>
+                  <span className="user-tier-pill text-sm font-medium px-2.5 py-0.5 rounded-full" data-account-tone={accountTone}>
                     {tierLabel}
                   </span>
                 </div>
 
-                {user.subscriptionStatus === 'FREE' && (
-                  <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                    <span className="text-sm text-gray-500">{t('profile.remaining_free_quota')}</span>
-                    <span className="text-sm font-medium text-gray-900">{remainingQuota} {t('profile.times')}</span>
+                {isAdmin ? (
+                  <div className="profile-row flex justify-between items-center py-2">
+                    <span className="profile-label text-sm">{t('profile.quota')}</span>
+                    <span className="profile-value text-sm font-medium">{t('nav.quota_unlimited', '不限次数')}</span>
+                  </div>
+                ) : user.subscriptionStatus === 'FREE' ? (
+                  <div className="profile-row flex justify-between items-center py-2">
+                    <span className="profile-label text-sm">{t('profile.remaining_free_quota')}</span>
+                    <span className="profile-value text-sm font-medium">{remainingQuota} {t('profile.times')}</span>
+                  </div>
+                ) : (
+                  <div className="profile-row flex justify-between items-center py-2">
+                    <span className="profile-label text-sm">{t('profile.period_remaining_quota')}</span>
+                    <span className="profile-value text-sm font-medium">
+                      {remainingQuota} / {tierQuotaTotal} {t('profile.times')}
+                    </span>
                   </div>
                 )}
 
@@ -131,9 +154,9 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                   const daysLeft = Math.max(0, Math.ceil(msLeft / 86400000));
                   const isExpiringSoon = daysLeft > 0 && daysLeft <= 7;
                   return (
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-sm text-gray-500">{t('profile.valid_until')}</span>
-                      <span className={`text-sm font-medium ${isExpiringSoon ? 'text-red-600' : 'text-gray-900'}`}>
+                    <div className="profile-row flex justify-between items-center py-2">
+                      <span className="profile-label text-sm">{t('profile.valid_until')}</span>
+                      <span className={`profile-value text-sm font-medium ${isExpiringSoon ? 'is-danger' : ''}`}>
                         {endDate.toLocaleDateString()}
                         {daysLeft > 0 && (
                           <span className="ml-2 text-xs">
@@ -144,24 +167,30 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                     </div>
                   );
                 })()}
+
+                {!isAdmin && (
+                  <div className="profile-quota-note mt-3 rounded-lg px-3 py-2 text-xs leading-relaxed">
+                    {quotaExplain}
+                  </div>
+                )}
               </div>
 
               {/* 本月用量统计 */}
               {monthlyCount !== null && (
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <p className="text-xs text-gray-400 mb-3">{t('profile.this_month_usage', '本月用量')}</p>
+                <div className="profile-section rounded-xl p-4">
+                  <p className="profile-label text-xs mb-3">{t('profile.this_month_usage', '本月用量')}</p>
                   <div className="flex gap-4">
-                    <div className="flex-1 text-center bg-gray-50 rounded-lg py-3">
-                      <div className="text-2xl font-bold text-gray-900">{monthlyCount}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">{t('profile.generation_count', '次生成')}</div>
+                    <div className="profile-stat flex-1 text-center rounded-lg py-3">
+                      <div className="profile-stat-value text-2xl font-bold">{monthlyCount}</div>
+                      <div className="profile-stat-label text-xs mt-0.5">{t('profile.generation_count', '次生成')}</div>
                     </div>
-                    <div className="flex-1 text-center bg-gray-50 rounded-lg py-3">
-                      <div className="text-2xl font-bold text-gray-900">
+                    <div className="profile-stat flex-1 text-center rounded-lg py-3">
+                      <div className="profile-stat-value text-2xl font-bold">
                         {totalTokens && totalTokens > 1000
                           ? `${(totalTokens / 1000).toFixed(1)}k`
                           : (totalTokens ?? 0)}
                       </div>
-                      <div className="text-xs text-gray-500 mt-0.5">{t('profile.tokens_used', 'tokens 消耗')}</div>
+                      <div className="profile-stat-label text-xs mt-0.5">{t('profile.tokens_used', 'tokens 消耗')}</div>
                     </div>
                   </div>
                 </div>
@@ -169,10 +198,10 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
 
               {/* Cancel subscription (only for paid users) */}
               {isPro && (
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                <div className="profile-section rounded-xl p-4">
                   {confirmCancel ? (
                     <>
-                      <p className="text-sm text-gray-700 mb-3">
+                      <p className="profile-note text-sm mb-3">
                         {t('profile.cancel_warning', '取消订阅后账号立即降级为免费版,本月剩余权益将作废。如需退款剩余天数请联系客服。')}
                       </p>
                       {cancelError && (
@@ -182,7 +211,7 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                         <button
                           disabled={isCancelling}
                           onClick={() => { setConfirmCancel(false); setCancelError(''); }}
-                          className="flex-1 py-2.5 bg-gray-50 border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-100 transition-colors disabled:opacity-50"
+                          className="profile-secondary-btn flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
                         >
                           {t('common.cancel', '取消')}
                         </button>
@@ -198,10 +227,10 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                   ) : (
                     <button
                       onClick={() => setConfirmCancel(true)}
-                      className="w-full text-left text-sm text-gray-600 hover:text-red-600 transition-colors"
+                      className="profile-danger-link w-full text-left text-sm transition-colors"
                     >
                       {t('profile.cancel_subscription', '取消订阅')}
-                      <span className="text-xs text-gray-400 ml-2">{t('profile.cancel_subscription_hint', '(立即降级,放弃剩余天数)')}</span>
+                      <span className="profile-danger-hint text-xs ml-2">{t('profile.cancel_subscription_hint', '(立即降级,放弃剩余天数)')}</span>
                     </button>
                   )}
                 </div>
@@ -211,7 +240,7 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setConfirmLogout(false)}
-                    className="flex-1 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
+                    className="profile-secondary-btn flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors"
                   >
                     {t('common.cancel', '取消')}
                   </button>
@@ -225,7 +254,7 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
               ) : (
                 <button
                   onClick={() => setConfirmLogout(true)}
-                  className="w-full py-3 bg-white border border-gray-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 hover:border-red-100 transition-colors flex items-center justify-center gap-2"
+                  className="profile-logout-btn w-full py-3 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>

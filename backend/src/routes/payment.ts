@@ -3,7 +3,6 @@ import AlipaySdk from 'alipay-sdk';
 import * as fs from 'fs';
 import * as path from 'path';
 import crypto from 'crypto';
-import { fetch as undiciFetch } from 'undici';
 import { AuthRequest, CreateCheckoutRequest } from '../types';
 import { successResponse, errorResponse } from '../utils/response';
 import { authenticate } from '../middleware/auth';
@@ -13,6 +12,14 @@ import { sendPaymentSuccess } from '../services/emailService';
 import { isAdmin } from '../utils/admin';
 import { getAlipayClient } from '../utils/alipayClient';
 import { wechatRefund } from '../utils/wechatPay';
+import {
+    checkWechatV3Readiness,
+    createWechatV3NativeOrder,
+    decryptWechatV3Resource,
+    getWechatV3Config,
+    refundWechatV3Order,
+    verifyWechatV3Webhook,
+} from '../utils/wechatPayV3';
 import redis from '../utils/redis';
 
 const router = Router();
@@ -34,52 +41,16 @@ const PRICING: Record<string, { amountUSD: number; amountCNY: number; duration: 
     ultra_yearly: { amountUSD: 139.99, amountCNY: 998, duration: 365, title: 'Ultra (Yearly)' }
 };
 
-const getBackendBaseUrl = () => process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
+const getBackendBaseUrl = () => process.env.BACKEND_URL || process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
 const randomNonceStr = () => crypto.randomBytes(16).toString('hex');
+const buildRefundNo = (orderId: string) => `RF_${orderId.replace(/[^A-Za-z0-9_-]/g, '').slice(-32)}_${Date.now().toString(36)}`.slice(0, 64);
 
-const parseSimpleXml = (xml: string): Record<string, string> => {
-    const result: Record<string, string> = {};
-    const regex = /<([^/>]+)><!\[CDATA\[(.*?)\]\]><\/\1>|<([^/>]+)>([^<]*)<\/\3>/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(xml)) !== null) {
-        const key = match[1] || match[3];
-        const value = (match[2] ?? match[4] ?? '').trim();
-        result[key] = value;
+const respondWechatV3 = (res: Response, ok: boolean, msg = ok ? '成功' : '失败') => {
+    if (ok) {
+        res.status(204).send();
+        return;
     }
-    return result;
-};
-
-const toXml = (params: Record<string, string | number>) => {
-    const body = Object.entries(params)
-        .map(([k, v]) => `<${k}><![CDATA[${String(v)}]]></${k}>`)
-        .join('');
-    return `<xml>${body}</xml>`;
-};
-
-const signWechat = (params: Record<string, string | number>, apiKey: string) => {
-    const qs = Object.keys(params)
-        .filter((k) => k !== 'sign' && params[k] !== undefined && params[k] !== '')
-        .sort()
-        .map((k) => `${k}=${params[k]}`)
-        .join('&');
-    return crypto.createHash('md5').update(`${qs}&key=${apiKey}`, 'utf8').digest('hex').toUpperCase();
-};
-
-const resolveClientIp = (req: Request): string => {
-    const forwarded = req.headers['x-forwarded-for'];
-    const ip = Array.isArray(forwarded)
-        ? forwarded[0]
-        : (forwarded?.split(',')[0] || req.socket.remoteAddress || '127.0.0.1');
-    return ip.replace('::ffff:', '').trim();
-};
-
-const respondWechatXml = (res: Response, ok: boolean, msg = 'OK') => {
-    const xml = toXml({
-        return_code: ok ? 'SUCCESS' : 'FAIL',
-        return_msg: msg
-    });
-    res.setHeader('Content-Type', 'text/xml; charset=utf-8');
-    res.send(xml);
+    res.status(400).json({ code: 'FAIL', message: msg });
 };
 
 async function applyPaidOrder(
@@ -148,153 +119,38 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
             return;
         }
 
-        const { planType, paymentMethod = 'alipay' }: CreateCheckoutRequest = req.body;
+        const { planType, paymentMethod = 'wechat' } = req.body as CreateCheckoutRequest & { paymentMethod?: string };
         if (!planType || !PRICING[planType]) {
             res.status(400).json(errorResponse('Invalid plan type', 400));
             return;
         }
 
-        if (!['alipay', 'wechat', 'qrcode'].includes(paymentMethod)) {
-            res.status(400).json(errorResponse('Invalid payment method', 400));
+        if (paymentMethod !== 'wechat') {
+            res.status(400).json(errorResponse('当前仅支持微信官方支付，请使用微信支付完成订阅', 400));
             return;
         }
 
         const plan = PRICING[planType];
 
-        if (paymentMethod === 'alipay') {
-            const alipayAppId = process.env.ALIPAY_APP_ID;
-            const alipayPrivateKey = process.env.ALIPAY_PRIVATE_KEY;
-            const alipayPublicKey = process.env.ALIPAY_PUBLIC_KEY;
-
-            const certDir = path.join(process.cwd(), 'Alipay');
-            const alipayRootCertPath = path.join(certDir, 'alipayRootCert.crt');
-            const alipayPublicCertPath = path.join(certDir, 'alipayCertPublicKey_RSA2.crt');
-            const appCertFiles = fs.existsSync(certDir)
-                ? fs.readdirSync(certDir).filter((f) => f.startsWith('appCertPublicKey_') && f.endsWith('.crt'))
-                : [];
-            const appCertPath = appCertFiles.length > 0 ? path.join(certDir, appCertFiles[0]) : null;
-
-            const hasKeyMode = !!(alipayAppId && alipayPrivateKey && alipayPublicKey);
-            const hasCertMode = !!(alipayPrivateKey && appCertPath && fs.existsSync(alipayRootCertPath) && fs.existsSync(alipayPublicCertPath));
-
-            if (!hasKeyMode && !hasCertMode) {
-                res.status(503).json(errorResponse('Alipay is not configured', 503));
-                return;
-            }
-
-            let AlipayCtor: any = AlipaySdk as any;
-            if (typeof AlipayCtor !== 'function') {
-                const pkg = require('alipay-sdk');
-                AlipayCtor = pkg.default || pkg.AlipaySdk || pkg;
-            }
-
-            const sdkConfig: Record<string, any> = {
-                privateKey: alipayPrivateKey,
-                gateway: process.env.ALIPAY_GATEWAY || 'https://openapi.alipay.com/gateway.do',
-                signType: 'RSA2'
-            };
-
-            if (hasCertMode && appCertPath) {
-                sdkConfig.appId = alipayAppId || path.basename(appCertPath).split('_')[1].split('.')[0];
-                sdkConfig.alipayRootCertPath = alipayRootCertPath;
-                sdkConfig.alipayPublicCertPath = alipayPublicCertPath;
-                sdkConfig.appCertPath = appCertPath;
-            } else {
-                sdkConfig.appId = alipayAppId;
-                sdkConfig.alipayPublicKey = alipayPublicKey;
-            }
-
-            const alipaySdk = new AlipayCtor(sdkConfig);
-            const outTradeNo = `DOCUFLOW_${Date.now()}_${user.id.substring(0, 8)}_${randomNonceStr().substring(0, 6)}`;
-            const notifyUrl = process.env.ALIPAY_NOTIFY_URL || `${getBackendBaseUrl()}/api/payment/webhook/alipay`;
-
-            const result = await alipaySdk.exec('alipay.trade.precreate', {
-                bizContent: {
-                    outTradeNo,
-                    totalAmount: plan.amountCNY.toFixed(2),
-                    subject: `DocFlow AI - ${plan.title}`,
-                    body: 'Unlock premium AI formatting',
-                    passbackParams: encodeURIComponent(JSON.stringify({ userId: user.id, planType }))
-                },
-                notifyUrl
-            });
-
-            if (result.code !== '10000' || !result.qr_code) {
-                throw new Error(result.subMsg || result.msg || 'Failed to create Alipay order');
-            }
-
-            await prisma.order.create({
-                data: {
-                    id: outTradeNo,
-                    userId: user.id,
-                    amount: plan.amountCNY,
-                    currency: 'CNY',
-                    planType,
-                    status: 'PENDING'
-                }
-            });
-
-            res.json(successResponse({ paymentMethod: 'alipay', orderId: outTradeNo, qrCode: result.qr_code }, 'Alipay order created'));
+        const readiness = checkWechatV3Readiness();
+        if (!readiness.ok) {
+            const detail = [
+                readiness.missingEnv.length ? `缺少配置: ${readiness.missingEnv.join(', ')}` : '',
+                readiness.missingFiles.length ? `证书/密钥文件不可用: ${readiness.missingFiles.join(', ')}` : '',
+                readiness.invalid.length ? `配置格式错误: ${readiness.invalid.join(', ')}` : ''
+            ].filter(Boolean).join('；');
+            res.status(503).json(errorResponse(`微信官方支付配置未完成${detail ? `（${detail}）` : ''}`, 503));
             return;
         }
 
-        if (paymentMethod === 'wechat') {
-            const appId = process.env.WECHAT_APP_ID;
-            const mchId = process.env.WECHAT_MCH_ID;
-            const apiKey = process.env.WECHAT_API_KEY;
-            if (!appId || !mchId || !apiKey) {
-                res.status(503).json(errorResponse('WeChat Pay is not configured', 503));
-                return;
-            }
-
-            const outTradeNo = `WX_${Date.now()}_${user.id.substring(0, 8)}_${randomNonceStr().substring(0, 6)}`;
-            const notifyUrl = process.env.WECHAT_NOTIFY_URL || `${getBackendBaseUrl()}/api/payment/webhook/wechat`;
-            const params: Record<string, string | number> = {
-                appid: appId,
-                mch_id: mchId,
-                nonce_str: randomNonceStr(),
-                body: `DocFlow AI - ${plan.title}`,
-                out_trade_no: outTradeNo,
-                total_fee: Math.round(plan.amountCNY * 100),
-                spbill_create_ip: resolveClientIp(req),
-                notify_url: notifyUrl,
-                trade_type: 'NATIVE',
-                attach: encodeURIComponent(JSON.stringify({ userId: user.id, planType }))
-            };
-            params.sign = signWechat(params, apiKey);
-
-            const unifiedOrderUrl = process.env.WECHAT_UNIFIEDORDER_URL || 'https://api.mch.weixin.qq.com/pay/unifiedorder';
-            const wxResp = await undiciFetch(unifiedOrderUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/xml; charset=utf-8' },
-                body: toXml(params)
-            });
-            const wxXml = await wxResp.text();
-            const wxData = parseSimpleXml(wxXml);
-
-            if (wxData.return_code !== 'SUCCESS' || wxData.result_code !== 'SUCCESS' || !wxData.code_url) {
-                const msg = wxData.return_msg || wxData.err_code_des || 'Failed to create WeChat order';
-                res.status(502).json(errorResponse(msg, 502));
-                return;
-            }
-
-            await prisma.order.create({
-                data: {
-                    id: outTradeNo,
-                    userId: user.id,
-                    amount: plan.amountCNY,
-                    currency: 'CNY',
-                    planType,
-                    status: 'PENDING'
-                }
-            });
-
-            res.json(successResponse({ paymentMethod: 'wechat', orderId: outTradeNo, qrCode: wxData.code_url }, 'WeChat order created'));
+        const backendBaseUrl = getBackendBaseUrl().replace(/\/+$/, '');
+        const notifyUrl = process.env.WECHAT_NOTIFY_URL || process.env.WXPAY_NOTIFY_URL || `${backendBaseUrl}/api/payment/webhook/wechat`;
+        if (process.env.NODE_ENV === 'production' && !notifyUrl.startsWith('https://')) {
+            res.status(503).json(errorResponse('微信支付回调地址必须使用 HTTPS', 503));
             return;
         }
 
-        // Legacy local QR fallback (kept for backward compatibility)
-        const outTradeNo = `QR_${Date.now()}_${user.id.substring(0, 8)}_${randomNonceStr().substring(0, 6)}`;
+        const outTradeNo = `WX_${Date.now()}_${user.id.substring(0, 8)}_${randomNonceStr().substring(0, 6)}`;
         await prisma.order.create({
             data: {
                 id: outTradeNo,
@@ -305,13 +161,30 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
                 status: 'PENDING'
             }
         });
-        res.json(successResponse({
-            paymentMethod: 'qrcode',
-            orderId: outTradeNo,
-            amount: plan.amountCNY,
-            alipayQrUrl: '/api/payment/qrcode-image?type=alipay',
-            wechatQrUrl: '/api/payment/qrcode-image?type=wechat'
-        }, 'Order created'));
+
+        try {
+            const codeUrl = await createWechatV3NativeOrder({
+                description: `DocFlow AI - ${plan.title}`,
+                outTradeNo,
+                amountFen: Math.round(plan.amountCNY * 100),
+                notifyUrl,
+                attach: JSON.stringify({ userId: user.id, planType }),
+            });
+
+            res.json(successResponse({
+                paymentMethod: 'wechat',
+                orderId: outTradeNo,
+                qrCode: codeUrl,
+                amount: plan.amountCNY
+            }, 'WeChat Pay V3 Native order created'));
+        } catch (err) {
+            await prisma.order.updateMany({
+                where: { id: outTradeNo, status: 'PENDING' },
+                data: { status: 'EXPIRED' }
+            });
+            console.error('WeChat Pay V3 order error:', err);
+            res.status(502).json(errorResponse('微信官方支付下单失败，请稍后重试或联系管理员检查商户配置', 502));
+        }
     } catch (error) {
         console.error('Create checkout session error:', error);
         res.status(500).json(errorResponse('Failed to create checkout session', 500));
@@ -402,66 +275,78 @@ router.all('/webhook/alipay', async (req: Request, res: Response): Promise<void>
 
 router.post('/webhook/wechat', async (req: Request, res: Response): Promise<void> => {
     try {
-        const apiKey = process.env.WECHAT_API_KEY;
-        if (!apiKey) {
-            respondWechatXml(res, false, 'API key missing');
+        const cfg = getWechatV3Config();
+        if (!cfg) {
+            respondWechatV3(res, false, 'WeChat Pay V3 not configured');
             return;
         }
 
-        const rawBody = typeof req.body === 'string' ? req.body : String(req.body || '');
+        const rawBody = typeof req.body === 'string'
+            ? req.body
+            : Buffer.isBuffer(req.body)
+                ? req.body.toString('utf8')
+                : JSON.stringify(req.body || {});
         if (!rawBody) {
-            respondWechatXml(res, false, 'Empty body');
+            respondWechatV3(res, false, 'Empty body');
             return;
         }
 
-        const data = parseSimpleXml(rawBody);
-        const receivedSign = data.sign || '';
-        const calculatedSign = signWechat(data, apiKey);
-        // 常量时间比较 + 长度检查,防止时序攻击
-        const signOk = receivedSign.length === calculatedSign.length
-            && receivedSign.length > 0
-            && crypto.timingSafeEqual(Buffer.from(receivedSign), Buffer.from(calculatedSign));
-        if (!signOk) {
-            respondWechatXml(res, false, 'Invalid sign');
+        if (!verifyWechatV3Webhook(req.headers, rawBody)) {
+            respondWechatV3(res, false, 'Invalid signature');
             return;
         }
 
-        if (data.return_code !== 'SUCCESS' || data.result_code !== 'SUCCESS') {
-            respondWechatXml(res, true, 'IGNORE');
+        const payload = JSON.parse(rawBody) as {
+            event_type?: string;
+            resource?: { ciphertext: string; nonce: string; associated_data?: string };
+        };
+        if (payload.event_type !== 'TRANSACTION.SUCCESS' || !payload.resource) {
+            respondWechatV3(res, true, '成功');
             return;
         }
 
-        // 重放保护:用 transaction_id (微信支付订单号) 作为唯一标识
-        const transactionId = data.transaction_id;
+        const data = decryptWechatV3Resource(payload.resource);
+        const transactionId = String(data.transaction_id || '');
         if (transactionId) {
             const replayKey = `webhook:wechat:transaction_id:${transactionId}`;
             const seen = await redis.get(replayKey);
             if (seen) {
-                console.warn(`[wechat webhook] duplicate transaction_id=${transactionId}, skipping`);
-                respondWechatXml(res, true, 'DUPLICATE');
+                console.warn(`[wechat v3 webhook] duplicate transaction_id=${transactionId}, skipping`);
+                respondWechatV3(res, true, '成功');
                 return;
             }
-            await redis.set(replayKey, '1', 'EX', 86400);
         }
 
-        const outTradeNo = data.out_trade_no;
-        if (outTradeNo) {
-            const order = await prisma.order.findUnique({ where: { id: outTradeNo } });
-            // 校验:实付 total_fee(分)== 订单应付额×100,且 mch_id/appid == 自己的商户,防顶包。
-            const feeOk = !!order && Math.round(Number(order.amount) * 100) === Number(data.total_fee);
-            const mchOk = !process.env.WECHAT_MCH_ID || data.mch_id === process.env.WECHAT_MCH_ID;
-            const appOk = !process.env.WECHAT_APP_ID || data.appid === process.env.WECHAT_APP_ID;
-            if (order && feeOk && mchOk && appOk) {
-                await applyPaidOrder(outTradeNo, order.userId, order.planType);
-            } else {
-                console.error(`[wechat webhook] 金额/商户校验失败 out_trade_no=${outTradeNo} order=${order?.amount} total_fee=${data.total_fee} mch_id=${data.mch_id}`);
+        const outTradeNo = String(data.out_trade_no || '');
+        if (!outTradeNo) {
+            respondWechatV3(res, false, 'Missing out_trade_no');
+            return;
+        }
+
+        const order = await prisma.order.findUnique({ where: { id: outTradeNo } });
+        const amount = data.amount as { payer_total?: number; total?: number } | undefined;
+        const payerTotal = Number(amount?.payer_total ?? amount?.total);
+        const feeOk = !!order && Math.round(Number(order.amount) * 100) === payerTotal;
+        const mchOk = String(data.mchid || '') === cfg.mchId;
+        const appOk = String(data.appid || '') === cfg.appId;
+        const stateOk = data.trade_state === 'SUCCESS';
+        if (order && feeOk && mchOk && appOk && stateOk) {
+            await applyPaidOrder(outTradeNo, order.userId, order.planType);
+            if (transactionId) {
+                await redis.set(`webhook:wechat:transaction_id:${transactionId}`, '1', 'EX', 86400);
             }
+        } else {
+            console.error(
+                `[wechat v3 webhook] verification failed out_trade_no=${outTradeNo} order=${order?.amount} payer_total=${payerTotal} mch_ok=${mchOk} app_ok=${appOk} state=${String(data.trade_state || '')}`
+            );
+            respondWechatV3(res, false, 'Order verification failed');
+            return;
         }
 
-        respondWechatXml(res, true, 'OK');
+        respondWechatV3(res, true, '成功');
     } catch (error) {
         console.error('WeChat webhook error:', error);
-        respondWechatXml(res, false, 'Server error');
+        respondWechatV3(res, false, 'Server error');
     }
 });
 
@@ -618,7 +503,7 @@ router.post('/refund/:orderId', authenticate, async (req: AuthRequest, res: Resp
                         bizContent: {
                             outTradeNo: orderId,
                             refundAmount: amountStr,
-                            outRequestNo: `REFUND_${orderId}_${Date.now()}`,
+                            outRequestNo: buildRefundNo(orderId),
                             refundReason: req.body?.reason || 'User initiated refund',
                         },
                     } as Record<string, unknown>);
@@ -631,9 +516,16 @@ router.post('/refund/:orderId', authenticate, async (req: AuthRequest, res: Resp
                     }
                 }
             } else if (method === 'wechat') {
-                const r = await wechatRefund({
+                const v3Config = getWechatV3Config();
+                const r = v3Config ? await refundWechatV3Order({
                     outTradeNo: orderId,
-                    outRefundNo: `REFUND_${orderId}_${Date.now()}`.substring(0, 64),
+                    outRefundNo: buildRefundNo(orderId),
+                    totalFeeFen: amountFen,
+                    refundFeeFen: amountFen,
+                    reason: req.body?.reason,
+                }) : await wechatRefund({
+                    outTradeNo: orderId,
+                    outRefundNo: buildRefundNo(orderId),
                     totalFeeFen: amountFen,
                     refundFeeFen: amountFen,
                     reason: req.body?.reason,
@@ -686,18 +578,8 @@ router.post('/refund/:orderId', authenticate, async (req: AuthRequest, res: Resp
     }
 });
 
-router.get('/qrcode-image', (req: Request, res: Response): void => {
-    const type = (req.query.type as string) || 'alipay';
-    const imageMap: Record<string, string> = { alipay: 'Alipay.jpg', wechat: 'wechat.png' };
-
-    const fileName = imageMap[type] || imageMap.alipay;
-    const imagePath = path.join(process.cwd(), '..', 'frontend', 'image', fileName);
-
-    if (fs.existsSync(imagePath)) {
-        res.sendFile(imagePath);
-    } else {
-        res.status(404).json(errorResponse(`QR code image not found: ${fileName}`, 404));
-    }
+router.get('/qrcode-image', (_req: Request, res: Response): void => {
+    res.status(410).json(errorResponse('固定收款二维码已停用，请通过微信官方支付创建动态二维码', 410));
 });
 
 export default router;

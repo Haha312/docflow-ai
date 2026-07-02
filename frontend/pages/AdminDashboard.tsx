@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
+import { API_BASE_URL } from '../services/apiBase';
 import { useNavigate } from 'react-router-dom';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Area, AreaChart } from 'recharts';
 import { useTranslation } from 'react-i18next';
@@ -75,6 +76,8 @@ const getPresetName = (key: string, t: any) => {
         'corporate': 'home.preset_corporate',
         'academic_journal': 'home.preset_academic_journal',
         'creative': 'home.preset_creative',
+        'work-report': 'home.preset_work_report',
+        'meeting-minutes': 'home.preset_meeting_minutes',
         'minimalist': 'home.preset_minimalist',
         'custom': 'admin.preset_custom'
     };
@@ -171,21 +174,60 @@ interface AdminDashboardProps {
     onClose?: () => void;
 }
 
+type AdminTheme = 'dark' | 'light';
+
+const APP_THEME_KEY = 'docflow_theme';
+const ADMIN_THEME_KEY = 'admin-theme';
+
+const toAdminTheme = (theme: string | null): AdminTheme | null => {
+    if (theme === 'dark') return 'dark';
+    if (theme === 'light' || theme === 'blueviolet' || theme === 'green' || theme === 'coral' || theme === 'color') return 'light';
+    return null;
+};
+
+const getInitialAdminTheme = (): AdminTheme => {
+    try {
+        const appTheme = toAdminTheme(localStorage.getItem(APP_THEME_KEY));
+        if (appTheme) return appTheme;
+        const adminTheme = toAdminTheme(localStorage.getItem(ADMIN_THEME_KEY));
+        return adminTheme || 'dark';
+    } catch (_) {
+        return 'dark';
+    }
+};
+
+const AdminBrandMark = () => (
+    <svg className="w-7 h-7" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+        <path d="M8 4.8h6.2c5.2 0 8.8 3.55 8.8 9.2s-3.6 9.2-8.8 9.2H8V4.8Z" stroke="currentColor" strokeWidth="2.25" strokeLinejoin="round" />
+        <path d="M12.2 9.2v9.6" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" />
+        <path d="M12.2 14h10.2" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" />
+        <path d="M4.6 19.9c4.4 2.2 8.8 2.2 13.2 0" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" opacity="0.68" />
+    </svg>
+);
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const { user, isAuthenticated, isLoading } = useAuth();
     const navigate = useNavigate();
     const { t } = useTranslation();
 
     // Theme
-    const [adminTheme, setAdminTheme] = useState<'dark' | 'light'>(
-        () => (localStorage.getItem('admin-theme') as 'dark' | 'light') || 'dark'
-    );
+    const [adminTheme, setAdminTheme] = useState<AdminTheme>(getInitialAdminTheme);
     const isDark = adminTheme === 'dark';
     const toggleTheme = () => {
         const next = isDark ? 'light' : 'dark';
         setAdminTheme(next);
-        localStorage.setItem('admin-theme', next);
+        try {
+            localStorage.setItem(ADMIN_THEME_KEY, next);
+            localStorage.setItem(APP_THEME_KEY, next);
+        } catch (_) { /* ignore localStorage failures */ }
     };
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-doc-theme', adminTheme);
+        try {
+            localStorage.setItem(ADMIN_THEME_KEY, adminTheme);
+        } catch (_) { /* ignore localStorage failures */ }
+    }, [adminTheme]);
 
     // Theme tokens
     const T = {
@@ -334,7 +376,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         else if (activeTab === 'orders') fetchOrders();
     }, [activeTab, logsPage, usersPage, ordersPage, statusFilter]);
 
-    const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    const API = API_BASE_URL;
     const authHeader = () => ({ 'Authorization': `Bearer ${authService.getToken()}` });
 
     const fetchStats = async () => {
@@ -528,13 +570,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     );
 
     return (
-        <div className={`${T.main} ${onClose ? 'fixed inset-0 z-[100] overflow-y-auto' : 'min-h-screen'}`}>
+        <div data-doc-theme={adminTheme} className={`${T.main} ${onClose ? 'fixed inset-0 z-[100] overflow-y-auto' : 'min-h-screen'}`}>
             {/* 侧边导航 */}
             <div className={`fixed left-0 top-0 bottom-0 w-60 ${T.sidebar} ${T.sidebarBorder} flex flex-col z-[101]`}>
                 <div className="px-5 py-6">
                     <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center">
-                            <span className="text-white text-xs font-bold">D</span>
+                        <div className={`w-8 h-8 flex items-center justify-center ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                            <AdminBrandMark />
                         </div>
                         <span className={`text-[15px] font-semibold ${T.t1}`}>{t('admin.title')}</span>
                     </div>

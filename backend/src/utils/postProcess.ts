@@ -24,6 +24,24 @@ export interface PostProcessOptions {
     expectedImagePlaceholders?: string[];
     /** 权威骨架(结构先行)——存在时,标题层级/章数以它为准,而非信任 AI 产出的标签 */
     skeleton?: SkeletonNode[];
+    /** 仅当源 Word 标题中存在可信的可见编号时才保留骨架编号;否则按层级重新编号 */
+    preserveSourceHeadingNumbers?: boolean;
+    /** 源文中的图题/表题清单;用于过滤 AI 多造的图表题,并把漏标的普通段落提升回图表题 */
+    sourceCaptions?: SourceCaptionSet;
+}
+
+export interface SourceCaption {
+    kind: '图' | '表';
+    text: string;
+    prefix: string;
+    title: string;
+    normPrefix: string;
+    normTitle: string;
+}
+
+export interface SourceCaptionSet {
+    figures: SourceCaption[];
+    tables: SourceCaption[];
 }
 
 // ── 中文数字(1-99,够章节用)──
@@ -48,6 +66,210 @@ const stripCaptionPrefix = (inner: string, kind: '图' | '表'): string => {
     return inner.replace(re, '$1');
 };
 
+const sourceCaptionPrefix = (inner: string, kind: '图' | '表'): string => {
+    const text = (inner || '').replace(/<[^>]+>/g, '').trim();
+    const m = text.match(new RegExp('^' + kind + '\\s*(\\d+(?:[-.]\\d+)*)\\b'));
+    return m ? `${kind}${m[1]}` : '';
+};
+
+const removeDuplicateEnglishCaptionPrefix = (inner: string): string =>
+    inner.replace(
+        /^(\s*(?:<(?:strong|b|span|em)\b[^>]*>\s*)?(?:图|表)\s*\d+(?:[-.]\d+)*\s+)(?:Figure|Table)\s+\d+(?:[-.]\d+)*\s*/i,
+        '$1'
+    );
+
+const decodeBasicEntities = (text: string): string =>
+    text
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'");
+
+const stripHtmlToText = (html: string): string =>
+    decodeBasicEntities((html || '').replace(/<[^>]+>/g, ' '))
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const normalizeCaptionPrefix = (kind: '图' | '表', number = ''): string =>
+    `${kind}${number.replace(/\./g, '-').replace(/\s+/g, '')}`;
+
+const normalizeCaptionTitle = (text: string): string =>
+    stripHtmlToText(text)
+        .replace(/^[图表]\s*\d+(?:[-.]\d+)*[\s\u3000、.：:：]*/i, '')
+        .replace(/[（(][A-Za-z_][A-Za-z0-9_\s.-]*[）)]/g, '')
+        .replace(/[^0-9a-zA-Z\u4e00-\u9fff]+/g, '')
+        .toLowerCase();
+
+const parseCaption = (textOrHtml: string): SourceCaption | null => {
+    const text = stripHtmlToText(textOrHtml);
+    const m = text.match(/^(图|表)\s*(\d+(?:[-.]\d+)*)[\s\u3000、.：:：]*(.*)$/);
+    if (!m) return null;
+    const kind = m[1] as '图' | '表';
+    const prefix = `${kind}${m[2]}`;
+    const title = (m[3] || '').trim();
+    return {
+        kind,
+        text,
+        prefix,
+        title,
+        normPrefix: normalizeCaptionPrefix(kind, m[2]),
+        normTitle: normalizeCaptionTitle(text),
+    };
+};
+
+export const extractSourceCaptions = (html: string): SourceCaptionSet => {
+    const figures: SourceCaption[] = [];
+    const tables: SourceCaption[] = [];
+    const re = /<(p|div|caption)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html || '')) !== null) {
+        const caption = parseCaption(m[2]);
+        if (!caption) continue;
+        if (caption.kind === '图') figures.push(caption);
+        else tables.push(caption);
+    }
+    return { figures, tables };
+};
+
+const captionDistance = (a: string, b: string): number => {
+    const m = a.length, n = b.length;
+    if (m === 0) return n;
+    if (n === 0) return m;
+    let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) {
+        const cur = [i];
+        for (let j = 1; j <= n; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+        }
+        prev = cur;
+    }
+    return prev[n];
+};
+
+const captionSimilarity = (a: string, b: string): number => {
+    const maxLen = Math.max(a.length, b.length);
+    return maxLen === 0 ? 1 : 1 - captionDistance(a, b) / maxLen;
+};
+
+const captionScore = (candidate: SourceCaption, expected: SourceCaption): number => {
+    let score = candidate.normPrefix === expected.normPrefix ? 12 : 0;
+    const ct = candidate.normTitle;
+    const et = expected.normTitle;
+    if (!et) return !ct ? score + 16 : score - 6;
+    if (!ct) return score - 8;
+    if (ct === et) return score + 30;
+    if (ct.length >= 3 && et.length >= 3 && (ct.includes(et) || et.includes(ct))) return score + 18;
+    const sim = captionSimilarity(ct, et);
+    return sim >= 0.72 ? score + Math.round(sim * 14) : score;
+};
+
+const captionThreshold = (expected: SourceCaption): number =>
+    expected.normTitle ? 14 : 10;
+
+interface OutputCaption extends SourceCaption {
+    globalIndex: number;
+    attrs: string;
+    inner: string;
+    full: string;
+}
+
+const captionListForKind = (sourceCaptions: SourceCaptionSet | undefined, kind: '图' | '表'): SourceCaption[] =>
+    kind === '图' ? (sourceCaptions?.figures ?? []) : (sourceCaptions?.tables ?? []);
+
+const isKnownSourceCaption = (caption: SourceCaption, sourceCaptions?: SourceCaptionSet): boolean => {
+    const expected = captionListForKind(sourceCaptions, caption.kind);
+    if (expected.length === 0) return false;
+    return expected.some((item) => captionScore(caption, item) >= captionThreshold(item));
+};
+
+const promoteSourceCaptionParagraphs = (html: string, sourceCaptions?: SourceCaptionSet): string => {
+    if (!sourceCaptions || (sourceCaptions.figures.length === 0 && sourceCaptions.tables.length === 0)) return html;
+    return html.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, (full, inner: string) => {
+        const caption = parseCaption(inner);
+        if (!caption || !isKnownSourceCaption(caption, sourceCaptions)) return full;
+        const className = caption.kind === '图' ? 'figure-caption' : 'table-caption';
+        return `<div class="${className}">${stripHtmlToText(inner)}</div>`;
+    });
+};
+
+export const reconcileCaptionsToSource = (
+    html: string,
+    sourceCaptions?: SourceCaptionSet,
+): { text: string; issues: IntegrityIssue[] } => {
+    if (!sourceCaptions || (sourceCaptions.figures.length === 0 && sourceCaptions.tables.length === 0)) {
+        return { text: html, issues: [] };
+    }
+
+    const captions: OutputCaption[] = [];
+    const re = /<div\b([^>]*\bclass="[^"]*\b(figure-caption|table-caption)\b[^"]*"[^>]*)>([\s\S]*?)<\/div>/gi;
+    let m: RegExpExecArray | null;
+    let globalIndex = 0;
+    while ((m = re.exec(html || '')) !== null) {
+        const parsed = parseCaption(m[3]);
+        const kind: '图' | '表' = /figure-caption/i.test(m[1]) ? '图' : '表';
+        const fallback = parsed ?? {
+            kind,
+            text: stripHtmlToText(m[3]),
+            prefix: '',
+            title: stripHtmlToText(m[3]),
+            normPrefix: '',
+            normTitle: normalizeCaptionTitle(m[3]),
+        };
+        captions.push({ ...fallback, kind, globalIndex, attrs: m[1], inner: m[3], full: m[0] });
+        globalIndex += 1;
+    }
+
+    const selected = new Map<number, SourceCaption>();
+    let missing = 0;
+    for (const kind of ['图', '表'] as const) {
+        const expected = captionListForKind(sourceCaptions, kind);
+        if (expected.length === 0) continue;
+        const output = captions.filter((caption) => caption.kind === kind);
+        let cursor = 0;
+        for (const exp of expected) {
+            let best: OutputCaption | undefined;
+            let bestScore = Number.NEGATIVE_INFINITY;
+            for (let i = cursor; i < output.length; i++) {
+                const score = captionScore(output[i], exp) - Math.min(8, (i - cursor) * 0.2);
+                if (score > bestScore) {
+                    best = output[i];
+                    bestScore = score;
+                }
+            }
+            if (best && bestScore >= captionThreshold(exp)) {
+                selected.set(best.globalIndex, exp);
+                cursor = output.indexOf(best) + 1;
+            } else {
+                missing += 1;
+            }
+        }
+    }
+
+    let pruned = 0;
+    let index = 0;
+    const text = html.replace(re, (_full, attrs: string) => {
+        const expected = selected.get(index);
+        index += 1;
+        if (!expected) {
+            pruned += 1;
+            return '';
+        }
+        return `<div${attrs}>${expected.text}</div>`;
+    });
+
+    const issues: IntegrityIssue[] = [];
+    if (pruned > 0) {
+        issues.push({ type: 'caption_pruned', severity: 'info', detail: `已移除 ${pruned} 个不在源文图表题序列中的多余图表题` });
+    }
+    if (missing > 0) {
+        issues.push({ type: 'caption_missing', severity: 'warning', detail: `源文有 ${missing} 个图表题未能在成稿中精确定位,请核对图表题位置` });
+    }
+    return { text, issues };
+};
+
 // ── 把内容层级 + 计数器栈格式化成方案对应的编号前缀。contentLevel: 1=h2(章) 2=h3 3=h4 ... ──
 const formatHeadingNumber = (scheme: string, contentLevel: number, counters: number[]): string => {
     const c = counters; // c[1]=章, c[2]=节, ...
@@ -70,6 +292,30 @@ const formatHeadingNumber = (scheme: string, contentLevel: number, counters: num
     }
 };
 
+const formatSkeletonHeadingNumber = (scheme: string, sourceNumber = ''): string => {
+    const clean = sourceNumber.trim().replace(/[.\s\u3000]+$/g, '');
+    if (!clean) return '';
+    const parts = clean.split('.').filter(Boolean).map(x => Number(x)).filter(n => Number.isFinite(n) && n > 0);
+    if (parts.length === 0) return clean;
+    switch (scheme) {
+        case 'decimal':
+        case 'decimal-nested':
+            return clean + (parts.length === 1 ? '.' : '');
+        case 'chinese-hierarchical':
+            if (parts.length === 1) return toChineseNumber(parts[0]) + '、';
+            if (parts.length === 2) return '（' + toChineseNumber(parts[1]) + '）';
+            if (parts.length === 3) return parts[2] + '.';
+            return '(' + parts[parts.length - 1] + ')';
+        case 'chapter':
+            if (parts.length === 1) return '第' + toChineseNumber(parts[0]) + '章';
+            if (parts.length === 2) return '第' + toChineseNumber(parts[1]) + '节';
+            if (parts.length === 3) return toChineseNumber(parts[2]) + '、';
+            return String(parts[parts.length - 1]);
+        default:
+            return '';
+    }
+};
+
 // ── 封面/扉页"文档类型"标记行(研究报告 / 毕业论文 …)。丢弃重复标题时,把它紧邻的这种残留行一并清掉。──
 const FRONT_MATTER_TYPES = new Set<string>([
     '研究报告', '报告', '毕业论文', '学位论文', '本科毕业论文', '硕士学位论文', '博士学位论文',
@@ -79,6 +325,14 @@ const isFrontMatterTypeLine = (pHtml: string): boolean => {
     const txt = (pHtml || '').replace(/<[^>]+>/g, '').replace(/[\s\u3000]+/g, '').trim();
     return FRONT_MATTER_TYPES.has(txt);
 };
+
+const hasClass = (attrs: string, className: string): boolean => {
+    const m = (attrs || '').match(/\bclass\s*=\s*"([^"]*)"/i);
+    return !!m && m[1].split(/\s+/).some((x) => x.toLowerCase() === className.toLowerCase());
+};
+
+const isJournalFrontMatterHeading = (attrs: string): boolean =>
+    hasClass(attrs, 'doc-title-en');
 
 /**
  * 标题去重 + 降级(合并后跑一次):
@@ -138,6 +392,7 @@ export const renumberStructure = (html: string, opts: PostProcessOptions, canoni
         if (hLevel !== undefined) {
             const level = parseInt(hLevel, 10);
             if (level === 1) return full;                 // 文档标题不编号
+            if (isJournalFrontMatterHeading(hAttrs)) return full; // 期刊英文题名是篇首信息,不进正文编号
             // 防御:与文档标题同文本的 h2~h6 视为重复标题残留 → 丢弃且【不计数】,保证编号连续。
             // (enforceSingleTitleAndDemote 已在上游丢弃同文本 <h1>;此处兜住"已是 h2"等绕过路径。)
             if (canonicalTitle && normalizeHeadingText(hInner) === canonicalTitle) return '';
@@ -159,13 +414,21 @@ export const renumberStructure = (html: string, opts: PostProcessOptions, canoni
                 const s = stripHeadingPrefix(hInner);
                 return `<h${level}${hAttrs}>${s.replace(/^\s+/, '')}</h${level}>`;
             }
-            const num = formatHeadingNumber(opts.scheme, cl, counters);
+            const skId = (hAttrs || '').match(/\bdata-sk="([^"]+)"/i)?.[1] ?? '';
+            const skNode = skId ? opts.skeleton?.find(n => n.id === skId) : undefined;
+            const num = opts.preserveSourceHeadingNumbers && skNode?.number
+                ? formatSkeletonHeadingNumber(opts.scheme, skNode.number)
+                : formatHeadingNumber(opts.scheme, cl, counters);
             const stripped = stripHeadingPrefix(hInner);
             return `<h${level}${hAttrs}>${num} ${stripped.replace(/^\s+/, '')}</h${level}>`;
         }
         // ── 图/表题 ──
         const isFigure = /figure-caption/i.test(divAttrs);
         const kind: '图' | '表' = isFigure ? '图' : '表';
+        const existingPrefix = sourceCaptionPrefix(divInner, kind);
+        if (opts.skeleton && opts.skeleton.length > 0 && existingPrefix) {
+            return `<div${divAttrs}>${removeDuplicateEnglishCaptionPrefix(divInner).replace(/^\s+/, '')}</div>`;
+        }
         let num: string;
         // chapter-relative 仅在已进入正文章(currentChapter()>0)时用"{章}-{序}";否则(前置事务性内容里的图)
         // 退回全局序号,避免前置图与正文第一章首图都成"图1-1"而撞号。
@@ -245,6 +508,7 @@ export const reconcileHeadingsToSkeleton = (
     const re = /<h([2-6])(\b[^>]*)>([\s\S]*?)<\/h\1>/gi;
     const text = html.replace(re, (_full, lvlStr: string, attrs: string, inner: string) => {
         const cleanAttrs = (attrs || '').replace(/\s*data-sk="[^"]*"/i, '');
+        if (isJournalFrontMatterHeading(cleanAttrs)) return `<h${lvlStr}${cleanAttrs}>${inner}</h${lvlStr}>`;
         const m = matcher.match(normalizeHeadingText(inner));
         if (m) {
             const lvl = m.node.outputLevel;
@@ -295,10 +559,13 @@ export const postProcess = (html: string, opts: PostProcessOptions): { text: str
     // 传入文档标题文本 → reconcile 据此先消费"标题节点",避免标题被当成缺失的章。
     const skel = reconcileHeadingsToSkeleton(out, opts.skeleton, canonicalTitle);
     out = skel.text;
+    out = promoteSourceCaptionParagraphs(out, opts.sourceCaptions);
     out = renumberStructure(out, opts, canonicalTitle);
+    const captionRec = reconcileCaptionsToSource(out, opts.sourceCaptions);
+    out = captionRec.text;
     const rec = reconcileImages(out, opts.expectedImagePlaceholders);
     // data-sk 仅是 reconcile→renumber 过程中的内部对齐标记,不应泄漏进权威全文(预览 DOM / 可复制可导出的 HTML)。
     // 在最后统一抹掉,使其只存在于处理窗口内部。
     const cleaned = rec.text.replace(/(<h[1-6]\b[^>]*?)\s+data-sk="[^"]*"([^>]*>)/gi, '$1$2');
-    return { text: cleaned, issues: [...skel.issues, ...rec.issues] };
+    return { text: cleaned, issues: [...skel.issues, ...captionRec.issues, ...rec.issues] };
 };

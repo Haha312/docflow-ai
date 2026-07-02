@@ -1,0 +1,307 @@
+{
+  "file": "test-results\\docflow-generation\\docx\\ACADEMIC_JOURNAL-学术期刊.docx",
+  "size_bytes": 15184069,
+  "paragraphs": 790,
+  "char_count": 34808,
+  "tables_python_docx": 26,
+  "image_relationships": 61,
+  "drawing_elements": 61,
+  "legacy_picture_elements": 0,
+  "xml_tables": 26,
+  "headings": 168,
+  "headings_by_level": {
+    "1": 39,
+    "2": 68,
+    "3": 47,
+    "4": 14
+  },
+  "figure_captions": 70,
+  "table_captions": 27,
+  "other_captions": 0,
+  "heading_samples": [
+    {
+      "index": 5,
+      "level": 1,
+      "style": "Heading 1",
+      "text": "目  录"
+    },
+    {
+      "index": 6,
+      "level": 1,
+      "style": "Heading 1",
+      "text": "2. 引言"
+    },
+    {
+      "index": 7,
+      "level": 2,
+      "style": "Heading 2",
+      "text": "2.1 编写目的"
+    },
+    {
+      "index": 12,
+      "level": 2,
+      "style": "Heading 2",
+      "text": "2.2 项目背景"
+    },
+    {
+      "index": 15,
+      "level": 2,
+      "style": "Heading 2",
+      "text": "2.3 项目目标"
+    },
+    {
+      "index": 27,
+      "level": 2,
+      "style": "Heading 2",
+      "text": "2.4 项目范围"
+    },
+    {
+      "index": 34,
+      "level": 1,
+      "style": "Heading 1",
+      "text": "3. 总体设计"
+    },
+    {
+      "index": 35,
+      "level": 2,
+      "style": "Heading 2",
+      "text": "3.1 总体架构"
+    },
+    {
+      "index": 39,
+      "level": 3,
+      "style": "",
+      "text": "（1）硬件层"
+    },
+    {
+      "index": 41,
+      "level": 3,
+      "style": "",
+      "text": "（2）数据层"
+    },
+    {
+      "index": 43,
+      "level": 3,
+      "style": "",
+      "text": "（3）服务层"
+    },
+    {
+      "index": 45,
+      "level": 3,
+      "style": "",
+      "text": "（4）应用层"
+    },
+    {
+      "index": 47,
+      "level": 2,
+      "style": "Heading 2",
+      "text": "3.2 功能模块划分"
+    },
+    {
+      "index": 50,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.2.1 GIS-Server服务管理和数据共享服务"
+    },
+    {
+      "index": 53,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.1.1 地形切片服务"
+    },
+    {
+      "index": 62,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.1.2 影像切片服务"
+    },
+    {
+      "index": 71,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.1.3 点云切片服务"
+    },
+    {
+      "index": 80,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.1.4 模型切片服务"
+    },
+    {
+      "index": 89,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.2.2 EV-Creator数据处理服务"
+    },
+    {
+      "index": 92,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.2.1 max模型转glb模型"
+    },
+    {
+      "index": 105,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.2.2 revit模型转glb模型"
+    },
+    {
+      "index": 110,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.2.3 mesh模型转glb模型"
+    },
+    {
+      "index": 118,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.2.4 glb模型转mesh模型"
+    },
+    {
+      "index": 122,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.2.5 模型简化工具"
+    },
+    {
+      "index": 126,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.2.6 通用模型转换工具"
+    },
+    {
+      "index": 130,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.2.7 模型坐标转换工具"
+    },
+    {
+      "index": 134,
+      "level": 4,
+      "style": "Heading 4",
+      "text": "3.2.2.8 osgb模型转e3m模型"
+    },
+    {
+      "index": 138,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.2.3 glb模型转e3m模型"
+    },
+    {
+      "index": 142,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.2.4 影像高程切片工具"
+    },
+    {
+      "index": 146,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.2.5 las点云转e3m"
+    },
+    {
+      "index": 150,
+      "level": 2,
+      "style": "Heading 2",
+      "text": "3.3 EV-Globe WebGL引擎服务"
+    },
+    {
+      "index": 152,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.3.1 加载影像"
+    },
+    {
+      "index": 161,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.3.2 加载高程"
+    },
+    {
+      "index": 166,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.3.3 加载矢量"
+    },
+    {
+      "index": 171,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.3.4 加载建筑模型"
+    },
+    {
+      "index": 185,
+      "level": 2,
+      "style": "Heading 2",
+      "text": "3.4 电网工程数字化管理和共享应用"
+    },
+    {
+      "index": 188,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.4.1 系统登录方式"
+    },
+    {
+      "index": 189,
+      "level": 3,
+      "style": "",
+      "text": "（1）域名登录："
+    },
+    {
+      "index": 192,
+      "level": 3,
+      "style": "",
+      "text": "（2）门户登录："
+    },
+    {
+      "index": 196,
+      "level": 3,
+      "style": "Heading 3",
+      "text": "3.4.2 系统登录提示"
+    }
+  ],
+  "figure_caption_samples": [
+    "图3-1 数字化知识管理和共享服务平台架构",
+    "图3-2 地形切片服务",
+    "图3-3 影像切片服务",
+    "图3-4 点云切片服务",
+    "图3-5 模型切片服务",
+    "图3-6",
+    "图3-7",
+    "图3-8",
+    "图3-9",
+    "图3-10",
+    "图3-11",
+    "图3-12",
+    "图3-13",
+    "图3-14",
+    "图3-15",
+    "图3-16",
+    "图3-17",
+    "图3-18",
+    "图3-19 glb模型转e3m模型",
+    "图3-20 影像高程切片工具"
+  ],
+  "table_caption_samples": [
+    "表2-1 需求阶段工作内容及成果",
+    "表2-2 系统编码阶段工作内容及成果",
+    "表3-1 平台服务域服务方式",
+    "表5-1 业务角色",
+    "表6-1 总体技术路线描述",
+    "表7-1 运行线路表（t_yxxl）",
+    "表7-2 线路运行表",
+    "表7-3 运行杆塔表（t_yxgt）",
+    "表7-4 物理杆塔表（t_wlgt）",
+    "表7-5 物理杆塔表",
+    "表7-6 交跨台账表",
+    "表7-7 隐患台账表",
+    "表7-8 隐患台账表",
+    "表7-9 用户台账表",
+    "表7-10 点云发布表",
+    "表7-11 点云瓦片索引表",
+    "表7-12 非结构数据",
+    "表7-13 业务数据详细列表",
+    "表20-1 PMS系统台账数据实体",
+    "表22-1 日志级别定义表"
+  ]
+}

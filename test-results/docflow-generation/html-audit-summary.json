@@ -1,0 +1,927 @@
+[
+  {
+    "file": "E:\\AI Projects\\docflow-ai\\test-results\\docflow-generation\\ACADEMIC-报告论文.html",
+    "chars": 20763145,
+    "textChars": 43784,
+    "h1": 1,
+    "h2": 32,
+    "h3": 70,
+    "h4": 29,
+    "h5": 12,
+    "h6": 0,
+    "headings": 144,
+    "tables": 26,
+    "images": 61,
+    "dataImages": 61,
+    "figureCaptionClass": 69,
+    "tableCaptionClass": 30,
+    "figureCaptionText": 75,
+    "tableCaptionText": 34,
+    "headingSamples": [
+      {
+        "level": 1,
+        "text": "2020-总部基建全过程综合数字化管理平台项目-数字化知识管理和共享服务"
+      },
+      {
+        "level": 2,
+        "text": "目 录"
+      },
+      {
+        "level": 2,
+        "text": "1. 引言"
+      },
+      {
+        "level": 3,
+        "text": "1.1 编写目的"
+      },
+      {
+        "level": 3,
+        "text": "1.2 项目背景"
+      },
+      {
+        "level": 3,
+        "text": "1.3 项目目标"
+      },
+      {
+        "level": 3,
+        "text": "1.4 项目范围"
+      },
+      {
+        "level": 2,
+        "text": "2. 总体设计"
+      },
+      {
+        "level": 3,
+        "text": "2.1 总体架构"
+      },
+      {
+        "level": 3,
+        "text": "2.2 功能模块划分"
+      },
+      {
+        "level": 4,
+        "text": "2.2.1 GIS-Server服务管理和数据共享服务"
+      },
+      {
+        "level": 5,
+        "text": "2.2.1.1 地形切片服务"
+      },
+      {
+        "level": 5,
+        "text": "2.2.1.2 影像切片服务"
+      },
+      {
+        "level": 5,
+        "text": "2.2.1.3 点云切片服务"
+      },
+      {
+        "level": 5,
+        "text": "2.2.1.4 模型切片服务"
+      },
+      {
+        "level": 4,
+        "text": "2.2.2 EV-Creator数据处理服务"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.1 max模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.2 revit模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.3 mesh模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.4 glb模型转mesh模型"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.5 模型简化工具"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.6 通用模型转换工具"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.7 模型坐标转换工具"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.8 osgb模型转e3m模型"
+      },
+      {
+        "level": 4,
+        "text": "2.2.3 glb模型转e3m模型"
+      },
+      {
+        "level": 4,
+        "text": "2.2.4 影像高程切片工具"
+      },
+      {
+        "level": 4,
+        "text": "2.2.5 las点云转e3m"
+      },
+      {
+        "level": 3,
+        "text": "2.3 EV-Globe WebGL引擎服务"
+      },
+      {
+        "level": 4,
+        "text": "2.3.1 加载影像"
+      },
+      {
+        "level": 4,
+        "text": "2.3.2 加载高程"
+      }
+    ],
+    "figureCaptionSamples": [
+      "图2-1",
+      "图2-2",
+      "图2-3",
+      "图2-4",
+      "图2-5",
+      "图2-6",
+      "图2-7",
+      "图2-8",
+      "图2-9",
+      "图2-10",
+      "图2-11",
+      "图2-12",
+      "图2-13",
+      "图2-14",
+      "图2-15",
+      "图2-16",
+      "图2-17",
+      "图2-18",
+      "图2-19",
+      "图2-20"
+    ],
+    "tableCaptionSamples": [
+      "表1-1",
+      "表1-2",
+      "表2-1",
+      "表4-1",
+      "表5-1",
+      "表6-1",
+      "表6-2",
+      "表6.2",
+      "表6-3",
+      "表6-4",
+      "表6-5",
+      "表 6.3",
+      "表6-6",
+      "表6-7",
+      "表6-8",
+      "表 6.4.1",
+      "表6-9",
+      "表6-10",
+      "表6-11",
+      "表6-12"
+    ]
+  },
+  {
+    "file": "E:\\AI Projects\\docflow-ai\\test-results\\docflow-generation\\ACADEMIC_JOURNAL-学术期刊.html",
+    "chars": 20761168,
+    "textChars": 43344,
+    "h1": 1,
+    "h2": 32,
+    "h3": 69,
+    "h4": 30,
+    "h5": 12,
+    "h6": 0,
+    "headings": 144,
+    "tables": 26,
+    "images": 61,
+    "dataImages": 61,
+    "figureCaptionClass": 69,
+    "tableCaptionClass": 30,
+    "figureCaptionText": 75,
+    "tableCaptionText": 33,
+    "headingSamples": [
+      {
+        "level": 1,
+        "text": "2020-总部基建全过程综合数字化管理平台项目-数字化知识管理和共享服务"
+      },
+      {
+        "level": 2,
+        "text": "目 录"
+      },
+      {
+        "level": 2,
+        "text": "1. 引言"
+      },
+      {
+        "level": 3,
+        "text": "1.1 编写目的"
+      },
+      {
+        "level": 3,
+        "text": "1.2 项目背景"
+      },
+      {
+        "level": 3,
+        "text": "1.3 项目目标"
+      },
+      {
+        "level": 3,
+        "text": "1.4 项目范围"
+      },
+      {
+        "level": 2,
+        "text": "2. 总体设计"
+      },
+      {
+        "level": 3,
+        "text": "2.1 总体架构"
+      },
+      {
+        "level": 3,
+        "text": "2.2 功能模块划分"
+      },
+      {
+        "level": 4,
+        "text": "2.2.1 GIS-Server服务管理和数据共享服务"
+      },
+      {
+        "level": 5,
+        "text": "2.2.1.1 地形切片服务"
+      },
+      {
+        "level": 5,
+        "text": "2.2.1.2 影像切片服务"
+      },
+      {
+        "level": 5,
+        "text": "2.2.1.3 点云切片服务"
+      },
+      {
+        "level": 5,
+        "text": "2.2.1.4 模型切片服务"
+      },
+      {
+        "level": 4,
+        "text": "2.2.2 EV-Creator数据处理服务"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.1 max模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.2 revit模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.3 mesh模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.4 glb模型转mesh模型"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.5 模型简化工具"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.6 通用模型转换工具"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.7 模型坐标转换工具"
+      },
+      {
+        "level": 5,
+        "text": "2.2.2.8 osgb模型转e3m模型"
+      },
+      {
+        "level": 4,
+        "text": "2.2.3 glb模型转e3m模型"
+      },
+      {
+        "level": 4,
+        "text": "2.2.4 影像高程切片工具"
+      },
+      {
+        "level": 4,
+        "text": "2.2.5 las点云转e3m"
+      },
+      {
+        "level": 3,
+        "text": "2.3 EV-Globe WebGL引擎服务"
+      },
+      {
+        "level": 4,
+        "text": "2.3.1 加载影像"
+      },
+      {
+        "level": 4,
+        "text": "2.3.2 加载高程"
+      }
+    ],
+    "figureCaptionSamples": [
+      "图1",
+      "图2",
+      "图3",
+      "图4",
+      "图5",
+      "图6",
+      "图7",
+      "图8",
+      "图9",
+      "图10",
+      "图11",
+      "图12",
+      "图13",
+      "图14",
+      "图15",
+      "图16",
+      "图17",
+      "图18",
+      "图19",
+      "图20"
+    ],
+    "tableCaptionSamples": [
+      "表1",
+      "表2",
+      "表3",
+      "表4",
+      "表5",
+      "表6",
+      "表7",
+      "表6.1.1",
+      "表8",
+      "表9",
+      "表10",
+      "表 6.2",
+      "表11",
+      "表12",
+      "表13",
+      "表 6.3.1",
+      "表14",
+      "表15",
+      "表16",
+      "表17"
+    ]
+  },
+  {
+    "file": "E:\\AI Projects\\docflow-ai\\test-results\\docflow-generation\\CORPORATE-机关公文.html",
+    "chars": 20763272,
+    "textChars": 43567,
+    "h1": 1,
+    "h2": 87,
+    "h3": 21,
+    "h4": 23,
+    "h5": 12,
+    "h6": 0,
+    "headings": 144,
+    "tables": 26,
+    "images": 61,
+    "dataImages": 61,
+    "figureCaptionClass": 70,
+    "tableCaptionClass": 30,
+    "figureCaptionText": 73,
+    "tableCaptionText": 31,
+    "headingSamples": [
+      {
+        "level": 1,
+        "text": "详细设计说明书"
+      },
+      {
+        "level": 2,
+        "text": "目 录"
+      },
+      {
+        "level": 2,
+        "text": "一、 引言"
+      },
+      {
+        "level": 3,
+        "text": "（一） 编写目的"
+      },
+      {
+        "level": 3,
+        "text": "（二） 项目背景"
+      },
+      {
+        "level": 3,
+        "text": "（三） 项目目标"
+      },
+      {
+        "level": 3,
+        "text": "（四） 项目范围"
+      },
+      {
+        "level": 2,
+        "text": "二、 总体设计"
+      },
+      {
+        "level": 3,
+        "text": "（一） 总体架构"
+      },
+      {
+        "level": 3,
+        "text": "（二） 功能模块划分"
+      },
+      {
+        "level": 4,
+        "text": "1. GIS-Server服务管理和数据共享服务"
+      },
+      {
+        "level": 5,
+        "text": "(1) 地形切片服务"
+      },
+      {
+        "level": 5,
+        "text": "(2) 影像切片服务"
+      },
+      {
+        "level": 5,
+        "text": "(3) 点云切片服务"
+      },
+      {
+        "level": 5,
+        "text": "(4) 模型切片服务"
+      },
+      {
+        "level": 4,
+        "text": "2. EV-Creator数据处理服务"
+      },
+      {
+        "level": 5,
+        "text": "(1) max模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "(2) revit模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "(3) mesh模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "(4) glb模型转mesh模型"
+      },
+      {
+        "level": 5,
+        "text": "(5) 模型简化工具"
+      },
+      {
+        "level": 5,
+        "text": "(6) 通用模型转换工具"
+      },
+      {
+        "level": 5,
+        "text": "(7) 模型坐标转换工具"
+      },
+      {
+        "level": 5,
+        "text": "(8) osgb模型转e3m模型"
+      },
+      {
+        "level": 4,
+        "text": "3. glb模型转e3m模型"
+      },
+      {
+        "level": 4,
+        "text": "4. 影像高程切片工具"
+      },
+      {
+        "level": 4,
+        "text": "5. las点云转e3m"
+      },
+      {
+        "level": 3,
+        "text": "（三） EV-Globe WebGL引擎服务"
+      },
+      {
+        "level": 4,
+        "text": "1. 加载影像"
+      },
+      {
+        "level": 4,
+        "text": "2. 加载高程"
+      }
+    ],
+    "figureCaptionSamples": [
+      "图1",
+      "图2",
+      "图3",
+      "图4",
+      "图5",
+      "图6",
+      "图7",
+      "图8",
+      "图9",
+      "图10",
+      "图11",
+      "图12",
+      "图13",
+      "图14",
+      "图15",
+      "图16",
+      "图17",
+      "图18",
+      "图19",
+      "图20"
+    ],
+    "tableCaptionSamples": [
+      "表1",
+      "表2",
+      "表3",
+      "表4",
+      "表5",
+      "表6",
+      "表7",
+      "表8",
+      "表9",
+      "表10",
+      "表11",
+      "表12",
+      "表13",
+      "表 1.",
+      "表14",
+      "表15",
+      "表16",
+      "表17",
+      "表18",
+      "表19"
+    ]
+  },
+  {
+    "file": "E:\\AI Projects\\docflow-ai\\test-results\\docflow-generation\\MEETING_MINUTES-会议纪要.html",
+    "chars": 20761779,
+    "textChars": 43849,
+    "h1": 1,
+    "h2": 16,
+    "h3": 89,
+    "h4": 24,
+    "h5": 14,
+    "h6": 0,
+    "headings": 144,
+    "tables": 26,
+    "images": 61,
+    "dataImages": 61,
+    "figureCaptionClass": 70,
+    "tableCaptionClass": 36,
+    "figureCaptionText": 73,
+    "tableCaptionText": 39,
+    "headingSamples": [
+      {
+        "level": 1,
+        "text": "2020-总部基建全过程综合数字化管理平台项目-数字化知识管理和共享服务 详细设计说明书"
+      },
+      {
+        "level": 2,
+        "text": "目 录"
+      },
+      {
+        "level": 2,
+        "text": "二、 引言"
+      },
+      {
+        "level": 3,
+        "text": "（一） 编写目的"
+      },
+      {
+        "level": 3,
+        "text": "（二） 项目背景"
+      },
+      {
+        "level": 3,
+        "text": "（三） 项目目标"
+      },
+      {
+        "level": 3,
+        "text": "（四） 项目范围"
+      },
+      {
+        "level": 2,
+        "text": "三、 总体设计"
+      },
+      {
+        "level": 3,
+        "text": "（一） 总体架构"
+      },
+      {
+        "level": 3,
+        "text": "（二） 功能模块划分"
+      },
+      {
+        "level": 4,
+        "text": "1. GIS-Server服务管理和数据共享服务"
+      },
+      {
+        "level": 5,
+        "text": "(1) 地形切片服务"
+      },
+      {
+        "level": 5,
+        "text": "(2) 影像切片服务"
+      },
+      {
+        "level": 5,
+        "text": "(3) 点云切片服务"
+      },
+      {
+        "level": 5,
+        "text": "(4) 模型切片服务"
+      },
+      {
+        "level": 4,
+        "text": "2. EV-Creator数据处理服务"
+      },
+      {
+        "level": 5,
+        "text": "(1) max模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "(2) revit模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "(3) mesh模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "(4) glb模型转mesh模型"
+      },
+      {
+        "level": 5,
+        "text": "(5) 模型简化工具"
+      },
+      {
+        "level": 5,
+        "text": "(6) 通用模型转换工具"
+      },
+      {
+        "level": 5,
+        "text": "(7) 模型坐标转换工具"
+      },
+      {
+        "level": 5,
+        "text": "(8) osgb模型转e3m模型"
+      },
+      {
+        "level": 4,
+        "text": "3. glb模型转e3m模型"
+      },
+      {
+        "level": 4,
+        "text": "4. 影像高程切片工具"
+      },
+      {
+        "level": 4,
+        "text": "5. las点云转e3m"
+      },
+      {
+        "level": 3,
+        "text": "（三） EV-Globe WebGL引擎服务"
+      },
+      {
+        "level": 4,
+        "text": "1. 加载影像"
+      },
+      {
+        "level": 4,
+        "text": "2. 加载高程"
+      }
+    ],
+    "figureCaptionSamples": [
+      "图3-1",
+      "图3-2",
+      "图3-3",
+      "图3-4",
+      "图3-5",
+      "图3-6",
+      "图3-7",
+      "图3-8",
+      "图3-9",
+      "图3-10",
+      "图3-11",
+      "图3-12",
+      "图3-13",
+      "图3-14",
+      "图3-15",
+      "图3-16",
+      "图3-17",
+      "图3-18",
+      "图3-19",
+      "图3-20"
+    ],
+    "tableCaptionSamples": [
+      "表2-1",
+      "表2-2",
+      "表3-1",
+      "表5-1",
+      "表6-1",
+      "表7-1",
+      "表7-2",
+      "表1.",
+      "表7-3",
+      "表7-4",
+      "表7-5",
+      "表 2.",
+      "表1",
+      "表7-6",
+      "表 3.",
+      "表2",
+      "表7-7",
+      "表7-8",
+      "表3",
+      "表7-9"
+    ]
+  },
+  {
+    "file": "E:\\AI Projects\\docflow-ai\\test-results\\docflow-generation\\WORK_REPORT-工作汇报方案.html",
+    "chars": 20760377,
+    "textChars": 43534,
+    "h1": 1,
+    "h2": 31,
+    "h3": 69,
+    "h4": 30,
+    "h5": 14,
+    "h6": 0,
+    "headings": 145,
+    "tables": 26,
+    "images": 61,
+    "dataImages": 61,
+    "figureCaptionClass": 69,
+    "tableCaptionClass": 36,
+    "figureCaptionText": 73,
+    "tableCaptionText": 39,
+    "headingSamples": [
+      {
+        "level": 1,
+        "text": "2020-总部基建全过程综合数字化管理平台项目-数字化知识管理和共享服务"
+      },
+      {
+        "level": 2,
+        "text": "目 录"
+      },
+      {
+        "level": 2,
+        "text": "二、 引言"
+      },
+      {
+        "level": 3,
+        "text": "（一） 编写目的"
+      },
+      {
+        "level": 3,
+        "text": "（二） 项目背景"
+      },
+      {
+        "level": 3,
+        "text": "（三） 项目目标"
+      },
+      {
+        "level": 3,
+        "text": "（四） 项目范围"
+      },
+      {
+        "level": 2,
+        "text": "三、 总体设计"
+      },
+      {
+        "level": 3,
+        "text": "（一） 总体架构"
+      },
+      {
+        "level": 3,
+        "text": "（二） 功能模块划分"
+      },
+      {
+        "level": 4,
+        "text": "1. GIS-Server服务管理和数据共享服务"
+      },
+      {
+        "level": 5,
+        "text": "(1) 地形切片服务"
+      },
+      {
+        "level": 5,
+        "text": "(2) 影像切片服务"
+      },
+      {
+        "level": 5,
+        "text": "(3) 点云切片服务"
+      },
+      {
+        "level": 5,
+        "text": "(4) 模型切片服务"
+      },
+      {
+        "level": 4,
+        "text": "2. EV-Creator数据处理服务"
+      },
+      {
+        "level": 5,
+        "text": "(1) max模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "(2) revit模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "(3) mesh模型转glb模型"
+      },
+      {
+        "level": 5,
+        "text": "(4) glb模型转mesh模型"
+      },
+      {
+        "level": 5,
+        "text": "(5) 模型简化工具"
+      },
+      {
+        "level": 5,
+        "text": "(6) 通用模型转换工具"
+      },
+      {
+        "level": 5,
+        "text": "(7) 模型坐标转换工具"
+      },
+      {
+        "level": 5,
+        "text": "(8) osgb模型转e3m模型"
+      },
+      {
+        "level": 4,
+        "text": "3. glb模型转e3m模型"
+      },
+      {
+        "level": 4,
+        "text": "4. 影像高程切片工具"
+      },
+      {
+        "level": 4,
+        "text": "5. las点云转e3m"
+      },
+      {
+        "level": 3,
+        "text": "（三） EV-Globe WebGL引擎服务"
+      },
+      {
+        "level": 4,
+        "text": "1. 加载影像"
+      },
+      {
+        "level": 4,
+        "text": "2. 加载高程"
+      }
+    ],
+    "figureCaptionSamples": [
+      "图3-1",
+      "图3-2",
+      "图3-3",
+      "图3-4",
+      "图3-5",
+      "图3-6",
+      "图3-7",
+      "图3-8",
+      "图3-9",
+      "图3-10",
+      "图3-11",
+      "图3-12",
+      "图3-13",
+      "图3-14",
+      "图3-15",
+      "图3-16",
+      "图3-17",
+      "图3-18",
+      "图3-19",
+      "图3-20"
+    ],
+    "tableCaptionSamples": [
+      "表2-1",
+      "表2-2",
+      "表3-1",
+      "表5-1",
+      "表6-1",
+      "表7-1",
+      "表7-2",
+      "表1.",
+      "表7-3",
+      "表7-4",
+      "表7-5",
+      "表 2.",
+      "表1",
+      "表7-6",
+      "表 3.",
+      "表2",
+      "表7-7",
+      "表7-8",
+      "表3",
+      "表7-9"
+    ]
+  }
+]

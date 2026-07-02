@@ -1,20 +1,18 @@
 ﻿// 支付服务
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 import { authService } from './authService';
+import { API_BASE_URL } from './apiBase';
 import i18n from '../i18n';
 
 export interface CreateCheckoutRequest {
     planType: string;
-    paymentMethod?: 'alipay' | 'wechat' | 'qrcode';
+    paymentMethod?: 'wechat';
 }
 
 export interface CheckoutResponse {
-    paymentMethod: 'alipay' | 'wechat' | 'qrcode';
+    paymentMethod: 'wechat';
     orderId?: string;
     qrCode?: string;
     amount?: number;
-    alipayQrUrl?: string;
-    wechatQrUrl?: string;
     isMock?: boolean;
 }
 
@@ -22,7 +20,7 @@ class PaymentService {
     // 创建支付会话
     async createCheckoutSession(
         planType: string,
-        paymentMethod: 'alipay' | 'wechat' = 'alipay'
+        paymentMethod: 'wechat' = 'wechat'
     ): Promise<CheckoutResponse> {
         const token = authService.getToken();
         if (!token) {

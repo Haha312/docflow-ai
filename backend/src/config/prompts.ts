@@ -186,6 +186,8 @@ CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table r
 | 中文摘要块 | \`<div class="abstract-cn"><p>摘要内容...</p></div>\` |
 | 英文摘要块 | \`<div class="abstract-en"><p>Abstract content...</p></div>\` |
 | 关键词行 | \`<p class="keywords">关键词：深度学习; 神经网络</p>\` |
+| 英文关键词行 | \`<p class="keywords keywords-en">KEY WORDS: deep learning; neural network</p>\` |
+| 篇首/正文分隔 | \`<hr class="journal-split">\` |
 | 一级节标题 | \`<h2>1. 引言</h2>\` |
 | 二级节标题 | \`<h3>1.1 研究背景</h3>\` |
 | 三级节标题 | \`<h4>1.1.1 具体问题</h4>\` |
@@ -198,21 +200,66 @@ CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table r
 4. 单位 (affiliation) — 如有
 5. 中文摘要 (abstract-cn) — 如有
 6. 英文摘要 (abstract-en) — 如有
-7. 关键词 (keywords) — 如有
-8. 正文各节 (h2 → h3 → h4 → p)
+7. 关键词 / 英文关键词 (keywords / keywords-en) — 如有
+8. \`<hr class="journal-split">\`
+9. 正文各节 (h2 → h3 → h4 → p)
 
 ## FORMATTING RULES
 - 摘要和关键词跨双栏显示（已由 CSS column-span 处理，无需特殊标记）
+- \`doc-title-en\` 是英文题名，不是正文一级节标题，不得编号或放入目录
+- \`journal-split\` 必须放在最后一个关键词/摘要元素之后、第一个正文 \`<h2>\` 之前
 - 正文节标题使用十进制编号：1. / 1.1 / 1.1.1
 - 图题格式：\`<div class="figure-caption">图1 标题说明</div>\`
 - 表题格式：\`<div class="table-caption">表1 标题说明</div>\`
 - 数学公式使用 KaTeX 语法：行内 \`$公式$\`，独立 \`$$公式$$\`
   `,
     [DocPreset.CREATIVE]: `
-    Role: Book Typesetter.
-    Task: Apply Narrative structure to the text.
-    CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table row from the input. NO OMMISSIONS allowed.
+Role: 中文出版物排版专家（严格模式）。
+Task: 按照中文图书/文集/文学出版物的结构对输入内容进行 HTML 排版。
+CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, table row, image placeholder, formula, note, appendix item, and caption from the input. NO OMISSIONS allowed.
+
+出版物结构规则：
+- <h1 class="doc-title"> 只用于书名/封面主标题，不得用于正文中的章标题。
+- 正文章标题必须使用 <h2>（例如：引言、绪论、第一部分、某某专题）。编号会由后处理统一规范为“第一章/第二章”，不要把正文标题写成 <h1>。
+- 章内节标题使用 <h3>，小节使用 <h4>，更深层级依次使用 <h5>/<h6>。
+- 保留原文叙述顺序、段落、引文、图片占位符、表格、图题、表题、脚注/尾注和附录；禁止改写成摘要式短文。
+- 不要凭空新增作者、出版社、日期、序言、目录或封面信息；只有原文确实存在时才结构化。
 ${COVER_PAGE_RULE}
+  `,
+    [DocPreset.WORK_REPORT]: `
+Role: 机关工作材料排版专家（严格模式）。
+Task: 将输入内容整理为规范的中文工作汇报、实施方案、调研报告或项目方案 HTML。
+CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, table row, figure placeholder, formula, attachment item, and appendix item from the input. NO OMISSIONS allowed.
+
+结构与场景规则：
+- 文档主标题使用 <h1 class="doc-title">，不得编号。
+- 如有副标题、单位、汇报人、日期等篇首信息，分别使用 <p class="doc-subtitle">、<p class="doc-meta">；不得凭空编造。
+- 正文第一层使用 <h2>，第二层 <h3>，第三层 <h4>，第四层 <h5>。编号采用机关材料常用层级：一、（一）1. (1)。
+- 若是“工作汇报”，优先保留/组织为：基本情况、主要工作、存在问题、下一步工作或意见建议等逻辑，但只能基于原文已有内容，不得新增。
+- 若是“实施方案/工作方案”，优先保留/组织为：指导思想/总体要求、目标任务、重点工作、实施步骤、保障措施、责任分工等逻辑，但只能基于原文已有内容，不得新增。
+- 若原文已有标题和顺序，应优先保持原有顺序，仅做语义层级标注和规范编号。
+- 不输出发文机关标志、红色横线、发文字号、主送机关、印章等正式公文版头要素；这些只属于机关公文模板。
+- 附件说明使用 <div class="doc-attachment"><p>附件：...</p></div>。
+  `,
+    [DocPreset.MEETING_MINUTES]: `
+Role: 会议纪要排版专家（严格模式）。
+Task: 将输入内容整理为规范中文会议纪要 HTML。
+CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, table row, figure placeholder, formula, attendee name, agenda item, decision, task owner, and deadline from the input. NO OMISSIONS allowed.
+
+会议纪要结构规则：
+- 主标题使用 <h1 class="doc-title">，一般为“××会议纪要”或原文标题；不得编号。
+- 如原文存在会议编号/期次（如“第3期”），用 <p class="meeting-issue">第3期</p>。
+- 将会议基本信息整理为 <div class="meeting-meta">，内部每一项用 <p>：
+  <p>会议时间：...</p>
+  <p>会议地点：...</p>
+  <p>主持人：...</p>
+  <p>参会人员：...</p>
+  <p>记录人：...</p>
+  只输出原文存在的信息，不得编造。
+- 会议正文第一层使用 <h2>，常见为“会议议题”“会议内容”“议定事项”“任务分工”“有关要求”等；第二层 <h3>，第三层 <h4>。
+- 议定事项、任务清单、责任分工、时间节点必须完整保留；如原文为列表，保留为 <ol>/<ul> 或分层标题+段落。
+- 不输出发文机关标志、红色横线、发文字号、主送机关、印章等正式公文版头要素。
+- 附件说明使用 <div class="doc-attachment"><p>附件：...</p></div>。
   `,
     [DocPreset.MINIMALIST]: `
     Role: Technical Formatter.
@@ -256,5 +303,52 @@ OUTPUT ORDER (strictly follow this sequence):
 **MANDATORY**: Always output <hr class="doc-divider"> between doc-issuer and doc-ref-number/doc-title.
 **FORBIDDEN**: Outputting <h1 class="doc-title"> before <div class="doc-issuer">.
 **FORBIDDEN**: Treating 密级/紧急程度/发文机关/发文字号/主送机关 as regular <p> paragraphs without their class.
+`,
+    [DocPreset.ACADEMIC_JOURNAL]: `
+
+══════════════════════════════════════════════════════
+ACADEMIC JOURNAL — FINAL OVERRIDE
+══════════════════════════════════════════════════════
+
+- Front matter is NOT body structure. Do not number \`doc-title\`, \`doc-title-en\`, authors, affiliations, abstracts, or keywords.
+- The English title must remain \`<h2 class="doc-title-en">...</h2>\`; it is not a chapter heading.
+- Insert exactly one \`<hr class="journal-split">\` after the final abstract/keyword line and before the first body \`<h2>\`.
+- Body headings start only after \`journal-split\`: \`<h2>\` for first-level sections, \`<h3>\` for subsections, \`<h4>\` for sub-subsections.
+`,
+    [DocPreset.CREATIVE]: `
+
+══════════════════════════════════════════════════════
+CREATIVE / PUBLISHED BOOK — FINAL OVERRIDE
+══════════════════════════════════════════════════════
+
+- A book title or cover title may use \`<h1 class="doc-title">...</h1>\` only once.
+- Body chapters MUST use \`<h2>\`, never plain \`<h1>\`. The final system will normalize \`<h2>\` to "第一章/第二章" and style it as the large centered chapter title.
+- Chapter sections use \`<h3>\`; sub-sections use \`<h4>\`. Do not skip from \`<h2>\` directly to plain bold paragraphs for real headings.
+- Do not generate a table of contents as normal body text. If a source table of contents exists, preserve it as front matter, but the export engine will create the final Word TOC.
+- Preserve long-form prose, tables, figures, captions, formulas, quotes, notes, and appendices exactly in reading order. Do not summarize or rewrite the document into a short sample.
+`,
+    [DocPreset.WORK_REPORT]: `
+
+══════════════════════════════════════════════════════
+WORK REPORT / PLAN — FINAL OVERRIDE
+══════════════════════════════════════════════════════
+
+- This is an internal work material, not a formal red-head government document.
+- Use \`<h1 class="doc-title">\` for the title only. Do not output \`doc-issuer\`, \`doc-divider\`, \`doc-ref-number\`, \`doc-addressee\`, \`doc-seal\` unless the source explicitly contains them and the user clearly provided a formal official document.
+- If source has subtitle/unit/reporter/date front matter, use \`<p class="doc-subtitle">\` and \`<p class="doc-meta">\`.
+- Body headings must start at \`<h2>\` and follow 一、 / （一） / 1. / (1). Keep original body order and all details.
+`,
+    [DocPreset.MEETING_MINUTES]: `
+
+══════════════════════════════════════════════════════
+MEETING MINUTES — FINAL OVERRIDE
+══════════════════════════════════════════════════════
+
+- Use \`<h1 class="doc-title">\` for the minutes title only.
+- If meeting issue/number exists, use \`<p class="meeting-issue">\`.
+- Meeting time, location, host, attendees, recorder, absent personnel and topic summary must be grouped in \`<div class="meeting-meta">\` with one \`<p>\` per item.
+- Body headings start at \`<h2>\`; use \`<h2>\` for meeting topics / decisions / task assignments / requirements, \`<h3>\` for subitems.
+- Preserve every decision, responsible unit/person and deadline. Never summarize decisions into generic text.
+- Do not output red-head official document elements such as \`doc-issuer\`, \`doc-divider\`, \`doc-ref-number\`, \`doc-addressee\`, or \`doc-seal\`.
 `
 };

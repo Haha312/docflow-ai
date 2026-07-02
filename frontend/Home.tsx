@@ -16,9 +16,8 @@ import { generateDocumentViaBackend } from './services/backendApiService';
 import { generateDocx } from './utils/docxGenerator';
 import { sanitizeDocxPreview } from './utils/sanitizeHtml';
 import { useAuth } from './contexts/AuthContext';
-import systemLogo from './image/image.jpg';
 // useTypewriter removed: SSE stream is already incremental, no need for secondary typing animation
-import { PRESETS } from './constants';
+import { PRESETS, VISIBLE_PRESETS } from './constants';
 import { DocPreset, AIState, StyleConfig } from './types';
 import katex from 'katex';
 import DOMPurify from 'dompurify';
@@ -135,6 +134,17 @@ function Home() {
 
   const [showPRD, setShowPRD] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'preview'>('preview');
+  // 主题(与后台共用 localStorage 键 'docflow_theme';CSS 由 index.css 的 :root[data-doc-theme] 驱动)
+  const [themeMode, setThemeMode] = useState<'dark' | 'light' | 'blueviolet' | 'green' | 'coral'>(() => {
+    try {
+      const v = localStorage.getItem('docflow_theme');
+      return (['dark', 'light', 'blueviolet', 'green', 'coral'].includes(v ?? '') ? v : 'light') as 'dark' | 'light' | 'blueviolet' | 'green' | 'coral';
+    } catch { return 'light'; }
+  });
+  useEffect(() => {
+    document.documentElement.setAttribute('data-doc-theme', themeMode);
+    try { localStorage.setItem('docflow_theme', themeMode); } catch { /* ignore */ }
+  }, [themeMode]);
   // 真·分页:默认只读分页(一张张 A4 纸);点「编辑」切到单 div 富文本编辑态
   const [editMode, setEditMode] = useState(false);
   const [downloadHighlight, setDownloadHighlight] = useState(false);
@@ -1140,14 +1150,12 @@ function Home() {
               title={t('home.back_home', '返回首页')}
               className="flex items-center gap-2.5 group focus:outline-none"
             >
-              <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-                  <img
-                    src={systemLogo}
-                    alt="DocFlow AI"
-                    className="w-6 h-6 object-contain invert brightness-200"
-                    draggable={false}
-                  />
-              </div>
+              <img
+                src="/icon.svg"
+                alt="DocFlow AI"
+                className="w-8 h-8 rounded-lg"
+                draggable={false}
+              />
               <span className="text-lg font-semibold text-gray-900 group-hover:text-gray-600 transition-colors">DocFlow AI</span>
             </button>
           </div>
@@ -1170,6 +1178,8 @@ function Home() {
               onOpenAuth={() => setShowAuthModal(true)}
               onOpenProfile={() => setShowProfileModal(true)}
               onOpenAdmin={() => navigate('/admin')}
+              themeMode={themeMode}
+              onThemeChange={setThemeMode}
             />
           </div>
         </div>
@@ -1217,7 +1227,7 @@ function Home() {
 
               {/* 模板 chips:5 个国标模板(只读默认)+ 自定义(可调) */}
               <div className="flex flex-wrap gap-2 justify-center mt-6 max-w-2xl">
-                {PRESETS.map(p => {
+                {VISIBLE_PRESETS.map(p => {
                   const titleKey = `home.preset_${p.id.toLowerCase().replace('-', '_')}`;
                   const selected = selectedPreset === p.id;
                   return (
@@ -1398,7 +1408,7 @@ function Home() {
 
               <div className="-mx-1 px-1">
                 <div className="grid grid-cols-2 gap-2">
-                  {PRESETS.map(preset => (
+                  {VISIBLE_PRESETS.map(preset => (
                     <PresetCard
                       key={`${preset.id}-${i18n.language}`}
                       config={preset}
@@ -1556,7 +1566,7 @@ function Home() {
 
               {/* 模板 chips:国标只读 + 自定义可调 */}
               <div className={`flex items-center gap-1.5 flex-wrap ${aiState.isThinking ? 'opacity-50 pointer-events-none' : ''}`}>
-                {PRESETS.map(p => {
+                {VISIBLE_PRESETS.map(p => {
                   const sel = selectedPreset === p.id;
                   return (
                     <button

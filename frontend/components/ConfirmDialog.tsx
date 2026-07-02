@@ -77,15 +77,17 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     const { Icon } = style;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center animate-in fade-in duration-200">
+        <div className="prism-modal confirm-modal fixed inset-0 z-50 flex items-center justify-center animate-in fade-in duration-200">
             {/* Backdrop */}
-            <div
-                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            <button
+                type="button"
+                className="modal-backdrop absolute inset-0"
                 onClick={onCancel}
+                aria-label={finalCancelText}
             />
 
             {/* Dialog */}
-            <div className="relative bg-white rounded-3xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden animate-in zoom-in-95 fade-in duration-200">
+            <div className="confirm-panel modal-surface relative rounded-3xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden animate-in zoom-in-95 fade-in duration-200">
                 {/* Body */}
                 <div className="flex items-start gap-4 px-6 pt-6 pb-4">
                     <div className={`flex-shrink-0 w-11 h-11 rounded-2xl ${style.iconBg} flex items-center justify-center`}>
@@ -107,7 +109,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 <div className="flex items-center gap-3 px-6 pb-6 pt-3">
                     <button
                         onClick={onCancel}
-                        className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all duration-200 active:scale-[0.98]"
+                        className="modal-secondary flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 active:scale-[0.98]"
                     >
                         {finalCancelText}
                     </button>

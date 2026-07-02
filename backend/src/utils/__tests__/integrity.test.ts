@@ -1,85 +1,164 @@
-import { describe, it, expect } from 'vitest';
-import { countStructure, buildIntegrityReport, detectStructuralAnomalies } from '../integrity';
+import { describe, expect, it } from 'vitest';
+import {
+  buildIntegrityReport,
+  countStructure,
+  detectStructuralAnomalies,
+  reconcileMissingTables,
+  validateFinalIntegrity,
+  type StructuralCounts,
+} from '../integrity';
 
 describe('countStructure', () => {
-  it('按级统计标题并跳过 doc-title', () => {
+  it('counts headings, paragraphs, lists, images, placeholders, and tables', () => {
     const html =
-      '<h1 class="doc-title">关于XX的通知</h1>' +
-      '<h2>1. 引言</h2><p>第一段正文。</p>' +
-      '<h2>2. 现状</h2><h3>2.1 子节</h3><p>第二段。</p>' +
-      '<ul><li>条目一</li><li>条目二</li></ul>' +
-      '<p>第三段 <img src="x.png"></p>';
+      '<h1 class="doc-title">Document Title</h1>' +
+      '<h2>1. Intro</h2><p>First paragraph.</p>' +
+      '<h2>2. Status</h2><h3>2.1 Detail</h3><p>Second paragraph.</p>' +
+      '<ul><li>Item one</li><li>Item two</li></ul>' +
+      '<table><tr><td>Table cell</td></tr></table>' +
+      '<p>Third paragraph <img src="x.png"></p>' +
+      '<p>__IMG_0__</p>';
+
     const c = countStructure(html);
-    expect(c.headings).toBe(3);            // 2×h2 + 1×h3,doc-title 不计
+    expect(c.headings).toBe(3);
     expect(c.headingsByLevel[2]).toBe(2);
     expect(c.headingsByLevel[3]).toBe(1);
     expect(c.headingsByLevel[1]).toBeUndefined();
-    expect(c.paragraphs).toBe(3);
+    expect(c.paragraphs).toBe(4);
     expect(c.listItems).toBe(2);
-    expect(c.images).toBe(1);
+    expect(c.images).toBe(2);
+    expect(c.tables).toBe(1);
     expect(c.charCount).toBeGreaterThan(0);
   });
 
-  it('列表项取 <li> 与 (N) 显式编号的较大者', () => {
+  it('uses the larger count between li elements and explicit numbered items', () => {
     expect(countStructure('<li>a</li><li>b</li><li>c</li>').listItems).toBe(3);
-    expect(countStructure('（1）甲 （2）乙 （3）丙 （4）丁').listItems).toBe(4);
+    expect(countStructure('(1) A (2) B (3) C (4) D').listItems).toBe(4);
   });
 
-  it('纯文本(无标签)→ 标题/段落为 0,字符数有效,不崩', () => {
-    const c = countStructure('这是一段没有任何标签的纯文本内容。');
+  it('counts plain text characters without inventing structure', () => {
+    const c = countStructure('plain text without tags');
     expect(c.headings).toBe(0);
     expect(c.paragraphs).toBe(0);
-    expect(c.charCount).toBe('这是一段没有任何标签的纯文本内容。'.length);
+    expect(c.charCount).toBe('plaintextwithouttags'.length);
   });
 
-  it('空输入返回全 0', () => {
-    const c = countStructure('');
-    expect(c).toEqual({ paragraphs: 0, headings: 0, headingsByLevel: {}, listItems: 0, charCount: 0, images: 0 });
+  it('returns all zeroes for empty input', () => {
+    expect(countStructure('')).toEqual({
+      paragraphs: 0,
+      headings: 0,
+      headingsByLevel: {},
+      listItems: 0,
+      charCount: 0,
+      images: 0,
+      tables: 0,
+    });
   });
 });
 
 describe('buildIntegrityReport', () => {
-  const counts = (charCount: number, headings = 0) => ({
-    paragraphs: 0, headings, headingsByLevel: {}, listItems: 0, charCount, images: 0,
+  const counts = (charCount: number, headings = 0): StructuralCounts => ({
+    paragraphs: 0,
+    headings,
+    headingsByLevel: {},
+    listItems: 0,
+    charCount,
+    images: 0,
+    tables: 0,
   });
 
-  it('字符保留率四舍五入,标题齐则 headingsMatched=true', () => {
+  it('rounds character retention and matches headings when counts are aligned', () => {
     const r = buildIntegrityReport(counts(100, 5), counts(106, 5), []);
     expect(r.charRetentionPct).toBe(106);
     expect(r.headingsMatched).toBe(true);
     expect(r.truncated).toBe(false);
   });
 
-  it('输出标题少于输入 → headingsMatched=false', () => {
+  it('marks headings unmatched when output has fewer headings', () => {
     expect(buildIntegrityReport(counts(100, 6), counts(90, 4), []).headingsMatched).toBe(false);
   });
 
-  it('含截断/幻觉类事件 → truncated=true;纯 info 不算', () => {
+  it('marks truncation only for truncation-like issues', () => {
     expect(buildIntegrityReport(counts(100), counts(50), [{ type: 'loop_truncated', severity: 'critical', detail: 'x' }]).truncated).toBe(true);
     expect(buildIntegrityReport(counts(100), counts(99), [{ type: 'chunk_skipped', severity: 'info', detail: 'x' }]).truncated).toBe(false);
   });
 
-  it('输入字符为 0 → 保留率兜底 100', () => {
+  it('uses 100% retention when the input has no text', () => {
     expect(buildIntegrityReport(counts(0), counts(50), []).charRetentionPct).toBe(100);
   });
 });
 
-describe('detectStructuralAnomalies', () => {
-  it('单个 doc-title → 无异常', () => {
-    expect(detectStructuralAnomalies('<h1 class="doc-title">标题</h1><h2>章</h2>')).toHaveLength(0);
+describe('validateFinalIntegrity', () => {
+  const counts = (overrides: Partial<StructuralCounts> = {}): StructuralCounts => ({
+    paragraphs: 20,
+    headings: 3,
+    headingsByLevel: { 2: 3 },
+    listItems: 10,
+    charCount: 2000,
+    images: 2,
+    tables: 2,
+    ...overrides,
   });
-  it('多个 doc-title → critical 绊线', () => {
+
+  it('detects obvious loss after the whole document is merged', () => {
+    const issues = validateFinalIntegrity(
+      counts(),
+      counts({ paragraphs: 5, listItems: 3, charCount: 1300, images: 1, tables: 1 }),
+    );
+
+    expect(issues.map((x) => x.type)).toEqual(expect.arrayContaining([
+      'images_reduced',
+      'tables_reduced',
+      'list_items_reduced',
+      'paragraphs_reduced',
+      'content_reduced',
+    ]));
+  });
+
+  it('does not flag normal small structural shifts', () => {
+    expect(validateFinalIntegrity(
+      counts(),
+      counts({ paragraphs: 16, listItems: 8, charCount: 1950, images: 2, tables: 2 }),
+    )).toHaveLength(0);
+  });
+});
+
+describe('reconcileMissingTables', () => {
+  it('appends source tables that are missing from output', () => {
+    const source = '<p>A</p><table><tr><td>Kept</td></tr></table><table><tr><td>Missing</td></tr></table>';
+    const output = '<p>A</p><table><tr><td>Kept</td></tr></table>';
+    const repaired = reconcileMissingTables(source, output);
+
+    expect(repaired.text).toContain('Missing');
+    expect(repaired.text).toContain('未能定位到原位置的表格');
+    expect(repaired.issues.some((x) => x.type === 'table_missing')).toBe(true);
+  });
+
+  it('does not change output when all tables are present', () => {
+    const source = '<table><tr><td>Only table</td></tr></table>';
+    const output = '<p>Styled</p><table><tr><td>Only table</td></tr></table>';
+    expect(reconcileMissingTables(source, output)).toEqual({ text: output, issues: [] });
+  });
+});
+
+describe('detectStructuralAnomalies', () => {
+  it('accepts a single document title', () => {
+    expect(detectStructuralAnomalies('<h1 class="doc-title">Title</h1><h2>Chapter</h2>')).toHaveLength(0);
+  });
+
+  it('flags multiple document titles', () => {
     const issues = detectStructuralAnomalies('<h1 class="doc-title">A</h1><h2>x</h2><h1 class="doc-title">B</h1>');
     expect(issues.some((x) => x.type === 'multiple_titles' && x.severity === 'critical')).toBe(true);
   });
-  it('重复标题被降级成同文本 h2(doc-title class 已抹掉)→ 文本级 critical 绊线', () => {
-    // 旧绊线只数 class 会漏检;文本级检测能抓到。
-    const html = '<h1 class="doc-title">平台设计</h1><h2>目标</h2><h2>平台设计</h2>';
+
+  it('flags the document title repeated as a section heading', () => {
+    const html = '<h1 class="doc-title">Platform Design</h1><h2>Goals</h2><h2>Platform Design</h2>';
     const issues = detectStructuralAnomalies(html);
     expect(issues.some((x) => x.type === 'title_text_duplicated_as_heading' && x.severity === 'critical')).toBe(true);
   });
-  it('正常文档(章节文本均不等于标题)→ 无绊线', () => {
-    const html = '<h1 class="doc-title">关于XX的通知</h1><h2>1. 引言</h2><h2>2. 现状</h2>';
+
+  it('accepts normal section headings', () => {
+    const html = '<h1 class="doc-title">Notice</h1><h2>1. Intro</h2><h2>2. Status</h2>';
     expect(detectStructuralAnomalies(html)).toHaveLength(0);
   });
 });

@@ -1,10 +1,10 @@
 
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { parseUploadedFile, getFileSizeLimit } from '../utils/parseUploadedFile';
+import { parseUploadedFile, getFileSizeLimit, ParsedUpload } from '../utils/parseUploadedFile';
 
 interface Props {
-  onFileLoaded: (content: string, fileName: string) => void;
+  onFileLoaded: (content: string, fileName: string, upload?: ParsedUpload) => void;
   userTier?: 'FREE' | 'PLUS' | 'PRO' | 'ULTRA';
 }
 
@@ -13,7 +13,7 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingFileType, setLoadingFileType] = useState<'docx' | 'text'>('text');
+  const [loadingFileType, setLoadingFileType] = useState<'docx' | 'text' | 'image'>('text');
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -30,11 +30,11 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
   const processFile = async (file: File) => {
     setError(null);
     setIsLoading(true);
-    setLoadingFileType(file.name.endsWith('.docx') ? 'docx' : 'text');
+    setLoadingFileType(file.type.startsWith('image/') ? 'image' : file.name.endsWith('.docx') ? 'docx' : 'text');
     try {
-      const { content, fileName } = await parseUploadedFile(file, userTier, t);
+      const upload = await parseUploadedFile(file, userTier, t);
       setError(null);
-      onFileLoaded(content, fileName);
+      onFileLoaded(upload.content, upload.fileName, upload);
     } catch (e: any) {
       setError(e.message || t('home.read_docx_failed', "读取 .docx 文件失败，请确认文件未损坏。"));
     } finally {
@@ -76,7 +76,7 @@ export const FileDropzone: React.FC<Props> = ({ onFileLoaded, userTier }) => {
     >
       <input
         type="file"
-        accept=".txt,.md,.doc,.docx"
+        accept=".txt,.md,.doc,.docx,image/png,image/jpeg,image/webp,image/gif,image/bmp"
         onChange={handleInputChange}
         disabled={isLoading}
         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-wait"

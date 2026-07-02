@@ -87,7 +87,10 @@
       "Bash(find D:/docuflow-ai/backend/src -type f -name *.ts)",
       "WebSearch",
       "WebFetch(domain:www.nppa.gov.cn)",
-      "WebFetch(domain:zhuanlan.zhihu.com)"
+      "WebFetch(domain:zhuanlan.zhihu.com)",
+      "Bash(pkill -f \"npm run dev\")",
+      "Read(//c/Users/86188/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/cec6aa43-fd00-49c5-956a-8b1ad955d65d/8b267265-f741-45d9-9030-74ea5ae72922/skills/docx/**)",
+      "Bash(python scripts/office/unpack.py \"E:\\\\下载内容\\\\DocFlow_陕西省电力设计院三维数字地图信息中心-建设方案\\(2\\).docx\" /tmp/docflow_unpack)"
     ]
   }
 }

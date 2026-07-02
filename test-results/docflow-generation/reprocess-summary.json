@@ -1,0 +1,34 @@
+[
+  {
+    "target": "WORK_REPORT-工作汇报方案.html",
+    "output": "WORK_REPORT-工作汇报方案.reprocessed.html",
+    "headings": 144,
+    "headingsByLevel": {
+      "2": 31,
+      "3": 69,
+      "4": 30,
+      "5": 14
+    },
+    "tables": 26,
+    "images": 61,
+    "charRetentionPct": 100,
+    "headingsMatched": true,
+    "issues": []
+  },
+  {
+    "target": "MEETING_MINUTES-会议纪要.html",
+    "output": "MEETING_MINUTES-会议纪要.reprocessed.html",
+    "headings": 143,
+    "headingsByLevel": {
+      "2": 31,
+      "3": 68,
+      "4": 30,
+      "5": 14
+    },
+    "tables": 26,
+    "images": 61,
+    "charRetentionPct": 100,
+    "headingsMatched": true,
+    "issues": []
+  }
+]

@@ -17,12 +17,25 @@ interface Props {
 
 export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate, presetTitle, presetId, defaultConfig }) => {
     const { t } = useTranslation();
+    const [showMediaSettings, setShowMediaSettings] = React.useState(false);
+    React.useEffect(() => {
+        if (isOpen) setShowMediaSettings(false);
+    }, [isOpen, presetId]);
+
     if (!isOpen) return null;
 
     // Determine if we are editing the Journal preset to show extra fields
     // Use presetId (enum value) for reliable detection regardless of display language
     const isJournal = presetId === 'ACADEMIC_JOURNAL' || presetTitle.includes("学术期刊") || presetTitle.includes("Journal");
-    const isCorporate = presetId === 'CORPORATE' || presetTitle.includes("商务公文") || presetTitle.includes("Corporate");
+    const isCorporate = presetId === 'CORPORATE'
+        || presetId === 'WORK_REPORT'
+        || presetId === 'MEETING_MINUTES'
+        || presetTitle.includes("机关公文")
+        || presetTitle.includes("工作汇报")
+        || presetTitle.includes("会议纪要")
+        || presetTitle.includes("Corporate")
+        || presetTitle.includes("Official")
+        || presetTitle.includes("Meeting Minutes");
     const isCreative = presetId === 'CREATIVE' || presetTitle.includes("出版物") || presetTitle.includes("Creative");
     const isMinimalist = presetId === 'MINIMALIST' || presetTitle.includes("互联网文档") || presetTitle.includes("Minimalist");
 
@@ -173,10 +186,10 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity p-6">
-            <div className="bg-white w-full max-w-[1000px] h-[85vh] rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
+        <div className="prism-modal style-editor-modal fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm transition-opacity p-6">
+            <div className="style-editor-surface bg-[#111111] border border-white/10 w-full max-w-[1000px] h-[85vh] rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
                 {/* Header */}
-                <div className="px-8 py-5 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/80 backdrop-blur shrink-0">
+                <div className="style-editor-header px-8 py-5 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/80 backdrop-blur shrink-0">
                     <div>
                         <h3 className="font-bold text-xl text-zinc-900">{t('styles.title')}</h3>
                         <p className="text-sm text-zinc-500 mt-1">{t('styles.current_preset')} <span className="font-medium text-indigo-600">{presetTitle}</span></p>
@@ -187,7 +200,7 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="style-editor-body flex-1 overflow-y-auto custom-scrollbar">
                     <div className="p-8 space-y-8">
 
                         {/* 1. Top Section: Document Structure (Full Width) */}
@@ -454,8 +467,26 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                 </div>
                             )}
 
-                            {/* ── Row 2 / Right Column: Figures + Tables ── */}
-                            {/* journal/corporate: side-by-side grid; others: stacked in right col */}
+                            <section className="style-editor-advanced-section space-y-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowMediaSettings(prev => !prev)}
+                                    className="style-editor-advanced-toggle w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors"
+                                    aria-expanded={showMediaSettings}
+                                >
+                                    <span className="flex items-center gap-3 min-w-0">
+                                        <span className="style-editor-advanced-icon p-1.5 rounded-lg">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><path d="M9 21V9"></path></svg>
+                                        </span>
+                                        <span className="min-w-0">
+                                            <span className="block font-bold">{t('styles.media_advanced', '图表细项')}</span>
+                                            <span className="block text-xs mt-0.5">{t('styles.media_advanced_desc', '图题、表题、编号和字体设置，默认按模板规范处理')}</span>
+                                        </span>
+                                    </span>
+                                    <svg className={`w-4 h-4 flex-shrink-0 transition-transform ${showMediaSettings ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor"><path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" /></svg>
+                                </button>
+
+                                {showMediaSettings && (
                             <div className={isCorporate || isJournal ? "grid grid-cols-2 gap-8 items-stretch" : "space-y-8"}>
                                 {/* Figures */}
                                 <section className="space-y-4 flex flex-col">
@@ -527,13 +558,15 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                                     </div>
                                 </section>
                             </div>
+                                )}
+                            </section>
                         </div>
 
                     </div>
                 </div>
 
                 {/* Footer */}
-                <div className="p-5 border-t border-zinc-100 bg-white shrink-0 flex justify-between items-center">
+                <div className="style-editor-footer p-5 border-t border-zinc-100 bg-white shrink-0 flex justify-between items-center">
                     <button
                         onClick={() => defaultConfig && onUpdate({ ...defaultConfig })}
                         disabled={!defaultConfig}
@@ -544,7 +577,7 @@ export const StyleEditor: React.FC<Props> = ({ isOpen, onClose, config, onUpdate
                     </button>
                     <button
                         onClick={onClose}
-                        className="px-8 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-bold hover:bg-zinc-800 transition-all shadow-lg shadow-zinc-200/50 hover:shadow-xl hover:shadow-zinc-200/50 transform hover:-translate-y-0.5 active:translate-y-0"
+                        className="prism-primary px-8 py-2.5 bg-zinc-900 text-white rounded-xl text-sm font-bold hover:bg-zinc-800 transition-all shadow-lg shadow-zinc-200/50 hover:shadow-xl hover:shadow-zinc-200/50 transform hover:-translate-y-0.5 active:translate-y-0"
                     >
                         {t('styles.confirm_btn')}
                     </button>

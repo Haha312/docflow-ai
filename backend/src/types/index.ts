@@ -21,6 +21,8 @@ export enum DocPreset {
     ACADEMIC = 'academic',
     ACADEMIC_JOURNAL = 'academic-journal',
     CREATIVE = 'creative',
+    WORK_REPORT = 'work-report',
+    MEETING_MINUTES = 'meeting-minutes',
     MINIMALIST = 'minimalist'
 }
 
@@ -101,12 +103,18 @@ export interface GenerateRequest {
     fileName: string;
     styleConfig: StyleConfig;
     model?: string;
+    preserveSourceHeadingNumbers?: boolean;
+    imageInputs?: Array<{
+        name: string;
+        mimeType: string;
+        dataUrl: string;
+    }>;
 }
 
 // 支付请求
 export interface CreateCheckoutRequest {
     planType: string;
-    paymentMethod?: 'alipay' | 'wechat' | 'qrcode';
+    paymentMethod?: 'wechat';
 }
 
 // JWT Payload

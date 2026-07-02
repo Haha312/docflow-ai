@@ -25,17 +25,28 @@ if (process.env.NODE_ENV !== 'production') {
 // 生产环境启动时校验必需 env,缺失立即退出(fail-fast),不留到运行时才暴露。
 function validateProductionEnv(): void {
     if (process.env.NODE_ENV !== 'production') return;
+    const envAny = (...names: string[]): string | undefined => names.map((name) => process.env[name]).find(Boolean);
     const required: Record<string, string | undefined> = {
         JWT_SECRET: process.env.JWT_SECRET,
         DATABASE_URL: process.env.DATABASE_URL,
         REDIS_URL: process.env.REDIS_URL,
-        BACKEND_URL: process.env.BACKEND_URL,
+        BACKEND_URL: process.env.BACKEND_URL || process.env.PUBLIC_URL,
         // 手机登录核心:腾讯云短信
-        TENCENTCLOUD_SECRET_ID: process.env.TENCENTCLOUD_SECRET_ID,
-        TENCENTCLOUD_SECRET_KEY: process.env.TENCENTCLOUD_SECRET_KEY,
-        TENCENT_SMS_SDK_APP_ID: process.env.TENCENT_SMS_SDK_APP_ID,
-        TENCENT_SMS_SIGN_NAME: process.env.TENCENT_SMS_SIGN_NAME,
-        TENCENT_SMS_TEMPLATE_ID: process.env.TENCENT_SMS_TEMPLATE_ID,
+        TENCENTCLOUD_SECRET_ID: envAny('TENCENTCLOUD_SECRET_ID', 'TENCENT_SMS_SECRET_ID'),
+        TENCENTCLOUD_SECRET_KEY: envAny('TENCENTCLOUD_SECRET_KEY', 'TENCENT_SMS_SECRET_KEY'),
+        TENCENT_SMS_SDK_APP_ID: envAny('TENCENT_SMS_SDK_APP_ID', 'SMS_SDK_APP_ID'),
+        TENCENT_SMS_SIGN_NAME: envAny('TENCENT_SMS_SIGN_NAME', 'SMS_SIGN_NAME'),
+        TENCENT_SMS_TEMPLATE_ID: envAny('TENCENT_SMS_TEMPLATE_ID', 'SMS_TEMPLATE_ID'),
+        DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+        VISION_API_KEY: envAny('VISION_API_KEY', 'DOUBAO_API_KEY'),
+        VISION_MODEL: envAny('VISION_MODEL', 'DOUBAO_ENDPOINT_ID'),
+        WXPAY_APPID: envAny('WXPAY_APPID', 'WECHAT_APP_ID'),
+        WXPAY_MCHID: envAny('WXPAY_MCHID', 'WECHAT_MCH_ID'),
+        WXPAY_CERT_SERIAL: envAny('WXPAY_CERT_SERIAL', 'WECHAT_CERT_SERIAL'),
+        WXPAY_APIV3_KEY: envAny('WXPAY_APIV3_KEY', 'WECHAT_APIV3_KEY'),
+        WXPAY_PRIVATE_KEY_PATH: envAny('WXPAY_PRIVATE_KEY_PATH', 'WECHAT_PRIVATE_KEY_PATH'),
+        WXPAY_PUBLIC_KEY_PATH: envAny('WXPAY_PUBLIC_KEY_PATH', 'WECHAT_PUBLIC_KEY_PATH'),
+        WXPAY_PUBLIC_KEY_ID: envAny('WXPAY_PUBLIC_KEY_ID', 'WECHAT_PUBLIC_KEY_ID'),
     };
     const missing = Object.entries(required).filter(([, v]) => !v).map(([k]) => k);
     if (!process.env.CORS_ORIGINS && !process.env.FRONTEND_URL) missing.push('CORS_ORIGINS (或 FRONTEND_URL)');
@@ -80,7 +91,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// WeChat Pay callback posts XML body
+// WeChat Pay V3 signs the exact raw JSON request body.
 app.use('/api/webhook/wechat', express.text({ type: '*/*' }));
 app.use('/api/payment/webhook/wechat', express.text({ type: '*/*' }));
 

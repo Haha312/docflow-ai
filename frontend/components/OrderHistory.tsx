@@ -61,9 +61,9 @@ export function OrderHistory() {
     }
   };
 
-  if (loading) return <div className="loading">{t('profile.loading')}</div>;
-  if (error) return <div className="error">{error}</div>;
-  if (orders.length === 0) return <div className="empty">{t('profile.no_order_history')}</div>;
+  if (loading) return <div className="order-state">{t('profile.loading')}</div>;
+  if (error) return <div className="order-state is-error">{error}</div>;
+  if (orders.length === 0) return <div className="order-state">{t('profile.no_order_history')}</div>;
 
   const formatStatus = (status: string): string => {
     switch (status) {
@@ -125,18 +125,20 @@ export function OrderHistory() {
 
       <style>{`
         .order-history {
-          margin-top: 1rem;
+          color: var(--df-text);
         }
         
-        h3 {
+        .order-history h3 {
           font-size: 1.1rem;
           margin-bottom: 1rem;
-          color: #333;
+          color: var(--df-text);
         }
 
         .table-container {
           width: 100%;
           overflow-x: auto;
+          border: 1px solid var(--df-border);
+          border-radius: 0.75rem;
         }
 
         table {
@@ -148,16 +150,20 @@ export function OrderHistory() {
         th {
           text-align: left;
           padding: 0.75rem;
-          background: #f9fafb;
-          color: #6b7280;
+          background: var(--df-soft);
+          color: var(--df-text-muted);
           font-weight: 500;
-          border-bottom: 1px solid #e5e7eb;
+          border-bottom: 1px solid var(--df-border);
         }
 
         td {
           padding: 0.75rem;
-          border-bottom: 1px solid #e5e7eb;
-          color: #374151;
+          border-bottom: 1px solid var(--df-border);
+          color: var(--df-text-muted);
+        }
+
+        tr:last-child td {
+          border-bottom: 0;
         }
 
         .status {
@@ -168,38 +174,38 @@ export function OrderHistory() {
         }
 
         .status.paid {
-          background: #d1fae5;
-          color: #059669;
+          background: var(--df-admin-soft);
+          color: var(--df-admin);
         }
 
         .status.pending {
-          background: #fef3c7;
+          background: rgba(245, 158, 11, 0.14);
           color: #d97706;
         }
 
         .status.failed,
         .status.expired {
-          background: #fee2e2;
+          background: rgba(239, 68, 68, 0.14);
           color: #dc2626;
         }
 
         .status.refunding {
-          background: #fef3c7;
+          background: rgba(245, 158, 11, 0.14);
           color: #d97706;
         }
 
         .status.refunded {
-          background: #e0e7ff;
-          color: #4338ca;
+          background: var(--df-paid-soft);
+          color: var(--df-paid);
         }
 
         .refund-btn {
           padding: 4px 12px;
           font-size: 0.75rem;
           font-weight: 500;
-          color: #6b7280;
-          background: white;
-          border: 1px solid #e5e7eb;
+          color: var(--df-text-muted);
+          background: var(--df-soft);
+          border: 1px solid var(--df-border);
           border-radius: 6px;
           cursor: pointer;
           transition: all 0.15s;
@@ -207,8 +213,8 @@ export function OrderHistory() {
 
         .refund-btn:hover:not(:disabled) {
           color: #dc2626;
-          border-color: #fecaca;
-          background: #fef2f2;
+          border-color: rgba(220, 38, 38, 0.24);
+          background: rgba(220, 38, 38, 0.08);
         }
 
         .refund-btn:disabled {
@@ -219,20 +225,20 @@ export function OrderHistory() {
         .inline-error {
           padding: 0.5rem 0.75rem;
           margin-bottom: 0.75rem;
-          background: #fef2f2;
-          border: 1px solid #fecaca;
+          background: rgba(220, 38, 38, 0.08);
+          border: 1px solid rgba(220, 38, 38, 0.22);
           color: #dc2626;
           border-radius: 6px;
           font-size: 0.8rem;
         }
 
-        .loading, .error, .empty {
+        .order-state {
           padding: 2rem;
           text-align: center;
-          color: #6b7280;
+          color: var(--df-text-muted);
         }
 
-        .error {
+        .order-state.is-error {
           color: #dc2626;
         }
       `}</style>

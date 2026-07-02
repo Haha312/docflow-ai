@@ -37,7 +37,7 @@ export function PaymentSuccess() {
         </div>
 
         <h1>{t('pricing.success_title', '支付成功!')}</h1>
-        <h2 className="mt-6 text-3xl font-extrabold text-gray-900">{t('pricing.welcome_pro', '欢迎加入 DocFlow AI Pro 会员')}</h2>
+        <h2 className="mt-6 text-3xl font-extrabold text-gray-900">{t('pricing.welcome_pro', '欢迎加入 DocFlow Pro 会员')}</h2>
 
         <div className="info-box">
           <div className="info-item">

@@ -1,0 +1,42 @@
+[
+  {
+    "preset": "ACADEMIC",
+    "label": "报告论文",
+    "ok": true,
+    "ms": 7942,
+    "bytes": 15185542,
+    "outFile": "E:\\AI Projects\\docflow-ai\\test-results\\docflow-generation\\docx\\ACADEMIC-报告论文.docx"
+  },
+  {
+    "preset": "ACADEMIC_JOURNAL",
+    "label": "学术期刊",
+    "ok": true,
+    "ms": 8279,
+    "bytes": 15184069,
+    "outFile": "E:\\AI Projects\\docflow-ai\\test-results\\docflow-generation\\docx\\ACADEMIC_JOURNAL-学术期刊.docx"
+  },
+  {
+    "preset": "CORPORATE",
+    "label": "机关公文",
+    "ok": true,
+    "ms": 8976,
+    "bytes": 15184056,
+    "outFile": "E:\\AI Projects\\docflow-ai\\test-results\\docflow-generation\\docx\\CORPORATE-机关公文.docx"
+  },
+  {
+    "preset": "WORK_REPORT",
+    "label": "工作汇报方案",
+    "ok": true,
+    "ms": 8193,
+    "bytes": 15184470,
+    "outFile": "E:\\AI Projects\\docflow-ai\\test-results\\docflow-generation\\docx\\WORK_REPORT-工作汇报方案.docx"
+  },
+  {
+    "preset": "MEETING_MINUTES",
+    "label": "会议纪要",
+    "ok": true,
+    "ms": 8381,
+    "bytes": 15183258,
+    "outFile": "E:\\AI Projects\\docflow-ai\\test-results\\docflow-generation\\docx\\MEETING_MINUTES-会议纪要.docx"
+  }
+]

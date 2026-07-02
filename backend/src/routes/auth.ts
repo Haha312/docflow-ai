@@ -23,6 +23,9 @@ const smsCodeRateLimit = authRateLimit({ keyPrefix: 'rl:send-sms', limit: 5, win
 const SMS_CODE_TTL = 300; // 短信验证码有效期 5 分钟
 const SMS_THROTTLE = 60; // 同一手机号发码节流 60s
 const MAX_CODE_ATTEMPTS = 5; // 验证码最大尝试次数
+// 图形验证码「按需」出示:同手机号 10 分钟内已发送满该次数后,后续发送才要求图形码(避免"上来就弹")。
+const CAPTCHA_AFTER = 2;
+const SMS_SENDCOUNT_TTL = 600; // 发送次数统计窗口(10 分钟)
 
 function signToken(user: { id: string; phone: string | null; tokenVersion: number }): string {
     const jwtSecret = process.env.JWT_SECRET;
@@ -95,21 +98,26 @@ router.post('/send-sms-code', smsCodeRateLimit, async (req: Request, res: Respon
             res.status(400).json(errorResponse('手机号格式不正确', 400));
             return;
         }
-        if (!captcha || !sessionId) {
-            res.status(400).json(errorResponse('AUTH_CAPTCHA_REQUIRED', 400));
-            return;
+        // 图形验证码「按需」校验:同手机号近 10 分钟内已发送 >= CAPTCHA_AFTER 次才要求图形码,
+        // 首次/少量发送直接放行,不弹码。前端据 AUTH_CAPTCHA_REQUIRED 决定是否出示图形码并重试。
+        const sendCountKey = `sms:sendcount:${phone}`;
+        const priorSends = parseInt((await redis.get(sendCountKey)) || '0', 10);
+        if (priorSends >= CAPTCHA_AFTER) {
+            if (!captcha || !sessionId) {
+                res.status(400).json(errorResponse('AUTH_CAPTCHA_REQUIRED', 400));
+                return;
+            }
+            const storedCaptcha = await redis.get(`captcha:${sessionId}`);
+            if (!storedCaptcha) {
+                res.status(400).json(errorResponse('AUTH_CAPTCHA_EXPIRED', 400));
+                return;
+            }
+            if (storedCaptcha !== captcha.toLowerCase()) {
+                res.status(400).json(errorResponse('AUTH_CAPTCHA_WRONG', 400));
+                return;
+            }
+            await redis.del(`captcha:${sessionId}`);
         }
-
-        const storedCaptcha = await redis.get(`captcha:${sessionId}`);
-        if (!storedCaptcha) {
-            res.status(400).json(errorResponse('AUTH_CAPTCHA_EXPIRED', 400));
-            return;
-        }
-        if (storedCaptcha !== captcha.toLowerCase()) {
-            res.status(400).json(errorResponse('AUTH_CAPTCHA_WRONG', 400));
-            return;
-        }
-        await redis.del(`captcha:${sessionId}`);
 
         // 同手机号 60s 节流
         if (await redis.get(`sms:throttle:${phone}`)) {
@@ -127,6 +135,8 @@ router.post('/send-sms-code', smsCodeRateLimit, async (req: Request, res: Respon
         await redis.set(`sms:code:${phone}`, code, 'EX', SMS_CODE_TTL);
         await redis.del(`sms:attempts:${phone}`); // 重置尝试计数
         await redis.set(`sms:throttle:${phone}`, '1', 'EX', SMS_THROTTLE);
+        // 累计"发送次数"(10 分钟窗口)——达到阈值后后续发送才需图形码
+        await redis.set(sendCountKey, String(priorSends + 1), 'EX', SMS_SENDCOUNT_TTL);
 
         // 仅开发环境且短信未配置(mock)时,直接回传验证码,方便本地联调(生产绝不返回)
         const devCode = (process.env.NODE_ENV !== 'production' && !isSmsConfigured()) ? code : undefined;
@@ -197,18 +207,19 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
             return;
         }
 
+        const adminUser = await isAdmin(user.phone);
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
         const periodStart = userTier === 'FREE' ? null : getPeriodStart(user.quotaPeriodStart);
-        const usageCount = await getUsageCount(user.id, periodStart);
+        const usageCount = adminUser ? 0 : await getUsageCount(user.id, periodStart);
         const limit = TIER_LIMITS[userTier] || 10;
-        const remainingQuota = Math.max(0, limit - usageCount);
+        const remainingQuota = adminUser ? Number.MAX_SAFE_INTEGER : Math.max(0, limit - usageCount);
 
         res.json(successResponse({
             user: {
                 id: user.id,
                 phone: user.phone,
                 email: user.email,
-                isAdmin: await isAdmin(user.phone),
+                isAdmin: adminUser,
                 subscriptionStatus: user.subscriptionStatus,
                 subscriptionEndDate: user.subscriptionEndDate,
             },

@@ -7,15 +7,17 @@ import { errorResponse } from '../utils/response';
 import { authenticate } from '../middleware/auth';
 import { checkRateLimit } from '../middleware/rateLimit';
 import prisma from '../config/database';
+import { recognizeImagesForLayout } from '../services/visionService';
 
 const router = Router();
 
 import OpenAI from 'openai';
 import { extractImagesAsPlaceholders, restoreImages, convertVectorImagesToPng } from '../utils/imageUtils';
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
-import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies } from '../utils/integrity';
-import { postProcess } from '../utils/postProcess';
+import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies, reconcileMissingTables, validateFinalIntegrity } from '../utils/integrity';
+import { extractSourceCaptions, postProcess } from '../utils/postProcess';
 import { buildSkeleton, expectedChapterCount, type SkeletonNode } from '../utils/skeleton';
+import { normalizeHeadingText } from '../utils/headingText';
 import {
     calcTailHeadOverlap,
     cleanOutput,
@@ -254,6 +256,69 @@ const repairUnclosedTags = (html: string): string => {
     return html + closingTags;
 };
 
+const stripHtmlToCompactText = (html: string): string =>
+    html.replace(/<[^>]+>/g, '').replace(/\s+/g, '').trim();
+
+const normalizeChunkHeading = (text: string): string =>
+    normalizeHeadingText(stripHtmlToCompactText(text)).toLowerCase();
+
+const validateChunkOutput = (
+    chunkInput: string,
+    chunkOutput: string,
+    chunkMeta: StructuredContentChunk,
+): string[] => {
+    const issues: string[] = [];
+    const inputPlainLen = stripHtmlToCompactText(chunkInput).length;
+    const outputPlain = stripHtmlToCompactText(chunkOutput);
+    const outputPlainLen = outputPlain.length;
+
+    if (inputPlainLen > 500 && outputPlainLen < Math.floor(inputPlainLen * 0.45)) {
+        issues.push(`output too short (${outputPlainLen}/${inputPlainLen} chars)`);
+    }
+    if (inputPlainLen > 500 && outputPlainLen > inputPlainLen * 3.8) {
+        issues.push(`output too long (${outputPlainLen}/${inputPlainLen} chars)`);
+    }
+
+    const outputHeadingNorms = [...chunkOutput.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi)]
+        .map((m) => normalizeChunkHeading(m[1]))
+        .filter(Boolean);
+    const missingHeadings = chunkMeta.headings
+        .map((h) => h.text)
+        .filter((text) => {
+            const norm = normalizeChunkHeading(text);
+            if (!norm || norm.length < 3) return false;
+            return !outputHeadingNorms.some((out) => out.includes(norm) || norm.includes(out));
+        });
+    if (missingHeadings.length > 0) {
+        issues.push(`missing heading(s): ${missingHeadings.slice(0, 5).join(' | ')}`);
+    }
+
+    const inputPlaceholders = [...chunkInput.matchAll(/__IMG_\d+__/g)].map(m => m[0]);
+    if (inputPlaceholders.length > 0) {
+        const outputSet = new Set([...chunkOutput.matchAll(/__IMG_\d+__/g)].map(m => m[0]));
+        const missingImages = inputPlaceholders.filter(p => !outputSet.has(p));
+        if (missingImages.length > 0) issues.push(`missing image placeholder(s): ${missingImages.join(', ')}`);
+    }
+
+    const inputTables = (chunkInput.match(/<table\b/gi) ?? []).length;
+    const outputTables = (chunkOutput.match(/<table\b/gi) ?? []).length;
+    if (inputTables > 0 && outputTables < inputTables) {
+        issues.push(`missing table(s): ${outputTables}/${inputTables}`);
+    }
+
+    const inputListItems = Math.max((chunkInput.match(/<li\b/gi) ?? []).length, (chunkInput.match(/[（(]\s*\d+\s*[）)]/g) ?? []).length);
+    const outputListItems = Math.max((chunkOutput.match(/<li\b/gi) ?? []).length, (chunkOutput.match(/[（(]\s*\d+\s*[）)]/g) ?? []).length);
+    if (inputListItems >= 5 && outputListItems < Math.floor(inputListItems * 0.6)) {
+        issues.push(`too few list items: ${outputListItems}/${inputListItems}`);
+    }
+
+    if (hasSameBodyHallucination(chunkOutput) || hasStreamSentenceRepetition(chunkOutput) || hasCharSpam(chunkOutput)) {
+        issues.push('repetition detected');
+    }
+
+    return issues;
+};
+
 const estimateSafeChunkSize = (modelKey: string | undefined, userTier: keyof typeof TIER_LIMITS): number => {
     const baselineByModel: Record<string, number> = {
         'gemini-flash': 12000,
@@ -270,10 +335,28 @@ const estimateSafeChunkSize = (modelKey: string | undefined, userTier: keyof typ
 
 import { TIER_LIMITS, getContentLimit } from '../config/tierConfig';
 import { invalidateUsageCount } from '../utils/usageCount';
-import { splitContentBySemantics, extractFirstHeading, compressChunksByCoverage } from '../utils/chunking';
+import { normalizePreset } from '../utils/preset';
+import { splitContentBySemantics, splitContentIntoStructuredChunks, extractFirstHeading, compressChunksByCoverage, type StructuredContentChunk } from '../utils/chunking';
+const env = (...names: string[]): string | undefined => names.map((name) => process.env[name]).find(Boolean);
+const pickModelKey = (requested?: string): string => {
+    const value = requested || env('AI_PROVIDER') || 'deepseek';
+    return value === 'claude' ? 'deepseek' : value;
+};
+const envNumber = (fallback: number, ...names: string[]): number => {
+    for (const name of names) {
+        const value = process.env[name];
+        if (value !== undefined && value !== '') {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed) && parsed > 0) return parsed;
+        }
+    }
+    return fallback;
+};
 
-const PRIMARY_MODEL = process.env.GEMINI_MODEL || 'gemini-3-pro-preview';
+const PRIMARY_MODEL = env('GEMINI_MODEL') || 'gemini-3-pro-preview';
 const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 50));
+const AI_IDLE_TIMEOUT_MS = envNumber(60000, 'AI_TIMEOUT_MS', 'AI_IDLE_TIMEOUT_MS');
+const AI_MAX_OUTPUT_TOKENS = envNumber(16384, 'AI_MAX_TOKENS', 'AI_MAX_OUTPUT_TOKENS');
 
 interface ModelConfig { apiKey: string; baseUrl: string; modelId: string; needsProxy?: boolean; maxOutputTokens?: number; extraBody?: Record<string, unknown>; }
 
@@ -282,11 +365,11 @@ function getModelConfig(modelKey: string, dbConfig: Record<string, string>): Mod
     const geminiBase = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '';
     const registry: Record<string, ModelConfig> = {
         'gemini-flash': { apiKey: geminiKey,  baseUrl: geminiBase, modelId: 'gemini-2.5-flash',                                  needsProxy: true,  maxOutputTokens: 16000 },
-        'gemini-pro':   { apiKey: geminiKey,  baseUrl: geminiBase, modelId: process.env.GEMINI_MODEL || 'gemini-3-pro-preview', needsProxy: true,  maxOutputTokens: 32000 },
-        'doubao':       { apiKey: process.env.DOUBAO_API_KEY   || '', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',     modelId: process.env.DOUBAO_ENDPOINT_ID || '', needsProxy: false, maxOutputTokens: 8192 },
+        'gemini-pro':   { apiKey: geminiKey,  baseUrl: geminiBase, modelId: env('GEMINI_MODEL') || 'gemini-3-pro-preview', needsProxy: true,  maxOutputTokens: 32000 },
+        'doubao':       { apiKey: env('DOUBAO_API_KEY', 'VISION_API_KEY') || '', baseUrl: env('DOUBAO_BASE_URL', 'VISION_BASE_URL') || 'https://ark.cn-beijing.volces.com/api/v3', modelId: env('DOUBAO_ENDPOINT_ID') || '', needsProxy: false, maxOutputTokens: AI_MAX_OUTPUT_TOKENS },
         // thinking 婵?闂傚倷鐒﹀鍧楀礈濞嗘垼濮抽柤娴嬫櫇娑?(???闂???闂傚倸鍊峰ù鍥晸閵夆晛纾块梺顒€绉甸崑????????濠???闂?????闂??婵犵數鍋為崹鍫曞蓟閵娿儍娲煛娴??? token 1514ms??99ms)??
         // ??闂????闂??DEEPSEEK_THINKING=enabled??
-        'deepseek':     { apiKey: process.env.DEEPSEEK_API_KEY || '', baseUrl: 'https://api.deepseek.com/v1',                  modelId: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash', needsProxy: false, maxOutputTokens: 16384,
+        'deepseek':     { apiKey: env('DEEPSEEK_API_KEY') || '', baseUrl: env('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com/v1', modelId: env('DEEPSEEK_MODEL') || 'deepseek-v4-flash', needsProxy: false, maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
                           extraBody: process.env.DEEPSEEK_THINKING === 'enabled' ? undefined : { thinking: { type: 'disabled' } } },
     };
     return registry[modelKey] ?? null;
@@ -345,7 +428,7 @@ async function* callOpenAICompatible(
     // ????:AbortController + ???闂?????濠?闂?婵犵數鍋為崹鍫曞箰閹绢喖纾??chunk ????;IDLE_MS ??????????????濠?闂?)??
     // ???闂??????婵?????婵犵數鍋為崹鍫曞蓟閵娾晩鏁勯柛娑卞枟濞??婵??????闂?闂?????????MAX_ATTEMPTS ???????闂??????婵????),
     // ????闂??闂????????闂????,?????婵???????
-    const IDLE_MS = 60000;       // 60s ???? token ???闂? provider ????
+    const IDLE_MS = AI_IDLE_TIMEOUT_MS;       // provider idle timeout
     const MAX_ATTEMPTS = 3;      // 闂????????闂???????2 ??
     for (let attempt = 1; ; attempt++) {
         const ac = new AbortController();
@@ -440,25 +523,22 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             // SystemConfig table might not exist
         }
 
-        const { content, preset: rawPreset, fileName, styleConfig, model }: GenerateRequest = req.body;
+        const { content, preset: rawPreset, fileName, styleConfig, model, imageInputs, preserveSourceHeadingNumbers }: GenerateRequest = req.body;
         // Normalize preset to lowercase to handle frontend sending 'CORPORATE' vs backend enum 'corporate'
-        const preset = (rawPreset as string).toLowerCase() as typeof rawPreset;
+        const preset = normalizePreset(rawPreset as string);
         // 闂?闂??????濠?闂傚倸鍊风欢锟犲磻閸曨垁鍥箯鐏炶姤娈??闂傚倷绀侀幖顐︽偋濠婂嫮顩叉繝闈涚墐閸??闂傚倷绀侀幖顐﹀疮椤愶附鍋夐柤娴嬫櫅閸?? deepseek(闂???????????濠????婵??闂?????)
-        requestedModelKey = model || 'deepseek';
+        requestedModelKey = pickModelKey(model);
 
         if (!content || !preset || !fileName || !styleConfig) {
             res.status(400).json(errorResponse('缂?婵?闂????', 400));
             return;
         }
 
-        // ??闂?濠??闂???????
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
-
-        // content ??闂????闂??:???????????? token / ??????????body limit 100mb ??????
-        const contentLimit = getContentLimit(userTier);
-        if (content.length > contentLimit) {
+        const rawContentLimit = Number(process.env.RAW_CONTENT_LIMIT || 60_000_000);
+        if (content.length > rawContentLimit) {
             res.status(413).json(errorResponse(
-                `Document content too large (${content.length} chars, limit ${contentLimit}). Please shorten it or upgrade your plan.`,
+                `Document payload too large (${content.length} chars, limit ${rawContentLimit}). Please reduce embedded images or upload a smaller file.`,
                 413
             ));
             return;
@@ -468,9 +548,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const safeFileName = String(fileName).slice(0, 200);
 
         geminiApiKey = dbConfig['GOOGLE_API_KEY'] || process.env.GOOGLE_API_KEY;
-
-        if (!geminiApiKey) {
-            res.status(500).json(errorResponse('Server Config Error: Missing GOOGLE_API_KEY', 500));
+        const selectedModelCfg = getModelConfig(requestedModelKey, dbConfig);
+        if (!selectedModelCfg?.apiKey && !geminiApiKey) {
+            res.status(500).json(errorResponse(`Server Config Error: Missing API key for ${requestedModelKey}`, 500));
             return;
         }
 
@@ -489,6 +569,8 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             '4. Preserve all source content. Do not summarize, invent, drop, or reorder body content.',
             '5. Preserve every image placeholder exactly, such as __IMG_0__. Do not rename or remove placeholders.',
             '6. Put figure captions directly below image placeholders and table captions directly above tables.',
+            '   If the source already has a figure/table caption number, preserve that exact number and language. Do not translate 图/表 to Figure/Table and do not add a second number.',
+            '   Preserve table header rows and cell text exactly; do not rewrite, merge, split, or invent table headers.',
             '7. Use semantic HTML only: headings, paragraphs, lists, tables, and caption divs.',
             '8. Keep math in LaTeX delimiters when formulas are present.',
             '9. Return only raw semantic HTML body content, with no Markdown fences.',
@@ -502,17 +584,14 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         if (styleConfig && styleConfig.figureNumbering === 'chapter-relative') {
             figureInstruction = [
                 '- **FIGURE CAPTIONS (CHAPTER-RELATIVE)**:',
-                '- Rename figure captions as "Figure {Chapter}-{Sequence} {Description}".',
-                '- Detect the current chapter number from the active top-level chapter.',
-                '- Reset figure sequence at each new chapter.',
-                '- Example: Figure 1-1, Figure 1-2, then Figure 2-1.',
-                '- Format: `<div class="figure-caption">Figure {Chapter}-{Sequence} {Description}</div>`',
+                '- If a source caption already starts with 图N / 图N-N / Figure N, preserve that exact caption text.',
+                '- Only when a figure has no source caption, create `<div class="figure-caption">图{Chapter}-{Sequence} {Description}</div>`.',
             ].join('\n');
         } else {
             figureInstruction = [
                 '- **FIGURE CAPTIONS (SEQUENTIAL)**:',
-                '- Use continuous figure numbering across the document.',
-                '- Format: `<div class="figure-caption">Figure {Sequence} {Description}</div>`',
+                '- If a source caption already starts with 图N / Figure N, preserve that exact caption text.',
+                '- Only when a figure has no source caption, create `<div class="figure-caption">图{Sequence} {Description}</div>`.',
             ].join('\n');
         }
 
@@ -521,16 +600,16 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         if (styleConfig && styleConfig.tableNumbering === 'chapter-relative') {
             tableInstruction = [
                 '- **TABLE CAPTIONS (CHAPTER-RELATIVE)**:',
-                '- Rename table captions as "Table {Chapter}-{Sequence} {Description}".',
-                '- Detect the current chapter number from the active top-level chapter.',
-                '- Reset table sequence at each new chapter.',
-                '- Format: `<div class="table-caption">Table {Chapter}-{Sequence} {Description}</div>`',
+                '- If a source caption already starts with 表N / 表N-N / Table N, preserve that exact caption text.',
+                '- Only when a table has no source caption, create `<div class="table-caption">表{Chapter}-{Sequence} {Description}</div>`.',
+                '- Preserve all table header rows exactly as source.',
             ].join('\n');
         } else {
             tableInstruction = [
                 '- **TABLE CAPTIONS (SEQUENTIAL)**:',
-                '- Use continuous table numbering across the document.',
-                '- Format: `<div class="table-caption">Table {Sequence} {Description}</div>`',
+                '- If a source caption already starts with 表N / Table N, preserve that exact caption text.',
+                '- Only when a table has no source caption, create `<div class="table-caption">表{Sequence} {Description}</div>`.',
+                '- Preserve all table header rows exactly as source.',
             ].join('\n');
         }
 
@@ -568,15 +647,37 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const imageCount = Object.keys(imageMap).length;
         if (imageCount > 0) console.log(`[IMG] Extracted ${imageCount} images`);
 
+        const contentLimit = getContentLimit(userTier);
+        if (contentWithoutImages.length > contentLimit) {
+            res.status(413).json(errorResponse(
+                `Document text too large (${contentWithoutImages.length} chars after image extraction, limit ${contentLimit}). Please shorten it or upgrade your plan.`,
+                413
+            ));
+            return;
+        }
+
         // 1b-2. Extract FORMULA_DATA block BEFORE chunking so every chunk (not just the last)
         //       can reference it. The block is injected into each chunk's user content as a
         //       read-only reference ??it is never part of the content to be formatted.
         let formulaDataContext = '';
         let contentForChunking = contentWithoutImages;
-        const formulaMarkerIdx = contentWithoutImages.indexOf('\n<!-- FORMULA_DATA -->');
+        if (imageInputs?.length) {
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+            res.write(`data: ${JSON.stringify({ ping: true, progress: { current: 0, total: 1, status: 'RECOGNIZING_IMAGES', estimatedRemainingSeconds: null } })}\n\n`);
+            const recognized = await recognizeImagesForLayout(imageInputs);
+            contentForChunking = [
+                'The following content was extracted from uploaded image(s). Format it as a clean document using the selected style.',
+                '',
+                recognized,
+                contentForChunking.replace(/^\[图片识别\][\s\S]*?排版。?\s*/u, '').trim(),
+            ].filter(Boolean).join('\n\n');
+        }
+        const formulaMarkerIdx = contentForChunking.indexOf('\n<!-- FORMULA_DATA -->');
         if (formulaMarkerIdx !== -1) {
-            formulaDataContext = contentWithoutImages.slice(formulaMarkerIdx + 1); // keeps the marker line
-            contentForChunking = contentWithoutImages.slice(0, formulaMarkerIdx);
+            formulaDataContext = contentForChunking.slice(formulaMarkerIdx + 1); // keeps the marker line
+            contentForChunking = contentForChunking.slice(0, formulaMarkerIdx);
             console.log(`[FORMULA_DATA] Extracted ${formulaDataContext.length} chars ??will inject into all ${Math.ceil(contentForChunking.length / 12000)} chunks`);
         }
 
@@ -650,7 +751,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
                 `CRITICAL RULES:\n` +
                 `- Output each heading at EXACTLY the \`<hN>\` shown (\`<h2>\`=chapter, \`<h3>\`=section, \`<h4>\`=sub-section). \`<h1>\` is reserved for the document title ONLY; never emit a chapter as \`<h1>\`.\n` +
                 `- Reproduce EXACTLY these headings, one heading per line above. NEVER merge two rows into one heading, NEVER split one row into two, NEVER add or drop a heading.\n` +
-                `- The [bracket] number is pre-computed; apply the configured numbering FORMAT to it (e.g. "Chapter N" for chapters). Do NOT re-count or drop digits.\n`;
+                `- The [bracket] number is the source document number. Preserve those numbers; do NOT restart numbering from 1, re-count, or drop digits.\n`;
         } else {
             // ???? ????闂??:??STRUCTURE_DATA(缂???闂?/????婵??)????HTML ???????;?闂????缂??????,????????"H1=?? ????
             const { outline: docHeadingOutline, levelMap: docHeadingLevelMap } = extractDocumentHeadingMap(contentForChunking);
@@ -677,7 +778,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // ULTRA ?濠???????闂?闂????缂???闂?婵??闂????闂????SSE ping ????????)
         // ??闂?濠?????12000 chars ?闂?
         // 濠?????? ????chunk 闂?????????????chunk ????
-        const modelCfg     = requestedModelKey ? getModelConfig(requestedModelKey, dbConfig) : null;
+        const modelCfg     = selectedModelCfg;
         const useKey       = modelCfg?.apiKey  || geminiApiKey!;
         const useBase      = modelCfg?.baseUrl || (dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '');
         const currentModel = modelCfg?.modelId || PRIMARY_MODEL;
@@ -690,6 +791,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         console.log(`[ESTIMATE_BUDGET] model=${requestedModelKey || 'gemini-pro'} safeChunkSize=${safeChunkSize} contentLen=${contentForChunking.length}`);
         console.log(`[ESTIMATED_CHUNKS] ${estimatedChunks}`);
 
+        const integrityIssues: IntegrityIssue[] = [];
         let chunks: string[] = [];
         if (userTier === 'ULTRA') {
             // ULTRA ?闂???? chunk??x??????????濠?闂??????????闂????闂?
@@ -709,6 +811,30 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         chunks = compressed.chunks;
         if (beforeCompression !== chunks.length) {
             console.log(`[CHUNK_COMPRESSED] from ${beforeCompression} to ${chunks.length} dropped=${compressed.dropped}`);
+        }
+        let structuredChunks: StructuredContentChunk[] = chunks.map((content, index) => ({
+            content,
+            start: index === 0 ? 0 : -1,
+            end: -1,
+            headings: [],
+            headingPath: [],
+            strategy: 'legacy',
+        }));
+        if (contentForChunking.length > safeChunkSize) {
+            structuredChunks = splitContentIntoStructuredChunks(contentForChunking, userTier === 'ULTRA' ? safeChunkSize * 3 : safeChunkSize);
+            const structuredCompressed = compressChunksByCoverage(structuredChunks.map(c => c.content), 0.78, 280);
+            if (structuredCompressed.dropped > 0) {
+                integrityIssues.push({ type: 'chunk_compressed', severity: 'info', detail: `Skipped ${structuredCompressed.dropped} overlapping chunk(s) during structured splitting` });
+            }
+            structuredChunks = structuredCompressed.chunks.map((content) => structuredChunks.find(c => c.content === content) ?? {
+                content,
+                start: -1,
+                end: -1,
+                headings: [],
+                headingPath: [],
+                strategy: 'structured-compressed',
+            });
+            chunks = structuredChunks.map(c => c.content);
         }
         console.log(`[SPLIT] Document split into ${chunks.length} chunk(s)`);
 
@@ -733,11 +859,19 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
          * and can continue sequentially without restarting sub-levels at "1.".
          */
         let lastHeadingsState = '';
+        const hasHtmlClass = (attrs: string, className: string): boolean => {
+            const m = (attrs || '').match(/\bclass\s*=\s*"([^"]*)"/i);
+            return !!m && m[1].split(/\s+/).some(x => x.toLowerCase() === className.toLowerCase());
+        };
+        const isNonBodyHeadingAttrs = (attrs: string): boolean =>
+            hasHtmlClass(attrs, 'doc-title') || hasHtmlClass(attrs, 'doc-title-en') || hasHtmlClass(attrs, 'toc-placeholder');
 
         // ???? SSE ??闂??
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
+        if (!res.headersSent) {
+            res.setHeader('Content-Type', 'text/event-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+        }
 
         // ?????闂傚倷鐒﹂幃鍫曞磿鏉堛劍娅犻柤鎭掑劜濞????闂傚倷鐒﹂幃鍫曞磿鏉堛劍娅犻柤鎭掑劜濞呯娀鏌″搴″箹闁???闂傚倷鑳堕…鍫ユ晝閵堝瑙﹂悗锝庡墰閻??闂?闂???闂??闂備浇顕ф绋匡耿闁秴纾婚柣鎰▕濞??闂??闂傚倷绀侀幖顐﹀嫉椤掑嫬绠伴悹鍥ф▕濞?????婵????闂?? img ??缂?
         if (imageCount > 0) {
@@ -747,15 +881,15 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         let totalExactTokens = 0;
         let finalChunksUsed = 0;
         // ??????闂???闂??????闂備浇宕垫慨鏉懨洪悩璇茬柧婵犲﹤鍠氶崵????闂????婵????婵??闂?/?????闂?,????? SSE ????闂??
-        const integrityIssues: IntegrityIssue[] = [];
         // 婵??????????????闂??濠电姵顔栭崳顖滃緤閻ｅ瞼鐭撶痪鎯ь儍娴??婵?濠电姷鏁告慨宥夊礋椤愩埄娼曞┑??婵犵數鍋為崹璺侯潖婵犳艾绐楅柡鍥舵娇閳???,???????? chunk_skipped ????,????"??婵????"???????
         if (compressed.dropped > 0) {
             integrityIssues.push({ type: 'chunk_compressed', severity: 'info', detail: `婵????闂??? ${compressed.dropped} ???????闂?闂??婵???濠电姷鏁告慨宥夊礋椤愩埄娼曞┑??` });
         }
 
         // 3. 闂?????? Chunks
-        for (let i = 0; i < chunks.length; i++) {
-            const chunkContent = chunks[i];
+        for (let i = 0; i < structuredChunks.length; i++) {
+            const chunkMeta = structuredChunks[i];
+            const chunkContent = chunkMeta.content;
             const chunkFirstHeading = extractFirstHeading(chunkContent);
             const renderedTail = normalizeText(fullRestoredText).slice(-5000);
             const headingCovered = chunkFirstHeading.length > 0 && renderedTail.includes(chunkFirstHeading);
@@ -796,6 +930,15 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
             // ??闂????System Prompt
             let currentSystemPrompt = systemInstructionWithMap;
+            const chunkHeadingList = chunkMeta.headings.map(h => `- H${h.level}: ${h.text}`).join('\n');
+            const chunkStructureGuide = [
+                `--- CURRENT PART STRUCTURE CONTRACT ---`,
+                `Part ${i + 1}/${structuredChunks.length}; split strategy: ${chunkMeta.strategy}.`,
+                chunkMeta.headingPath.length ? `Current heading path: ${chunkMeta.headingPath.join(' > ')}` : '',
+                chunkHeadingList ? `Required headings in this part:\n${chunkHeadingList}` : 'No explicit headings in this part.',
+                `Preserve every paragraph, table, list, formula, and image placeholder in reading order. Do not summarize or omit dense content.`,
+            ].filter(Boolean).join('\n');
+            currentSystemPrompt += `\n\n${chunkStructureGuide}`;
 
             if (i > 0) {
                 currentSystemPrompt += `
@@ -873,7 +1016,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             const formulaSuffix = formulaDataContext
                 ? `\n\n--- FORMULA REFERENCE (read-only ??DO NOT output or format this section) ---\n${formulaDataContext.slice(0, 8000)}\n--- END FORMULA REFERENCE ---`
                 : '';
-            const userContent = `Filename: ${safeFileName}\n\nContent Part ${i + 1} of ${chunks.length}:\n${chunkContent}\n\n--- END OF PART ${i + 1} INPUT ---\nFormat ONLY the content above. When you reach "--- END OF PART ${i + 1} INPUT ---", stop immediately.${formulaSuffix}`;
+            const baseUserContent = `Filename: ${safeFileName}\n\n${chunkStructureGuide}\n\nContent Part ${i + 1} of ${chunks.length}:\n${chunkContent}\n\n--- END OF PART ${i + 1} INPUT ---\nFormat ONLY the content above. When you reach "--- END OF PART ${i + 1} INPUT ---", stop immediately.${formulaSuffix}`;
             let chunkOutput = '';
 
             // Stream-time hallucination guard: cap output numbered items at 2?? source + 5
@@ -904,9 +1047,13 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 // ?闂? N ?婵??闂? ????? catch ???????濠???GEN_* ??缂傚倸鍊风拋鏌ュ磻??濠?闂傚倸鍊风欢锟犲磻閸曨垁鍥焼瀹ュ懐浼嬮梺鍝勭Р閸斿瞼娆??,??????闂?闂?????
                 const MAX_CHUNK_ATTEMPTS = 3;
                 try {
+                  let validationRetryReason = '';
                   for (let chunkAttempt = 1; ; chunkAttempt++) {
                     chunkOutput = '';
                     try {
+                    const userContent = validationRetryReason
+                        ? `${baseUserContent}\n\n--- STRICT RETRY REQUIREMENTS ---\nThe previous attempt failed validation: ${validationRetryReason}\nRegenerate this part from scratch. Preserve every required heading and every source paragraph/table/list/image placeholder. Do not summarize, omit, repeat, or stop early.`
+                        : baseUserContent;
                     if (useOpenAICompat) {
                         // 婵?? OpenAI Compatible Endpoint (DeepSeek / ???? / Qwen / ???? Gemini)
                         const maxTokens = modelCfg?.maxOutputTokens ?? (userTier === 'ULTRA' ? 32000 : 16000);
@@ -993,6 +1140,12 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
 
                         if (continuations > 0) {
                             console.log(`[CONTINUE] Chunk ${i + 1} completed after ${continuations} continuation(s), final finish_reason: ${finishReason}`);
+                        }
+                        {
+                            const validationIssues = validateChunkOutput(chunkContent, chunkOutput, chunkMeta);
+                            if (validationIssues.length > 0) {
+                                throw new Error(`CHUNK_VALIDATION_FAILED: ${validationIssues.join('; ').slice(0, 700)}`);
+                            }
                         }
                     } else {
                         // 婵??闂?? Google SDK
@@ -1081,10 +1234,29 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                                 break;
                             }
                         }
+                        {
+                            const validationIssues = validateChunkOutput(chunkContent, chunkOutput, chunkMeta);
+                            if (validationIssues.length > 0) {
+                                throw new Error(`CHUNK_VALIDATION_FAILED: ${validationIssues.join('; ').slice(0, 700)}`);
+                            }
+                        }
                     }
                         break; // ??闂???濠电姷鏁搁崑娑㈠嫉椤掑嫭鍋￠柨鏇楀亾妞? ???婵?????闂??
                     } catch (chunkErr: any) {
                         const cmsg = String(chunkErr?.message ?? chunkErr ?? '');
+                        if (cmsg.includes('CHUNK_VALIDATION_FAILED')) {
+                            validationRetryReason = cmsg.replace(/^CHUNK_VALIDATION_FAILED:\s*/, '').slice(0, 700);
+                            if (chunkAttempt < MAX_CHUNK_ATTEMPTS) {
+                                console.warn(`[CHUNK_VALIDATE_RETRY] part=${i + 1}/${chunks.length} attempt=${chunkAttempt}: ${validationRetryReason}`);
+                                continue;
+                            }
+                            integrityIssues.push({
+                                type: 'chunk_validation_failed',
+                                severity: 'warning',
+                                detail: `Part ${i + 1} validation warning: ${validationRetryReason.slice(0, 500)}`,
+                            });
+                            break;
+                        }
                         if (chunkAttempt < MAX_CHUNK_ATTEMPTS) {
                             console.warn(`[CHUNK_RETRY] ??${i + 1} ??? ${chunkAttempt}/${MAX_CHUNK_ATTEMPTS} ??????婵??${cmsg.slice(0, 80)}),???濠?`);
                             continue;
@@ -1106,7 +1278,8 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 }
                 // Close any HTML tags left open by truncation (e.g. <li>, <td>, <ul>)
                 cleanChunk = repairUnclosedTags(cleanChunk);
-                // CORPORATE only: detect + reorder doc elements to GB/T 9704-2012 standard layout (first chunk only)
+                // Official documents only: detect + reorder GB/T 9704-2012 red-head elements (first chunk only).
+                // Work reports and meeting minutes intentionally do not use red-head ordering.
                 if (preset === 'corporate' && i === 0) {
                     cleanChunk = detectCorporateElementClasses(cleanChunk);
                     cleanChunk = reorderCorporateDocument(cleanChunk);
@@ -1118,9 +1291,10 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 lastContext = cleanChunk.replace(/<[^>]+>/g, ' ');
 
                 // Count chapter-level H2s (chapters use <h2>) + any non-doc-title H1s (fallback in case AI uses h1 for chapters)
-                const h2Tags = cleanChunk.match(/<h2\b[^>]*>/gi) ?? [];
+                const h2Tags = [...cleanChunk.matchAll(/<h2\b([^>]*)>/gi)]
+                    .filter(m => !isNonBodyHeadingAttrs(m[1] || ''));
                 const h1Tags = cleanChunk.match(/<h1\b[^>]*>/gi) ?? [];
-                const h1NonTitle = h1Tags.filter(t => !t.includes('doc-title')).length;
+                const h1NonTitle = h1Tags.filter(t => !isNonBodyHeadingAttrs(t)).length;
                 const h1OpenInChunk = h2Tags.length + h1NonTitle;
                 cumulativeH1BeforePart += h1OpenInChunk;
                 // Update cumulative per-level heading counter state
@@ -1128,7 +1302,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 let hcMatch: RegExpExecArray | null;
                 while ((hcMatch = hcRegex.exec(cleanChunk)) !== null) {
                     const lvl = parseInt(hcMatch[1]);
-                    if (hcMatch[2].includes('doc-title')) continue;
+                    if (isNonBodyHeadingAttrs(hcMatch[2])) continue;
                     const txt = hcMatch[3].replace(/<[^>]+>/g, '').trim().slice(0, 80);
                     if (txt) headingCounterState[lvl] = txt;
                 }
@@ -1164,6 +1338,16 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         }
         console.log(`[FINAL_CHUNKS_USED] ${finalChunksUsed}/${chunks.length}`);
 
+        res.write(`data: ${JSON.stringify({
+            ping: true,
+            progress: {
+                current: chunks.length,
+                total: chunks.length,
+                status: 'VERIFYING',
+                estimatedRemainingSeconds: null,
+            },
+        })}\n\n`);
+
         // ??缂????:???闂傚倸顭崑鍕洪敃鍌樷偓鍐幢濞戞瑥鍓??濠??闂????闂????闂??闂??闂??闂??+ ????????闂??????
         // (??闂??闂??????????????闂???闂傚倷绀侀幉锟犳嚌妤ｅ啫瀚夋い鎺嗗亾妞?闂傚倸鍊搁…顒佺濠婂牊鏅濋柕鍫濇偪?闂?濠???闂?缂?????
 
@@ -1171,11 +1355,17 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         // ???? P0-3 缂???闂??? ??P0-1 闂??闂?? ??P0-4 ?????闂???闂?????
         // ?闂? AI 濠?婵犵妲呴崑鍡樻櫠濡ゅ懎鍨傚┑鍌氭啞閸???????/闂????婵??????闂?闂????? AI ????),?闂??????闂???????濠????
         // ???闂??????闂??闂???? ???婵??闂??(??闂傚倷绀侀幉锟犲箰閸濄儳鐭撻悗娑櫳戝▍??闂?闂?闂??delta,????????缂?闂????????濠?)??
+        const tableRepair = reconcileMissingTables(contentForChunking, fullRestoredText);
+        fullRestoredText = tableRepair.text;
+        integrityIssues.push(...tableRepair.issues);
+
         const pp = postProcess(fullRestoredText, {
             scheme: styleConfig.headingNumbering,
             figureChapterRelative: styleConfig.figureNumbering === 'chapter-relative',
             tableChapterRelative: styleConfig.tableNumbering === 'chapter-relative',
             expectedImagePlaceholders: Object.keys(imageMap),
+            preserveSourceHeadingNumbers: !!preserveSourceHeadingNumbers,
+            sourceCaptions: extractSourceCaptions(contentForChunking),
             skeleton, // ?闂????:????闂??????闂傚倷娴囬鏍礂濞嗘挸绀夐幖杈剧稻椤?婵??heading_demoted / heading_missing ????????闂???
         });
         // EMF/WMF 闂????Visio/CAD)??????? docx ???闂?闂??????????ImageMagick ??PNG,????闂??
@@ -1184,7 +1374,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             // 闂???闂??????SSE ????:闂??闂傚倷鐒﹂幃鍫曞磿閹绘帞鏆︽俊顖氥偨???? token ????闂?濠电姷鏁搁崑鐐哄箰閼姐倕鏋堢€广儱鎷嬮悞?闂佽楠搁崢婊堝磻???????? idle ??闂????,
             // ????闂?? {text}/{done} ??闂??????闂?????濠??闂??闂??濠?????????闂????/婵??????")??
             const convPing = setInterval(() => {
-                try { res.write(`data: ${JSON.stringify({ ping: true, progress: { current: chunks.length, total: chunks.length, status: 'Processing images...', estimatedRemainingSeconds: null } })}\n\n`); } catch { /* client closed */ }
+                try { res.write(`data: ${JSON.stringify({ ping: true, progress: { current: chunks.length, total: chunks.length, status: 'PROCESSING_IMAGES', estimatedRemainingSeconds: null } })}\n\n`); } catch { /* client closed */ }
             }, 1000);
             try {
                 const vres = await convertVectorImagesToPng(imageMap, { concurrency: 3 });
@@ -1203,6 +1393,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         try {
             const inputCounts = countStructure(contentForChunking);
             const outputCounts = countStructure(finalText);
+            integrityIssues.push(...validateFinalIntegrity(inputCounts, outputCounts));
             // S3b:???闂傚倷鑳堕崢褔骞夐埄鍐懝婵°倕鎳庨悞???? ?????????????????????闂????????,?????闂傚倷鑳堕～瀣焵椤掑嫬纾????????? >85% 婵犵數鍋為崹璺侯潖婵犳艾绐楅柡鍥舵娇閳??缂傚倸鍊风拋鏌ュ磻???????
             // ??婵????缂?闂?1~2 ?闂???????缂?90%????闂?闂佽娴烽幊鎾垛偓姘煎墴椤㈡牠宕卞Δ濠勫姺?闂?"?闂?缂??input/output ?闂?婵犵數鍋為崹鍫曞箰閹绢喖纾????????doc-title)??
             // ??闂???缂?闂??闂?缂傚倸鍊搁崐鎼佸磹閹间礁绠规い鎰剁畱妗??reconcileHeadingsToSkeleton ??heading_missing 闂???闂?,???闂???婵?????
@@ -1223,6 +1414,16 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         const QUALITY_FLOOR = 85;
         const hasCritical = !!integrityReport && integrityReport.issues.some(x => x.severity === 'critical');
         const lowQuality = !!integrityReport && (hasCritical || integrityReport.charRetentionPct < QUALITY_FLOOR);
+
+        res.write(`data: ${JSON.stringify({
+            ping: true,
+            progress: {
+                current: chunks.length,
+                total: chunks.length,
+                status: 'FINALIZING',
+                estimatedRemainingSeconds: null,
+            },
+        })}\n\n`);
 
         // Gemini ?闂?: ??1 token ~= 0.75 ??????????
         let finalReportedTokens = totalExactTokens;
@@ -1281,6 +1482,12 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             code = 'GEN_NETWORK';
         } else if (rawMsg.includes('token count') || rawMsg.includes('too long') || rawMsg.includes('context length') || rawMsg.includes('maximum context')) {
             code = 'GEN_TOO_LONG';
+        } else if (rawMsg.includes('VISION_NOT_CONFIGURED')) {
+            code = 'VISION_NOT_CONFIGURED';
+        } else if (rawMsg.includes('VISION_TOO_MANY_IMAGES') || rawMsg.includes('VISION_IMAGE_TOO_LARGE') || rawMsg.includes('VISION_INVALID_IMAGE')) {
+            code = 'VISION_INPUT_INVALID';
+        } else if (rawMsg.includes('only support text messages') || rawMsg.includes('ModelNotOpen') || rawMsg.includes('InvalidEndpointOrModel')) {
+            code = 'VISION_MODEL_UNAVAILABLE';
         } else if (rawMsg.includes('400') || rawMsg.includes('404')) {
             code = 'GEN_REGION_UNSUPPORTED';
         }

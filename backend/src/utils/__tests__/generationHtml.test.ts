@@ -3,6 +3,8 @@ import {
     countNumberedItems,
     detectCorporateElementClasses,
     ensureFigureCaptions,
+    extractDocumentHeadingMap,
+    extractLastHeadings,
     hasSameBodyHallucination,
     reorderCorporateDocument,
 } from '../generationHtml';
@@ -105,6 +107,23 @@ describe('generationHtml helpers', () => {
             ].join(' ');
 
             expect(hasSameBodyHallucination(varied)).toBe(false);
+        });
+    });
+
+    describe('journal front matter headings', () => {
+        it('excludes doc-title/doc-title-en from continuation heading helpers', () => {
+            const html = [
+                '<h1 class="doc-title">中文题名</h1>',
+                '<h2 class="doc-title-en">English Title</h2>',
+                '<h2>引言</h2>',
+                '<h3>研究背景</h3>',
+            ].join('');
+
+            expect(extractLastHeadings(html, 5)).toBe('引言 -> 研究背景');
+            const map = extractDocumentHeadingMap(html);
+            expect(map.outline).toContain('H2: 引言');
+            expect(map.outline).not.toContain('English Title');
+            expect(map.levelMap.has('english title')).toBe(false);
         });
     });
 });

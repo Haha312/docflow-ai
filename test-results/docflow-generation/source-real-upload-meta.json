@@ -1,0 +1,23 @@
+{
+  "source": "E:/下载内容/DocFlow_总部基建全过程综合数字化管理平台项目-数字化知识管理和共享服务项目—详细设计说明书11.13.docx",
+  "htmlChars": 20764159,
+  "finalChars": 20770759,
+  "dynamicStyleMap": [
+    "p[style-name='Heading 1'] => h1:fresh",
+    "p[style-name='Heading 2'] => h2:fresh",
+    "p[style-name='Heading 3'] => h3:fresh",
+    "p[style-name='Heading 4'] => h4:fresh",
+    "p[style-name='Heading 5'] => h5:fresh",
+    "p[style-name='Heading 6'] => h6:fresh"
+  ],
+  "structureCount": 143,
+  "numberedHeadings": 143,
+  "preserveSourceHeadingNumbers": true,
+  "formulaChars": 0,
+  "warnings": [
+    {
+      "type": "warning",
+      "message": "Unrecognised paragraph style: 'Title' (Style ID: Title)"
+    }
+  ]
+}

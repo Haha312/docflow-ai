@@ -1,87 +1,186 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-/**
- * 用户协议页面。
- *
- * ⚠️ 本页文案为**占位模板**,上线前必须由法务/运营完成 review,并替换:
- *   - {{COMPANY_NAME}}    — 公司主体名称
- *   - {{CONTACT_EMAIL}}   — 客服/法务联系邮箱
- *   - {{EFFECTIVE_DATE}}  — 协议生效日期
- *   - {{JURISDICTION}}    — 适用法律管辖
- *
- * 适用法律建议:中国大陆运营建议适用《中华人民共和国民法典》、
- * 《电子商务法》、《消费者权益保护法》;海外可考虑 Delaware 法。
- */
+const PRODUCT_NAME = 'DocFlow';
+const COMPANY_NAME = '北京昆仑九章科技有限公司';
+const CONTACT_EMAIL = 'DocFlowAI@163.com';
+const EFFECTIVE_DATE = '2026年7月1日';
+
+export const termSections = [
+  {
+    title: '1. 协议的确认与适用',
+    paragraphs: [
+      `本《用户协议》（以下简称“本协议”）由您与 ${COMPANY_NAME}（以下简称“我们”）就注册、登录、访问、使用 ${PRODUCT_NAME} 网站、客户端、接口及相关服务（统称“本服务”）所订立。`,
+      '您点击同意、注册/登录账号、购买会员、上传或粘贴文档、使用智能识别、排版、导出等功能，即表示您已充分阅读、理解并同意接受本协议及《隐私与保密条款》的全部内容。',
+      '如您代表机构、公司或其他组织使用本服务，您确认您已获得充分授权，并使该组织受本协议约束。'
+    ]
+  },
+  {
+    title: '2. 服务内容',
+    paragraphs: [
+      `${PRODUCT_NAME} 是面向文档处理场景的智能排版工具，主要提供文档上传、文字粘贴、图片识别、结构解析、AI 辅助排版、格式校正、Word 文档导出、历史文档管理、会员额度及支付等服务。`,
+      '我们可能基于产品迭代、合规要求、运营策略或第三方服务能力，对服务形式、功能范围、支持格式、处理速度、模型能力、会员权益和价格进行调整。涉及重大变更时，我们会通过页面提示、站内通知、公告或其他合理方式告知您。'
+    ]
+  },
+  {
+    title: '3. 账号注册、登录与安全',
+    items: [
+      '您应使用真实、合法、有效的手机号、验证码或我们支持的其他方式注册/登录账号。',
+      '您应妥善保管账号、验证码、登录状态和设备安全。通过您的账号发生的操作，一般视为您本人或您授权的行为。',
+      '发现账号被盗用、冒用、异常登录或存在其他安全风险时，请立即停止使用并联系我们处理。',
+      '未经我们书面同意，您不得转让、出租、出借、售卖账号或以其他方式向第三方开放账号权益。'
+    ]
+  },
+  {
+    title: '4. 用户上传内容与合法性承诺',
+    paragraphs: [
+      '您通过本服务上传、粘贴、输入、导入、生成或保存的文字、图片、表格、公式、版式、文件及其他资料，统称为“用户内容”。'
+    ],
+    items: [
+      '您保证对用户内容享有合法权利，或已获得权利人、单位、客户、合作方等必要授权。',
+      '您不得上传国家秘密、工作秘密、军事秘密、监管限制资料，或未经授权的商业秘密、个人敏感信息、医疗健康、金融账户、身份认证等高敏感内容。',
+      '您不得上传、生成或传播违法违规、侵权、虚假、欺诈、色情低俗、暴力恐怖、歧视仇恨、危害国家安全、扰乱公共秩序或侵犯他人合法权益的内容。',
+      '因用户内容来源、授权、保密义务或使用方式引发的争议、投诉、损失或责任，由您自行承担；我们因此遭受损失的，有权向您追偿。'
+    ]
+  },
+  {
+    title: '5. AI 处理与结果使用',
+    paragraphs: [
+      '本服务会使用人工智能模型、文档解析程序和格式规则对您的内容进行识别、重组、润色、排版、校验和导出。AI 结果可能受到原始文档质量、图片清晰度、模型能力、提示词、上下文长度、网络状态及第三方服务稳定性的影响。',
+      '我们会尽合理努力提升排版准确性、内容完整性和格式合规性，但 AI 生成或处理结果不构成法律、财务、审计、学术、医疗、投资、工程或其他专业意见。您在提交、发表、交付、归档或正式使用前，应自行审阅并确认结果是否满足您的实际用途。'
+    ]
+  },
+  {
+    title: '6. 知识产权与授权',
+    items: [
+      `${PRODUCT_NAME} 的软件代码、产品界面、交互设计、商标标识、文案、模板、样式、排版规则、算法逻辑及相关素材，除依法属于第三方或另有说明外，均归我们或合法授权方所有。`,
+      '您保留对用户内容依法享有的知识产权和其他合法权益。',
+      '为向您提供服务，您授予我们在必要范围内对用户内容进行读取、复制、传输、解析、识别、转换、排版、缓存、存储和导出的非独占、免费的处理权限。',
+      '除为提供服务、履行法律义务、处理安全事件或经您另行明确授权外，我们不会将您的用户内容公开展示给其他用户，也不会将您的非公开文档用于广告展示或公开宣传。'
+    ]
+  },
+  {
+    title: '7. 会员、额度、付费与发票',
+    items: [
+      '本服务可能提供免费额度、Plus、Pro、Ultra 或其他会员方案。不同方案对应的可用次数、处理能力、文档大小、并发优先级、模板权限、保存能力、客服支持等以购买页面或后台实际展示为准。',
+      '会员服务通常按自然月、订阅周期或订单约定周期提供。额度可能按周期刷新，未使用额度是否结转，以购买页面说明为准。',
+      '您应通过我们支持的支付渠道完成付款。支付渠道可能包括微信支付、支付宝或其他第三方支付机构，具体以页面展示为准。',
+      '如需发票或企业付款凭证，请通过产品内入口或本协议列明的联系方式提交必要信息。'
+    ]
+  },
+  {
+    title: '8. 退款、取消与异常订单',
+    paragraphs: [
+      '由于智能排版、AI 调用、文档识别和会员额度属于即时交付或即时消耗的数字化服务，订单支付成功后，如已开始使用会员权益、消耗额度、生成或导出文档，原则上不支持无理由退款。法律法规另有规定或页面另有明确承诺的除外。',
+      '如因我们系统故障、重复扣款、支付异常、会员权益未到账且经核实无法补发，您可联系我们申请处理。符合退款条件的，我们会在核实后通过原支付路径或双方认可的方式退回相应款项。',
+      '退款成功后，对应会员权益、剩余额度、增值权限可能立即失效或调整为免费状态。'
+    ]
+  },
+  {
+    title: '9. 用户行为规范',
+    items: [
+      '不得绕过、破坏、干扰本服务的登录、计费、额度、风控、安全或访问限制。',
+      '不得批量注册、恶意请求、爬取、攻击、压测、反向工程、复制或拆解本服务。',
+      '不得利用本服务生成、传播违法违规内容，或用于侵犯他人著作权、商业秘密、个人信息、名誉权、肖像权等权益。',
+      '不得将本服务输出结果用于误导他人、冒充权威机构、伪造证明材料、规避监管或其他不正当目的。',
+      '不得上传病毒、木马、恶意脚本、超大文件、异常格式文件或其他可能损害系统安全和服务稳定性的内容。'
+    ]
+  },
+  {
+    title: '10. 服务变更、中断与账号处理',
+    paragraphs: [
+      '我们会努力保障服务连续性，但因系统维护、模型供应商调整、网络故障、支付通道故障、不可抗力、监管要求或安全事件等原因，服务可能出现延迟、中断、暂停或不可用。',
+      '如您违反本协议、法律法规或平台规则，我们有权根据情节采取提示整改、限制功能、暂停服务、冻结额度、删除违规内容、封禁账号、终止服务、保存证据并向有关机关报告等措施。'
+    ]
+  },
+  {
+    title: '11. 免责声明与责任限制',
+    items: [
+      '我们不保证 AI 识别、排版、摘要、格式校验或导出的结果完全准确、完整、连续、适用于特定用途。',
+      '因您上传的文件损坏、内容错误、授权不足、保密义务违反、人工复核不足或错误使用生成结果造成的损失，由您自行承担。',
+      '因第三方模型、支付、短信、云服务、网络运营商、浏览器、操作系统等非我们可完全控制的原因导致的服务异常，我们将在合理范围内协助处理，但不承担超出法律规定的责任。',
+      '在法律允许的最大范围内，我们对间接损失、利润损失、商誉损失、数据丢失、业务中断或惩罚性赔偿不承担责任。'
+    ]
+  },
+  {
+    title: '12. 未成年人使用',
+    paragraphs: [
+      '本服务主要面向具备完全民事行为能力的成年人和组织用户。未成年人使用本服务前，应取得监护人同意，并在监护人指导下使用。监护人应对未成年人的账号使用、付费行为和上传内容承担相应责任。'
+    ]
+  },
+  {
+    title: '13. 协议更新',
+    paragraphs: [
+      '我们可能根据法律法规、监管要求、产品功能或经营安排更新本协议。更新后，我们会以页面公告、站内提示或其他合理方式告知您。若您不同意更新内容，应停止使用相关服务；您继续使用本服务的，视为接受更新后的协议。'
+    ]
+  },
+  {
+    title: '14. 法律适用与争议解决',
+    paragraphs: [
+      '本协议的订立、生效、履行、解释及争议解决，适用中华人民共和国大陆地区法律。',
+      `因本协议或本服务产生争议的，双方应先友好协商；协商不成的，任一方均可向 ${COMPANY_NAME} 所在地有管辖权的人民法院提起诉讼。`
+    ]
+  },
+  {
+    title: '15. 联系方式',
+    paragraphs: [
+      `如您对本协议、账号、订单、退款、内容处理或服务使用有任何问题，可通过邮箱 ${CONTACT_EMAIL} 联系我们。我们会在收到有效请求后尽快核实并处理。`
+    ]
+  }
+];
+
 export function Terms() {
   return (
-    <div className="min-h-screen bg-zinc-50 py-12 px-4">
-      <div className="max-w-3xl mx-auto">
-        <Link to="/" className="text-sm text-gray-500 hover:text-gray-900">← 返回首页</Link>
+    <main className="legal-page bg-[var(--df-bg)] px-4 py-10 text-[var(--df-text)] sm:px-6 lg:px-8">
+      <article className="mx-auto max-w-4xl">
+        <Link
+          to="/"
+          className="inline-flex items-center rounded-full border border-[var(--df-border)] bg-[var(--df-soft)] px-4 py-2 text-sm text-[var(--df-text-muted)] transition hover:bg-[var(--df-soft-2)] hover:text-[var(--df-text)]"
+        >
+          返回首页
+        </Link>
 
-        <h1 className="mt-6 text-3xl font-bold text-gray-900">用户协议</h1>
-        <p className="mt-2 text-sm text-gray-500">生效日期:{'{{EFFECTIVE_DATE}}'}</p>
+        <header className="mt-8 border-b border-[var(--df-border)] pb-8">
+          <p className="text-sm font-medium text-[var(--df-text-muted)]">{COMPANY_NAME}</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-normal text-[var(--df-text)] sm:text-4xl">
+            {PRODUCT_NAME} 用户协议
+          </h1>
+          <p className="mt-4 text-sm leading-7 text-[var(--df-text-muted)]">
+            生效日期：{EFFECTIVE_DATE}。本协议说明您使用 {PRODUCT_NAME} 时的权利义务、服务规则、付费退款、AI 结果使用和争议解决方式。
+          </p>
+        </header>
 
-        <div className="mt-8 space-y-6 text-sm text-gray-700 leading-relaxed">
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">1. 协议范围</h2>
-            <p>本协议为您与 <strong>{'{{COMPANY_NAME}}'}</strong>(以下简称"我们")之间就使用 DocFlow AI 服务(以下简称"本服务")订立的法律协议。注册或使用本服务即视为您已阅读、理解并同意本协议全部内容。</p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">2. 服务内容</h2>
-            <p>本服务为您提供基于人工智能的文档结构识别、排版重构、格式导出等功能。我们保留随时调整服务内容、收费标准的权利,届时将通过站内公告或邮件通知您。</p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">3. 账号注册与使用</h2>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>您需提供有效邮箱完成注册,并对账号密码安全负责。</li>
-              <li>禁止将账号转让、出租或与他人共享;违者我们有权封禁账号。</li>
-              <li>您承诺不利用本服务进行违法、侵权或违反公序良俗的活动。</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">4. 知识产权</h2>
-            <p>本服务的软件、界面设计、商标、文档模板等均为我们或合法授权方所有。您上传的文档内容版权归您所有;您授权我们在提供服务过程中处理、传输、存储该内容,但不会用于训练 AI 模型或第三方共享(法律强制要求除外)。</p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">5. 付费与退款</h2>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>付费会员一经购买立即生效,可在用户中心查看到期日期。</li>
-              <li>您有权在用户中心申请退款,我们将在 1-3 个工作日内将款项原路退回。</li>
-              <li>退款后会员立即降级为免费版,本月剩余额度作废。</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">6. 免责</h2>
-            <p>本服务依据 AI 模型自动生成内容,我们不对生成结果的准确性、完整性、适用性提供任何明示或暗示的保证。在法律允许的最大范围内,我们对您因使用本服务而产生的任何间接、附带或后果性损失不承担责任。</p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">7. 协议终止</h2>
-            <p>您可随时在用户中心删除账号以终止本协议。账号删除后,您的所有数据将被永久删除且无法恢复。我们也保留在您违反本协议时单方面终止服务的权利。</p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">8. 适用法律</h2>
-            <p>本协议的订立、履行、解释及争议解决均适用 <strong>{'{{JURISDICTION}}'}</strong>。如发生争议,双方应友好协商;协商不成的,任何一方均可向 <strong>{'{{COMPANY_NAME}}'}</strong> 所在地有管辖权的人民法院提起诉讼。</p>
-          </section>
-
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">9. 联系我们</h2>
-            <p>如对本协议有任何疑问,请通过 <a href="mailto:{{CONTACT_EMAIL}}" className="text-indigo-600 underline">{'{{CONTACT_EMAIL}}'}</a> 与我们联系。</p>
-          </section>
+        <div className="mt-8 space-y-8 text-sm leading-7 text-[var(--df-text-muted)]">
+          {termSections.map((section) => (
+            <section key={section.title} className="rounded-[8px] border border-[var(--df-border)] bg-[var(--df-surface)] p-6">
+              <h2 className="text-lg font-semibold text-[var(--df-text)]">{section.title}</h2>
+              {section.paragraphs?.map((paragraph) => (
+                <p key={paragraph} className="mt-3">
+                  {paragraph}
+                </p>
+              ))}
+              {section.items && (
+                <ul className="mt-3 list-disc space-y-2 pl-5">
+                  {section.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))}
         </div>
 
-        <div className="mt-10 pt-6 border-t border-gray-200 text-xs text-gray-400">
-          <Link to="/privacy" className="hover:text-gray-700">隐私政策</Link> · <Link to="/" className="hover:text-gray-700">返回首页</Link>
-        </div>
-      </div>
-    </div>
+        <footer className="mt-10 flex flex-wrap items-center gap-3 border-t border-[var(--df-border)] pt-6 text-sm text-[var(--df-text-muted)]">
+          <Link to="/privacy" className="hover:text-[var(--df-text)]">
+            隐私与保密条款
+          </Link>
+          <span>·</span>
+          <a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-[var(--df-text)]">
+            {CONTACT_EMAIL}
+          </a>
+        </footer>
+      </article>
+    </main>
   );
 }
 

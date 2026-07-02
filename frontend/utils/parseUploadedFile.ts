@@ -16,6 +16,12 @@ export const getFileSizeLimit = (tier?: string): number => {
 
 type TFn = (key: string, opts?: any) => string;
 
+/** 解析结果:上传/拖入文件转成的内容 + 文件名。FileDropzone / HeroInput 共用此类型。 */
+export interface ParsedUpload {
+  content: string;
+  fileName: string;
+}
+
 /**
  * 解析上传/拖入的文件为 HTML/文本内容,供 FileDropzone 与 HeroInput 共用。
  * 失败时抛出带可读消息的 Error(大小超限 / 旧版 .doc / 读取失败)。
@@ -24,7 +30,7 @@ export async function parseUploadedFile(
   file: File,
   userTier: string | undefined,
   t: TFn
-): Promise<{ content: string; fileName: string }> {
+): Promise<ParsedUpload> {
   const maxMB = getFileSizeLimit(userTier);
   if (file.size > maxMB * 1024 * 1024) {
     const sizeMB = (file.size / 1024 / 1024).toFixed(1);

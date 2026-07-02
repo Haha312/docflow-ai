@@ -4,6 +4,8 @@ export enum DocPreset {
   ACADEMIC = 'ACADEMIC',
   ACADEMIC_JOURNAL = 'ACADEMIC_JOURNAL',
   CREATIVE = 'CREATIVE',
+  WORK_REPORT = 'WORK_REPORT',
+  MEETING_MINUTES = 'MEETING_MINUTES',
   MINIMALIST = 'MINIMALIST'
 }
 
@@ -26,6 +28,7 @@ export interface StructuralCounts {
   listItems: number;
   charCount: number;
   images: number;
+  tables: number;
 }
 export interface IntegrityReport {
   input: StructuralCounts;

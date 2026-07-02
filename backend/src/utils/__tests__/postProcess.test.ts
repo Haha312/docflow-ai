@@ -170,7 +170,7 @@ describe('结构先行:reconcileHeadingsToSkeleton 根治章节漂移(6→10)', 
             '<h2>子项二</h2><p>d</p>',   // 不在骨架 → 误升的小节
             '<h2>总结</h2><p>e</p>',
         ].join('');
-        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton, preserveSourceHeadingNumbers: true }));
         expect(text).toContain('<h2>1. 概述</h2>');
         expect(text).toContain('<h2>2. 架构</h2>');
         expect(text).toContain('<h2>3. 总结</h2>');
@@ -189,9 +189,54 @@ describe('结构先行:reconcileHeadingsToSkeleton 根治章节漂移(6→10)', 
             { level: 2, text: '子节', number: '1.1' }, // section → outputLevel 3
         ]);
         const html = '<h1 class="doc-title">T</h1><h2>主章</h2><h2>子节</h2>';
-        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton, preserveSourceHeadingNumbers: true }));
         expect(text).toContain('<h2>1. 主章</h2>');
         expect(text).toContain('<h3>1.1 子节</h3>'); // 节被纠正为 h3
+    });
+
+    it('带 Word 骨架时保留源文原编号,不从 1 重新编号', () => {
+        const skeleton = buildSkeleton([
+            { level: 1, text: '引言', number: '2' },
+            { level: 2, text: '编写目的', number: '2.1' },
+            { level: 1, text: '总体设计', number: '3' },
+            { level: 2, text: '总体架构', number: '3.1' },
+        ]);
+        const html = '<h1 class="doc-title">T</h1><h2>引言</h2><h3>编写目的</h3><h2>总体设计</h2><h3>总体架构</h3>';
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton, preserveSourceHeadingNumbers: true }));
+        expect(text).toContain('<h2>2. 引言</h2>');
+        expect(text).toContain('<h3>2.1 编写目的</h3>');
+        expect(text).toContain('<h2>3. 总体设计</h2>');
+        expect(text).toContain('<h3>3.1 总体架构</h3>');
+        expect(text).not.toContain('<h2>1. 引言</h2>');
+    });
+
+    it('Word 骨架没有可靠编号时仍按层级生成规范编号', () => {
+        const skeleton = buildSkeleton([
+            { level: 1, text: '引言', number: '' },
+            { level: 2, text: '编写目的', number: '' },
+            { level: 1, text: '总体设计', number: '' },
+        ]);
+        const html = '<h1 class="doc-title">T</h1><h2>引言</h2><h3>编写目的</h3><h2>总体设计</h2>';
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        expect(text).toContain('<h2>1. 引言</h2>');
+        expect(text).toContain('<h3>1.1 编写目的</h3>');
+        expect(text).toContain('<h2>2. 总体设计</h2>');
+    });
+
+    it('带 Word 骨架时保留已有图题/表题编号,且去掉重复英文题注前缀', () => {
+        const skeleton = buildSkeleton([{ level: 1, text: '总体设计', number: '3' }]);
+        const html = [
+            '<h1 class="doc-title">T</h1>',
+            '<h2>总体设计</h2>',
+            '<div class="table-caption">表2-1 Table 2-1 需求阶段工作内容及成果</div>',
+            '<div class="figure-caption">图3-1 Figure 3-1 平台架构</div>',
+        ].join('');
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton, preserveSourceHeadingNumbers: true, figureChapterRelative: true, tableChapterRelative: true }));
+        expect(text).toContain('<div class="table-caption">表2-1 需求阶段工作内容及成果</div>');
+        expect(text).toContain('<div class="figure-caption">图3-1 平台架构</div>');
+        expect(text).not.toContain('表1-1');
+        expect(text).not.toContain('Figure 3-1');
+        expect(text).not.toContain('Table 2-1');
     });
 
     it('个别缺章(单章)→ heading_missing 仅 warning(不阻断计费)', () => {
@@ -260,6 +305,22 @@ describe('结构先行:reconcileHeadingsToSkeleton 根治章节漂移(6→10)', 
         expect(text).toContain('<h2>2. 关键词</h2>'); // 章后的"关键词"是正文章,编号
     });
 
+    it('学术期刊:英文题名 doc-title-en 是篇首信息,不编号也不偷走第一章', () => {
+        const html = [
+            '<h1 class="doc-title">中文题名</h1>',
+            '<h2 class="doc-title-en">English Title</h2>',
+            '<div class="author-info">张三，李四</div>',
+            '<p class="keywords">关键词：排版</p>',
+            '<h2>引言</h2>',
+            '<h2>方法</h2>',
+        ].join('');
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested' }));
+        expect(text).toContain('<h2 class="doc-title-en">English Title</h2>');
+        expect(text).not.toContain('1. English Title');
+        expect(text).toContain('<h2>1. 引言</h2>');
+        expect(text).toContain('<h2>2. 方法</h2>');
+    });
+
     it('无骨架 → 保持旧行为(信任 AI 标签)', () => {
         const html = '<h1 class="doc-title">T</h1><h2>A</h2><h2>B</h2>';
         const { text } = postProcess(html, opts({ scheme: 'decimal-nested' }));
@@ -312,7 +373,9 @@ describe('多预设(各TAB)生成逻辑正确性矩阵', () => {
         { name: 'ACADEMIC 报告', scheme: 'decimal-nested', fig: true, tab: true, firstChapter: '1. 引言', secondChapter: '2. 系统设计' },
         { name: 'ACADEMIC_JOURNAL 学术期刊', scheme: 'decimal-nested', fig: false, tab: false, firstChapter: '1. 引言', secondChapter: '2. 系统设计' },
         { name: 'CREATIVE', scheme: 'chapter', fig: true, tab: true, firstChapter: '第一章 引言', secondChapter: '第二章 系统设计' },
-        { name: 'CORPORATE 商务公文', scheme: 'chinese-hierarchical', fig: false, tab: false, firstChapter: '一、 引言', secondChapter: '二、 系统设计' },
+        { name: 'CORPORATE 机关公文', scheme: 'chinese-hierarchical', fig: false, tab: false, firstChapter: '一、 引言', secondChapter: '二、 系统设计' },
+        { name: 'WORK_REPORT 工作汇报/方案', scheme: 'chinese-hierarchical', fig: false, tab: false, firstChapter: '一、 引言', secondChapter: '二、 系统设计' },
+        { name: 'MEETING_MINUTES 会议纪要', scheme: 'chinese-hierarchical', fig: false, tab: false, firstChapter: '一、 引言', secondChapter: '二、 系统设计' },
         { name: 'MINIMALIST', scheme: 'decimal', fig: false, tab: false, firstChapter: '1. 引言', secondChapter: '2. 系统设计' },
     ];
     const html = [

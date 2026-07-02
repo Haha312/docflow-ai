@@ -20,10 +20,14 @@ const attr = (xml: string, tag: string, name: string): number =>
 // 一篇有代表性的"长"期刊文章:篇首(标题/作者/单位/摘要/关键词)+ 多级章节 + 三线表 + 图题 + 参考文献
 const JOURNAL_HTML = `
 <h1 class="doc-title">基于GIS+BIM的新能源工程数字化协同设计平台</h1>
-<div class="cover-meta">张三，李四</div>
+<h2 class="doc-title-en">Digital Collaborative Design Platform for New Energy Engineering Based on GIS and BIM</h2>
+<div class="author-info">张三，李四</div>
 <div class="affiliation">（电力系统技术研究院，北京 100000）</div>
 <div class="abstract-cn"><p>摘要：本文提出一种融合GIS与BIM的协同设计平台，实现了风光电站的数字化设计。</p></div>
-<div class="keywords">关键词：GIS；BIM；协同设计；新能源</div>
+<div class="abstract-en"><p>Abstract: This paper proposes a collaborative design platform integrating GIS and BIM.</p></div>
+<p class="keywords">关键词：GIS；BIM；协同设计；新能源</p>
+<p class="keywords keywords-en">KEY WORDS: GIS; BIM; collaborative design; new energy</p>
+<hr class="journal-split">
 <h2>0 引言</h2><p>新能源工程数字化是行业趋势。</p>
 <h2>1 平台目标</h2><p>实现高效协同。</p>
 <h3>1.1 协同工作</h3><p>跨专业协同。</p>
@@ -60,6 +64,14 @@ describe('generateDocx 学术期刊(PST 规范)深度核对', () => {
     expect(xml).toMatch(/<w:sz w:val="44"\/>/);  // 文档标题 22pt
     expect(xml).toMatch(/<w:sz w:val="24"\/>/);  // 章标题 12pt (小四)
     expect(xml).toMatch(/<w:sz w:val="21"\/>/);  // 三级标题 10.5pt (五号)
+  });
+
+  it('篇首结构:英文题名/作者/摘要/关键词不作为正文标题编号', async () => {
+    const xml = await docXml(JOURNAL_HTML, DocPreset.ACADEMIC_JOURNAL);
+    expect(xml).toContain('Digital Collaborative Design Platform');
+    expect(xml).toContain('KEY WORDS');
+    expect(xml).not.toMatch(/<w:t>1\.\s*Digital Collaborative Design Platform/);
+    expect(xml).not.toMatch(/<w:t>1\.\s*张三/);
   });
 
   it('三线表:外框线 0.75pt(sz=6)+ 内线 0.5pt(sz=4)', async () => {

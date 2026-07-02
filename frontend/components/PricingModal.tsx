@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { paymentService } from '../services/paymentService';
 import { useTranslation } from 'react-i18next';
-import alipayLogo from '../image/Alipaylogo.png';
 import wechatLogo from '../image/WeChatlogo.jpg';
 import { QRCodeCanvas } from 'qrcode.react';
 
@@ -18,7 +17,6 @@ interface PricingModalProps {
   reason?: 'quota';
 }
 
-type PaymentMethod = 'alipay' | 'wechat';
 type BillingCycle = 'monthly' | 'yearly';
 type Tier = 'plus' | 'pro' | 'ultra';
 
@@ -27,7 +25,6 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
   const { t } = useTranslation();
   // When triggered by quota exhaustion, default to monthly (lower decision friction)
   const [billingCycle, setBillingCycle] = useState<BillingCycle>(reason === 'quota' ? 'monthly' : 'yearly');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('alipay');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -61,11 +58,6 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
       setIsCheckingStatus(false);
       setStatusHint('');
       setIsLoading(false);
-
-      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const lang = navigator.language;
-      const isChina = lang === 'zh-CN' || timeZone.includes('Shanghai') || timeZone.includes('Beijing');
-      setPaymentMethod(isChina ? 'alipay' : 'wechat');
     }
   }, [isOpen]);
 
@@ -118,14 +110,13 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
     setStep('payment');
   };
 
-  const handleFinalPay = async (method: PaymentMethod) => {
+  const handleFinalPay = async () => {
     if (!selectedTier) return;
     setError('');
-    setPaymentMethod(method);
     setIsLoading(true);
     try {
       const planType = `${selectedTier}_${billingCycle}`;
-      const checkout = await paymentService.createCheckoutSession(planType, method);
+      const checkout = await paymentService.createCheckoutSession(planType, 'wechat');
 
       if (!checkout.orderId || !checkout.qrCode) {
         throw new Error(t('pricing.checkout_failed', '创建支付会话失败'));
@@ -168,10 +159,7 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
     }
   };
 
-  // Determine display currency based on current 'paymentMethod' state (which defaults based on locale)
-  const isAlipay = paymentMethod === 'alipay';
-  const currency = isAlipay ? 'CNY' : 'USD';
-  const symbol = isAlipay ? '¥' : '$';
+  const symbol = '¥';
 
   const pricingData: Record<Tier, any> = {
     plus: {
@@ -240,11 +228,11 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={handleBackdropClick} />
+    <div className="prism-modal fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/70" onClick={handleBackdropClick} />
 
       <div
-        className="relative z-10 w-full max-w-4xl mx-4 bg-white rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden"
+        className="pricing-modal relative z-10 w-full max-w-4xl mx-4 bg-[#111111] border border-white/10 rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
 
@@ -288,13 +276,13 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
 
             <div className="flex-1 flex flex-col items-center justify-center text-center">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                {paymentMethod === 'wechat' ? t('pricing.scan_wechat') : t('pricing.scan_alipay')}
+                {t('pricing.scan_wechat')}
               </h2>
               <p className="text-gray-500 mb-6">
-                {t('pricing.pay_amount')} <span className={`font-bold text-xl ${paymentMethod === 'wechat' ? 'text-green-600' : 'text-blue-600'}`}>¥{getPrice(selectedTier)}</span> {t('pricing.currency_unit')}
+                {t('pricing.pay_amount')} <span className="font-bold text-xl text-green-600">¥{getPrice(selectedTier)}</span> {t('pricing.currency_unit')}
               </p>
 
-              <div className={`p-4 bg-gradient-to-br ${paymentMethod === 'wechat' ? 'from-green-50 to-white border-green-100' : 'from-blue-50 to-white border-blue-100'} border-2 rounded-3xl shadow-lg`}>
+              <div className="qr-paper p-4 bg-white border-green-200 border-2 rounded-3xl shadow-lg">
                 {qrCodeData ? (
                   <QRCodeCanvas value={qrCodeData} size={224} includeMargin />
                 ) : (
@@ -305,7 +293,7 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
               </div>
 
               <div className="mt-6 text-sm text-gray-500 max-w-xs">
-                <p>{t('pricing.please_use')}{paymentMethod === 'wechat' ? t('pricing.wechat') : t('pricing.alipay')}{t('pricing.scan_qr_prompt')}</p>
+                <p>{t('pricing.please_use')}{t('pricing.wechat')}{t('pricing.scan_qr_prompt')}</p>
                 <p className="mt-2 text-xs text-gray-400">{t('pricing.payment_completion_notice')}</p>
                 {!!currentOrderId && <p className="mt-2 text-xs text-gray-400">Order: {currentOrderId}</p>}
                 {isMockOrder && <p className="mt-2 text-xs text-amber-500">{t('pricing.mock_order_hint', '当前是测试模式订单')}</p>}
@@ -324,7 +312,7 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
               <button
                 onClick={handleManualStatusCheck}
                 disabled={isCheckingStatus}
-                className={`mt-4 px-6 py-2 text-white rounded-full text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${paymentMethod === 'wechat' ? 'bg-green-500 hover:bg-green-600' : 'bg-blue-500 hover:bg-blue-600'}`}
+                className="mt-4 px-6 py-2 text-white rounded-full text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed bg-green-500 hover:bg-green-600"
               >
                 {isCheckingStatus
                   ? t('pricing.checking_payment', '正在校验支付状态...')
@@ -375,49 +363,20 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Alipay Option */}
+              <div className="flex justify-center">
                 <button
-                  onClick={() => handleFinalPay('alipay')}
+                  onClick={handleFinalPay}
                   disabled={isLoading}
-                  onMouseEnter={() => setPaymentMethod('alipay')}
-                  className={`group relative flex flex-col items-center p-6 rounded-3xl border-2 transition-all duration-300 ${paymentMethod === 'alipay'
-                    ? 'border-blue-500 bg-blue-50/30 shadow-xl shadow-blue-100 scale-105 z-10'
-                    : 'border-gray-100 bg-white hover:border-blue-200 hover:shadow-lg hover:scale-[1.02]'
-                    }`}
-                >
-                  <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm mb-4 group-hover:scale-110 transition-transform duration-300 overflow-hidden">
-                    <img src={alipayLogo} alt={t('pricing.alipay')} className="w-16 h-16 object-cover rounded-2xl" />
-                  </div>
-                  <div className="text-lg font-bold text-gray-900 mb-1">{t('pricing.alipay_pay')}</div>
-                  <div className="text-sm text-gray-500 font-medium">{t('pricing.recommended_cn')}</div>
-                  {paymentMethod === 'alipay' && (
-                    <div className="absolute top-4 right-4 text-blue-500">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
-                    </div>
-                  )}
-                </button>
-
-                {/* WeChat Option */}
-                <button
-                  onClick={() => handleFinalPay('wechat')}
-                  disabled={isLoading}
-                  onMouseEnter={() => setPaymentMethod('wechat')}
-                  className={`group relative flex flex-col items-center p-6 rounded-3xl border-2 transition-all duration-300 ${paymentMethod === 'wechat'
-                    ? 'border-green-500 bg-green-50/30 shadow-xl shadow-green-100 scale-105 z-10'
-                    : 'border-gray-100 bg-white hover:border-green-200 hover:shadow-lg hover:scale-[1.02]'
-                    }`}
+                  className="group relative flex w-full max-w-sm flex-col items-center p-6 rounded-3xl border-2 border-green-500 bg-green-50/30 shadow-xl shadow-green-100 transition-all duration-300 hover:shadow-green-200 hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
                 >
                   <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm mb-4 group-hover:scale-110 transition-transform duration-300 overflow-hidden">
                     <img src={wechatLogo} alt={t('pricing.wechat')} className="w-16 h-16 object-cover rounded-2xl" />
                   </div>
                   <div className="text-lg font-bold text-gray-900 mb-1">{t('pricing.wechat_pay')}</div>
-                  <div className="text-sm text-gray-500 font-medium">{t('pricing.recommended_cn')}</div>
-                  {paymentMethod === 'wechat' && (
-                    <div className="absolute top-4 right-4 text-green-500">
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
-                    </div>
-                  )}
+                  <div className="text-sm text-gray-500 font-medium">{t('pricing.wechat_official_native', '微信官方收银台动态二维码')}</div>
+                  <div className="absolute top-4 right-4 text-green-500">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                  </div>
                 </button>
               </div>
 
@@ -492,18 +451,18 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                 <div className="flex bg-gray-100 p-1 rounded-full relative">
                   <button
                     onClick={() => setBillingCycle('monthly')}
-                    className={`flex-1 min-w-[100px] px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 ${billingCycle === 'monthly' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    className={`pricing-cycle-option flex-1 min-w-[100px] px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 ${billingCycle === 'monthly' ? 'is-active bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                       }`}
                   >
                     {t('pricing.monthly')}
                   </button>
                   <button
                     onClick={() => setBillingCycle('yearly')}
-                    className={`flex-1 min-w-[120px] px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 flex items-center justify-center gap-2 whitespace-nowrap ${billingCycle === 'yearly' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    className={`pricing-cycle-option flex-1 min-w-[120px] px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 flex items-center justify-center gap-2 whitespace-nowrap ${billingCycle === 'yearly' ? 'is-active bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                       }`}
                   >
                     {t('pricing.yearly')}
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">{t('pricing.save_15')}</span>
+                    <span className="pricing-save-badge text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">{t('pricing.save_15')}</span>
                   </button>
                 </div>
 
@@ -533,51 +492,52 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                   return (
                     <div
                       key={tier}
-                      className={`relative flex flex-col rounded-[2rem] p-6 transition-all duration-300 bg-white border ${cardBorder} ${isDowngrade ? 'opacity-60 pointer-events-none' : 'hover:border-blue-200 hover:shadow-lg hover:-translate-y-1'} w-full md:w-[320px] md:flex-1 md:max-w-[340px]`}
+                      data-tier={tier}
+                      className={`pricing-card relative flex flex-col rounded-[2rem] p-6 transition-all duration-300 bg-white border ${cardBorder} ${isDowngrade ? 'opacity-60 pointer-events-none' : 'hover:border-blue-200 hover:shadow-lg hover:-translate-y-1'} w-full md:w-[320px] md:flex-1 md:max-w-[340px]`}
                     >
                       {(isPro || isUltra) && (
-                        <div className={`absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 ${isUltra ? 'bg-purple-600' : 'bg-blue-600'} text-white text-xs font-bold tracking-wide uppercase rounded-full shadow-sm`}>
+                        <div className={`pricing-ribbon absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 ${isUltra ? 'bg-purple-600' : 'bg-blue-600'} text-white text-xs font-bold tracking-wide uppercase rounded-full shadow-sm`}>
                           {isUltra ? t('pricing.exclusive') : t('pricing.recommended')}
                         </div>
                       )}
 
                       <div className="mb-4">
-                        <h3 className="text-2xl font-bold text-gray-900 tracking-tight">
+                        <h3 className="pricing-card-title text-2xl font-bold text-gray-900 tracking-tight">
                           {data.title}
                         </h3>
-                        <p className="text-gray-500 mt-2 font-medium">
+                        <p className="pricing-card-desc text-gray-500 mt-2 font-medium">
                           {data.quota}
                         </p>
                       </div>
 
                       <div className="flex items-baseline mt-4 mb-2">
-                        <span className="text-5xl font-extrabold text-gray-900 tracking-tight">
+                        <span className="pricing-price text-5xl font-extrabold text-gray-900 tracking-tight">
                           {symbol}{price}
                         </span>
-                        <span className="text-sm font-medium text-gray-500 ml-2">
+                        <span className="pricing-period text-sm font-medium text-gray-500 ml-2">
                           /{billingCycle === 'yearly' ? t('pricing.yearly') : t('pricing.monthly')}
                         </span>
                       </div>
 
                       <div className="h-6">
                         {billingCycle === 'yearly' && (
-                          <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-bold">
+                          <div className="pricing-save-chip inline-flex items-center px-2.5 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-bold">
                             {t('pricing.save_15_approx', { symbol, amount: Math.round(price / 12) })}
                           </div>
                         )}
                       </div>
 
-                      <div className="border-t border-gray-100 my-5"></div>
+                      <div className="pricing-separator border-t border-gray-100 my-5"></div>
 
                       <ul className="space-y-4 flex-1">
                         {data.features.map((f, i) => (
                           <li key={i} className="flex items-start gap-3">
-                            <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isUltra ? 'bg-purple-600 text-white' : isPro ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                            <div className={`pricing-check mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isUltra ? 'bg-purple-600 text-white' : isPro ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                                 <polyline points="20 6 9 17 4 12"></polyline>
                               </svg>
                             </div>
-                            <span className="text-gray-600 text-sm font-medium leading-tight">{f}</span>
+                            <span className="pricing-feature text-gray-600 text-sm font-medium leading-tight">{f}</span>
                           </li>
                         ))}
                       </ul>
@@ -587,7 +547,7 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                           return (
                             <button
                               disabled
-                              className="mt-6 w-full py-3.5 rounded-xl text-sm font-bold bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                              className="pricing-action is-disabled mt-6 w-full py-3.5 rounded-xl text-sm font-bold bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
                             >
                               已有更高方案
                             </button>
@@ -600,7 +560,7 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                             return (
                               <button
                                 onClick={() => handlePlanSelect(tier)}
-                                className="mt-6 w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all active:scale-[0.98] bg-green-600 text-white shadow-lg shadow-green-200 hover:bg-green-700 hover:shadow-green-300"
+                                className="pricing-action mt-6 w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all active:scale-[0.98] bg-green-600 text-white shadow-lg shadow-green-200 hover:bg-green-700 hover:shadow-green-300"
                               >
                                 {t('pricing.upgrade_to_yearly')}
                               </button>
@@ -610,7 +570,7 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                           return (
                             <button
                               disabled
-                              className="mt-6 w-full py-3.5 rounded-xl text-sm font-bold tracking-wide bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
+                              className="pricing-action is-disabled mt-6 w-full py-3.5 rounded-xl text-sm font-bold tracking-wide bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200"
                             >
                               {t('pricing.current_plan')}
                             </button>
@@ -619,7 +579,7 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                         return (
                           <button
                             onClick={() => handlePlanSelect(tier)}
-                            className={`mt-6 w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all active:scale-[0.98] ${isUltra
+                            className={`pricing-action mt-6 w-full py-3.5 rounded-xl text-sm font-bold tracking-wide transition-all active:scale-[0.98] ${isUltra
                               ? 'bg-purple-600 text-white shadow-lg shadow-purple-200 hover:bg-purple-700 hover:shadow-purple-300'
                               : isPro
                                 ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 hover:bg-blue-700 hover:shadow-blue-300'

@@ -13,7 +13,14 @@ export const HEADING_PREFIX =
 
 export const stripHeadingPrefix = (inner: string): string => {
     const re = new RegExp('^(\\s*(?:<(?:strong|b|span|em)\\b[^>]*>\\s*)?)' + HEADING_PREFIX + '[\\s\\u3000]*', 'i');
-    return inner.replace(re, '$1');
+    let out = inner;
+    for (let i = 0; i < 4; i += 1) {
+        const next = out.replace(re, '$1');
+        if (next === out) break;
+        if (next.replace(/<[^>]+>/g, '').replace(/[\s\u3000]+/g, '').length === 0) break;
+        out = next;
+    }
+    return out;
 };
 
 /**
