@@ -11,6 +11,7 @@ export interface GenerateDocumentRequest {
     fileName: string;
     styleConfig: StyleConfig;
     model?: string;
+    imageInputs?: { dataUrl: string; name: string }[]; // 图片上传:后端视觉模型 OCR 识别
 }
 
 /**

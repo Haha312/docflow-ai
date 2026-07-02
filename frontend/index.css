@@ -232,6 +232,36 @@ body {
   background-color: var(--df-soft-2) !important;
 }
 
+/* ── 实心浅色类跟随主题 ──────────────────────────────────────────────
+   否则页面主体/标题/卡片在深色·彩色主题下仍是白的,只有头部/输入框变深 = 花。
+   light 主题的 --df-* ≈ 原浅色(--df-surface=#fff、--df-text=#111827=gray-900),
+   故对默认白色主题近乎零改动;深色/彩色主题下则整体统一。
+   注:A4 预览纸(.a4-page)用原生 background:#fff、非 .bg-white 类,不受影响,任何主题下都保持白纸。 */
+[data-doc-theme] .bg-white:not(.a4-page) {
+  background-color: var(--df-surface) !important;
+}
+[data-doc-theme] .bg-gray-50 {
+  background-color: var(--df-surface-2) !important;
+}
+[data-doc-theme] .bg-gray-100 {
+  background-color: var(--df-soft-2) !important;
+}
+[data-doc-theme] .text-gray-900,
+[data-doc-theme] .text-gray-800,
+[data-doc-theme] .text-gray-700 {
+  color: var(--df-text) !important;
+}
+[data-doc-theme] .text-gray-600,
+[data-doc-theme] .text-gray-500,
+[data-doc-theme] .text-gray-400 {
+  color: var(--df-text-muted) !important;
+}
+[data-doc-theme] .border-gray-200,
+[data-doc-theme] .border-gray-100,
+[data-doc-theme] .border-gray-300 {
+  border-color: var(--df-border) !important;
+}
+
 [data-doc-theme] .border-white\/10,
 [data-doc-theme] .border-white\/20,
 [data-doc-theme] .border-white\/25,

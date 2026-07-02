@@ -99,6 +99,7 @@ function Home() {
   const [inputFileName, setInputFileName] = useState<string>('document.txt');
   // 区分内容来源:'paste' = 粘贴文本(空状态 textarea),'file' = 上传文件(文件 chip),null = 空
   const [inputSource, setInputSource] = useState<'paste' | 'file' | null>(null);
+  const [uploadedImages, setUploadedImages] = useState<{ dataUrl: string; name: string }[]>([]); // 上传的图片(base64),交后端 OCR
   // 选中的模板:5 个国标模板之一,或单独的「自定义」档案
   const [selectedPreset, setSelectedPreset] = useState<DocPreset | 'CUSTOM'>(DocPreset.ACADEMIC);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -243,10 +244,11 @@ function Home() {
   const inputTextCount = useMemo(() => getTextCount(inputText), [inputText]);
   const pasteCharLimit = user?.subscriptionStatus && user.subscriptionStatus !== 'FREE' ? 2_000_000 : 200_000;
 
-  const handleFileLoaded = (content: string, name: string) => {
+  const handleFileLoaded = (content: string, name: string, upload?: { images?: { dataUrl: string; name: string }[] }) => {
     setInputText(content);
     setInputFileName(name);
     setInputSource('file');
+    setUploadedImages(upload?.images ?? []); // 图片上传:交后端 OCR;非图片则清空
     setOutputText('');
     setAiState(prev => ({ ...prev, error: null, progress: 0 }));
   };
@@ -255,6 +257,7 @@ function Home() {
   // 空白内容视为空(复位文件名/来源),纯空格不算有效输入。
   const handlePasteInput = (value: string) => {
     setInputText(value);
+    setUploadedImages([]); // 改为手动输入文本 → 清掉此前上传的图片,避免残留误 OCR
     const trimmed = value.trim();
     setInputSource(trimmed ? 'paste' : null);
     if (trimmed) {
@@ -336,6 +339,7 @@ function Home() {
       setInputText('');
       setInputFileName('document.txt');
       setInputSource(null);
+      setUploadedImages([]);
       setOutputText('');
       setContentPageCount(1);
       setAiState({ isThinking: false, error: null, progressStep: '', progress: 0, estimatedSec: null, startedAt: null });
@@ -439,7 +443,7 @@ function Home() {
   };
 
   const handleProcess = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && uploadedImages.length === 0) return; // 纯图片上传时正文为空,也允许生成(走 OCR)
     if (!isAuthenticated) {
       setShowAuthModal(true);
       return;
@@ -503,6 +507,7 @@ function Home() {
           preset: backendPreset,
           fileName: inputFileName,
           styleConfig: activeStyle,
+          imageInputs: uploadedImages.length ? uploadedImages : undefined, // 图片上传 → 后端视觉模型 OCR
           // 不再让用户选模型:省略 model,后端自动选最优(默认 deepseek)
         },
         (partialText, progressData, newImageMap) => {

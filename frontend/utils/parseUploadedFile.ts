@@ -20,6 +20,7 @@ type TFn = (key: string, opts?: any) => string;
 export interface ParsedUpload {
   content: string;
   fileName: string;
+  images?: { dataUrl: string; name: string }[]; // 图片上传:base64,交后端视觉模型 OCR
 }
 
 /**
@@ -99,6 +100,18 @@ export async function parseUploadedFile(
 
   if (file.type === 'application/vnd.ms-word' || file.name.endsWith('.doc')) {
     throw new Error(t('home.unsupported_doc', '暂不支持旧版 .doc 格式，请另存为 .docx 或 .txt 后上传。'));
+  }
+
+  // 图片:读为 base64 DataURL,交给后端视觉模型 OCR 识别。
+  // 关键:绝不能按文本读(readAsText)——那样会把 PNG/JPG 的二进制字节当文本,得到满屏 � 乱码。
+  if (file.type.startsWith('image/')) {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.onerror = () => reject(new Error(t('home.read_failed', '文件读取失败')));
+      reader.readAsDataURL(file);
+    });
+    return { content: '', fileName: file.name, images: [{ dataUrl, name: file.name }] };
   }
 
   const textContent = await new Promise<string>((resolve, reject) => {
