@@ -355,6 +355,7 @@
         "AUTH_CAPTCHA_EXPIRED": "Captcha has expired, please refresh",
         "AUTH_CAPTCHA_WRONG": "Incorrect captcha",
         "GEN_AI_UNAVAILABLE": "AI service is temporarily unavailable. Please try again later.",
+        "GEN_IN_PROGRESS": "A previous layout task is still running. Please wait a moment or refresh and retry.",
         "GEN_API_KEY_INVALID": "AI API key is invalid or unauthorized. Please check the backend configuration.",
         "GEN_STREAM_TIMEOUT": "The AI stopped responding (possible stall). Please try again.",
         "GEN_STREAM_INTERRUPTED": "The connection to the AI was interrupted. Please try again (long documents may need a retry).",

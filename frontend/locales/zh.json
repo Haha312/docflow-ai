@@ -357,6 +357,7 @@
         "AUTH_CAPTCHA_EXPIRED": "图形验证码已过期，请刷新",
         "AUTH_CAPTCHA_WRONG": "图形验证码错误",
         "GEN_AI_UNAVAILABLE": "AI 服务暂时不可用，请稍后重试",
+        "GEN_IN_PROGRESS": "上一个排版任务还在进行中，请稍候或刷新页面后重试",
         "GEN_API_KEY_INVALID": "AI 接口密钥无效或未授权，请检查后端配置",
         "GEN_STREAM_TIMEOUT": "AI 长时间无响应（疑似卡死），请重试",
         "GEN_STREAM_INTERRUPTED": "与 AI 的连接中断，请重试（长文档可稍后再试）",

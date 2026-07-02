@@ -490,6 +490,11 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
     req.on('close', () => {
         if (!res.writableEnded) {
             clientClosed = true;
+            // 客户端断开(用户点「停止」/ 关闭页面 / 网络中断)→ 立刻释放该用户的并发锁与全局槽。
+            // 否则这次生成会以「僵尸」状态一直占着锁,用户重试时误报「已有任务在进行」(即便前端看着没在跑)。
+            // finally 里有 if(...Acquired) 守卫,这里置空后不会二次释放。
+            if (userLockAcquired) { activeUserGenerations.delete(userLockAcquired); userLockAcquired = null; }
+            if (generationSlotAcquired) { activeGenerations = Math.max(0, activeGenerations - 1); generationSlotAcquired = false; }
         }
     });
 
@@ -508,7 +513,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
 
         // ?濠?????????:闂傚倷绀侀幉锟犳嚌閻愵剛闄勯柡鍐ㄥ€婚崡?濠????????????????????????闂???)
         if (activeUserGenerations.has(user.id)) {
-            res.status(429).json(errorResponse('You already have a document generation in progress. Please wait for it to finish.', 429));
+            res.status(429).json(errorResponse('GEN_IN_PROGRESS', 429));
             return;
         }
         activeUserGenerations.add(user.id);
