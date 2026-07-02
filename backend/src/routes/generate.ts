@@ -506,7 +506,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         }
 
         if (!tryAcquireGenerationSlot()) {
-            res.status(503).json(errorResponse('??闂????????闂傚倸鍊搁崐鎼佸箠韫囨稒鍋￠柕澶嗘櫅濮???闂?????', 503));
+            res.status(503).json(errorResponse('GEN_SERVER_BUSY', 503));
             return;
         }
         generationSlotAcquired = true;
@@ -534,8 +534,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // 闂?闂??????濠?闂傚倸鍊风欢锟犲磻閸曨垁鍥箯鐏炶姤娈??闂傚倷绀侀幖顐︽偋濠婂嫮顩叉繝闈涚墐閸??闂傚倷绀侀幖顐﹀疮椤愶附鍋夐柤娴嬫櫅閸?? deepseek(闂???????????濠????婵??闂?????)
         requestedModelKey = pickModelKey(model);
 
-        if (!content || !preset || !fileName || !styleConfig) {
-            res.status(400).json(errorResponse('缂?婵?闂????', 400));
+        // 纯图片上传时 content 本来就是空串(正文交给下面的 OCR 生成),不能算「缺字段」。
+        if ((!content && !imageInputs?.length) || !preset || !fileName || !styleConfig) {
+            res.status(400).json(errorResponse('GEN_MISSING_FIELDS', 400));
             return;
         }
 
@@ -1489,6 +1490,8 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             code = 'GEN_TOO_LONG';
         } else if (rawMsg.includes('VISION_NOT_CONFIGURED')) {
             code = 'VISION_NOT_CONFIGURED';
+        } else if (rawMsg.includes('VISION_NO_TEXT_FOUND')) {
+            code = 'VISION_NO_TEXT_FOUND';
         } else if (rawMsg.includes('VISION_TOO_MANY_IMAGES') || rawMsg.includes('VISION_IMAGE_TOO_LARGE') || rawMsg.includes('VISION_INVALID_IMAGE')) {
             code = 'VISION_INPUT_INVALID';
         } else if (rawMsg.includes('only support text messages') || rawMsg.includes('ModelNotOpen') || rawMsg.includes('InvalidEndpointOrModel')) {

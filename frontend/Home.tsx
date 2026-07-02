@@ -524,6 +524,8 @@ function Home() {
             let displayStatus = progressData.status;
             if (displayStatus === 'GENERATING') {
               displayStatus = t('home.status_generating', '正在智能排版...');
+            } else if (displayStatus === 'RECOGNIZING_IMAGES') {
+              displayStatus = t('home.status_recognizing_images', '正在识别图片内容...');
             } else if (displayStatus.startsWith('PARTIAL_GENERATING|')) {
               const [, cur, tot] = displayStatus.split('|');
               displayStatus = t('home.status_partial_generating', '正在生成第 {{cur}}/{{tot}} 部分...', { cur, tot });
@@ -1209,7 +1211,11 @@ function Home() {
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate" title={inputFileName}>{inputFileName}</p>
-                        <p className="text-xs text-gray-400">{getTextCount(inputText).toLocaleString()} {t('home.chars', '字')}</p>
+                        <p className="text-xs text-gray-400">
+                          {uploadedImages.length > 0
+                            ? t('home.image_upload_hint', '图片 · 由 AI 识别文字排版')
+                            : `${getTextCount(inputText).toLocaleString()} ${t('home.chars', '字')}`}
+                        </p>
                       </div>
                     </div>
                     <button onClick={handleHeroClear} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
@@ -1276,7 +1282,7 @@ function Home() {
               <div className="flex justify-center mt-6">
                 <button
                   onClick={handleProcess}
-                  disabled={!inputText.trim()}
+                  disabled={!inputText.trim() && uploadedImages.length === 0}
                   className="flex items-center gap-2 text-sm font-medium text-white bg-gray-900 hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed px-7 py-2.5 rounded-lg transition-colors"
                 >
                   {t('home.hero_generate', '开始排版')}
@@ -1392,7 +1398,11 @@ function Home() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate" title={inputFileName}>{inputFileName}</p>
-                      <p className="text-xs text-gray-400">{getTextCount(inputText).toLocaleString()} {t('home.chars', '字')}</p>
+                      <p className="text-xs text-gray-400">
+                        {uploadedImages.length > 0
+                          ? t('home.image_upload_hint', '图片 · 由 AI 识别文字排版')
+                          : `${getTextCount(inputText).toLocaleString()} ${t('home.chars', '字')}`}
+                      </p>
                     </div>
                   </div>
                   <button onClick={handleClear} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
@@ -1477,8 +1487,8 @@ function Home() {
                   <>
                     <button
                       onClick={handleProcess}
-                      disabled={!inputText}
-                      className={`w-full py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-all ${!inputText
+                      disabled={!inputText && uploadedImages.length === 0}
+                      className={`w-full py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-all ${!inputText && uploadedImages.length === 0
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         : 'bg-gray-900 text-white hover:bg-gray-800 shadow-sm'
                         }`}
@@ -1488,7 +1498,7 @@ function Home() {
                         <path d="M5 12h14M12 5l7 7-7 7" />
                       </svg>
                     </button>
-                    {inputText && (
+                    {(inputText || uploadedImages.length > 0) && (
                       <p className="text-center text-[10px] text-gray-300 mt-1.5">
                         {typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌘' : 'Ctrl'}+Enter
                       </p>
@@ -1522,7 +1532,7 @@ function Home() {
                 {aiState.error && (
                   <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg flex items-center justify-between gap-3">
                     <p className="text-xs text-red-600 flex-1 min-w-0">{aiState.error}</p>
-                    {inputText && (
+                    {(inputText || uploadedImages.length > 0) && (
                       <button
                         onClick={handleProcess}
                         disabled={aiState.isThinking}
@@ -1982,17 +1992,16 @@ function Home() {
                     ) : aiState.isThinking ? (
                       /* 等待开始：骨架纸 + 进度，呈现"文档正在排版"的感受 */
                       <div className="h-full flex flex-col items-center justify-center gap-5 py-6">
-                        {/* 骨架 A4 纸：标题 + 段落占位行 + 流动 shimmer */}
+                        {/* 骨架 A4 纸：标题 + 段落占位行，逐行脉冲动画（去掉整卡的扫光效果） */}
                         <div className="w-[300px] max-w-[78%] bg-white border border-gray-200 rounded-sm shadow-sm px-7 py-6 relative overflow-hidden">
-                          <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-100 to-transparent animate-[shimmer_1.6s_ease-in-out_infinite] z-10" />
-                          <div className="h-4 w-2/3 mx-auto bg-gray-200 rounded mb-6" />
-                          <div className="h-2.5 w-2/5 bg-gray-200 rounded mb-3" />
+                          <div className="h-4 w-2/3 mx-auto bg-gray-200 rounded mb-6 animate-pulse" />
+                          <div className="h-2.5 w-2/5 bg-gray-200 rounded mb-3 animate-pulse" />
                           {[0.95, 0.88, 0.6].map((w, i) => (
-                            <div key={`a${i}`} className="h-2 bg-gray-100 rounded mb-2.5" style={{ width: `${w * 100}%` }} />
+                            <div key={`a${i}`} className="h-2 bg-gray-100 rounded mb-2.5 animate-pulse" style={{ width: `${w * 100}%`, animationDelay: `${i * 150}ms` }} />
                           ))}
-                          <div className="h-2.5 w-2/5 bg-gray-200 rounded mb-3 mt-6" />
+                          <div className="h-2.5 w-2/5 bg-gray-200 rounded mb-3 mt-6 animate-pulse" style={{ animationDelay: '300ms' }} />
                           {[0.9, 0.5].map((w, i) => (
-                            <div key={`b${i}`} className="h-2 bg-gray-100 rounded mb-2.5" style={{ width: `${w * 100}%` }} />
+                            <div key={`b${i}`} className="h-2 bg-gray-100 rounded mb-2.5 animate-pulse" style={{ width: `${w * 100}%`, animationDelay: `${(i + 3) * 150}ms` }} />
                           ))}
                         </div>
                         <div className="text-center">

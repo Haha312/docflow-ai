@@ -246,6 +246,10 @@ body {
 [data-doc-theme] .bg-gray-100 {
   background-color: var(--df-soft-2) !important;
 }
+/* 预览区"桌面"背景(A4 纸张模式的灰色衬底,纸张本身仍保持白色) */
+[data-doc-theme] .bg-\[\#f0f0f0\] {
+  background-color: var(--df-soft-2) !important;
+}
 [data-doc-theme] .text-gray-900,
 [data-doc-theme] .text-gray-800,
 [data-doc-theme] .text-gray-700 {

@@ -19,6 +19,10 @@ const estimateDataUrlBytes = (dataUrl: string): number => {
     return Math.floor((base64.length * 3) / 4);
 };
 
+const NO_TEXT_SENTINEL = 'NO_TEXT_FOUND';
+
+const NO_TEXT_INSTRUCTION = `If the image contains no readable document text (e.g. it is a photo, icon, diagram, or a UI screenshot/mockup with no real body text), respond with exactly "${NO_TEXT_SENTINEL}" and nothing else. Never describe or caption the image, and never invent placeholder content.`;
+
 const isRetryableVisionApiError = (error: unknown): boolean => {
     const message = String((error as any)?.message ?? error ?? '');
     return [
@@ -65,6 +69,7 @@ async function recognizeWithResponses(
                             'Recover heading hierarchy, tables, forms, lists, figures, and captions when present.',
                             'Return concise Markdown-like plain text suitable for downstream document formatting.',
                             'Do not invent content that is not visible.',
+                            NO_TEXT_INSTRUCTION,
                             '',
                             `Image filename: ${image.name}`,
                         ].join('\n'),
@@ -82,6 +87,7 @@ async function recognizeWithResponses(
 
     const text = extractResponseText(response);
     if (!text) throw new Error('VISION_EMPTY_RESULT');
+    if (text === NO_TEXT_SENTINEL) throw new Error('VISION_NO_TEXT_FOUND');
     return text;
 }
 
@@ -97,6 +103,7 @@ async function recognizeWithChat(client: OpenAI, model: string, image: VisionIma
                     'Recover heading hierarchy, tables, forms, lists, figures, and captions when present.',
                     'Return concise Markdown-like plain text suitable for downstream document formatting.',
                     'Do not invent content that is not visible.',
+                    NO_TEXT_INSTRUCTION,
                 ].join('\n'),
             },
             {
@@ -119,6 +126,7 @@ async function recognizeWithChat(client: OpenAI, model: string, image: VisionIma
 
     const text = result.choices[0]?.message?.content?.trim();
     if (!text) throw new Error('VISION_EMPTY_RESULT');
+    if (text === NO_TEXT_SENTINEL) throw new Error('VISION_NO_TEXT_FOUND');
     return text;
 }
 
