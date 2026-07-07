@@ -162,7 +162,7 @@
         "integrity_warn_headings": "Output has fewer headings than input ({{o}}/{{i}}); please check for missing sections",
         "integrity_warn_generic": "Please review the generated content",
         "integrity_truncated": "The result may be incomplete (truncation or runaway repetition detected). Consider regenerating or shortening the document.",
-        "integrity_low_retention": "The output differs substantially from the source (~{{pct}}%). Please check for omissions.",
+        "integrity_low_retention": "The output has a low content retention rate (~{{pct}}%). Please check for omissions.",
         "integrity_check": "The result has items to verify (see below). Please review.",
         "rendering": "Applying layout...",
         "dismiss": "Dismiss",

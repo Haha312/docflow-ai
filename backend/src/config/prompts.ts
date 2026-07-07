@@ -187,6 +187,7 @@ CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table r
 | 英文摘要块 | \`<div class="abstract-en"><p>Abstract content...</p></div>\` |
 | 关键词行 | \`<p class="keywords">关键词：深度学习; 神经网络</p>\` |
 | 英文关键词行 | \`<p class="keywords keywords-en">KEY WORDS: deep learning; neural network</p>\` |
+| DOI 编号 | \`<p class="doc-doi">DOI: 10.13335/j.xxxx.xxxxxx</p>\` — 如原文有，绝不能省略 |
 | 篇首/正文分隔 | \`<hr class="journal-split">\` |
 | 一级节标题 | \`<h2>1. 引言</h2>\` |
 | 二级节标题 | \`<h3>1.1 研究背景</h3>\` |
@@ -201,8 +202,9 @@ CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table r
 5. 中文摘要 (abstract-cn) — 如有
 6. 英文摘要 (abstract-en) — 如有
 7. 关键词 / 英文关键词 (keywords / keywords-en) — 如有
-8. \`<hr class="journal-split">\`
-9. 正文各节 (h2 → h3 → h4 → p)
+8. DOI (doc-doi) — 如原文有 DOI 编号，必须保留，不得省略
+9. \`<hr class="journal-split">\`
+10. 正文各节 (h2 → h3 → h4 → p)
 
 ## FORMATTING RULES
 - 摘要和关键词跨双栏显示（已由 CSS column-span 处理，无需特殊标记）
@@ -310,9 +312,10 @@ OUTPUT ORDER (strictly follow this sequence):
 ACADEMIC JOURNAL — FINAL OVERRIDE
 ══════════════════════════════════════════════════════
 
-- Front matter is NOT body structure. Do not number \`doc-title\`, \`doc-title-en\`, authors, affiliations, abstracts, or keywords.
+- Front matter is NOT body structure. Do not number \`doc-title\`, \`doc-title-en\`, authors, affiliations, abstracts, keywords, or \`doc-doi\`.
 - The English title must remain \`<h2 class="doc-title-en">...</h2>\`; it is not a chapter heading.
-- Insert exactly one \`<hr class="journal-split">\` after the final abstract/keyword line and before the first body \`<h2>\`.
+- If the source contains a DOI line (e.g. "DOI: 10.xxxx/..."), you MUST output it as \`<p class="doc-doi">...</p>\` right after the keywords. Never drop it — it is metadata, not noise.
+- Insert exactly one \`<hr class="journal-split">\` after the final abstract/keyword/DOI line and before the first body \`<h2>\`.
 - Body headings start only after \`journal-split\`: \`<h2>\` for first-level sections, \`<h3>\` for subsections, \`<h4>\` for sub-subsections.
 `,
     [DocPreset.CREATIVE]: `

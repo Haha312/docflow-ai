@@ -1051,7 +1051,16 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 return;
             }
 
-            if (className.includes('doc-issuer')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 240, after: 120 }, children: [new TextRun({ text: text, font: makeFont('"SimHei", sans-serif'), color: "CC0000", bold: true, size: 52 })] })); return; }
+            if (className.includes('doc-issuer')) {
+                // 联合发文:多个 <span class="doc-issuer-name"> 各占一行(网页预览靠 display:block 实现,
+                // 这里若只取 el.textContent 会把机关名连在一起挤成一行 —— 逐个 span 转成独立 TextRun + 换行。
+                const issuerNames = Array.from(el.querySelectorAll('.doc-issuer-name'));
+                const issuerRuns = issuerNames.length > 1
+                    ? issuerNames.map((span, i) => new TextRun({ text: (span.textContent || '').trim(), font: makeFont('"SimHei", sans-serif'), color: "CC0000", bold: true, size: 52, break: i > 0 ? 1 : 0 }))
+                    : [new TextRun({ text: text, font: makeFont('"SimHei", sans-serif'), color: "CC0000", bold: true, size: 52 })];
+                elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 240, after: 120 }, children: issuerRuns }));
+                return;
+            }
             if (className.includes('doc-ref-number')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 80, after: 80 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), color: "000000" })] })); return; }
             if (className.includes('doc-classification')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 60 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), bold: true, color: "CC0000" })] })); return; }
             if (className.includes('doc-urgency')) { elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 60 }, children: [new TextRun({ text: text, font: makeFont(styleConfig.fontFamily), size: getHalfPtSize(styleConfig.baseSize), bold: true, color: "CC0000" })] })); return; }
@@ -1126,6 +1135,10 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 const kwM = (styleConfig.keywordsLineHeight || '').match(/([\d.]+)\s*pt/i);
                 const kwSpacing: any = kwM ? { before: 60, after: 120, line: Math.round(parseFloat(kwM[1]) * 20), lineRule: LineRuleType.EXACT } : { before: 60, after: 120 };
                 elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: kwSpacing, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(kwFont), size: kwSize, color: "000000" })] }));
+                return;
+            }
+            if (hasElementClass(el, 'doc-doi')) {
+                elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 120 }, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(keywordsFont), size: getHalfPtSize(styleConfig.keywordsSize || styleConfig.abstractSize || styleConfig.baseSize), color: "000000" })] }));
                 return;
             }
             if (className.includes('table-caption') || tagName === 'CAPTION') { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: true, color: "000000" })] })); return; }

@@ -137,10 +137,18 @@ describe('reconcileImages(修复器)', () => {
         expect(text.split('__IMG_0__').length - 1).toBe(1);
         expect(text.split('__IMG_1__').length - 1).toBe(1);
     });
-    it('无 expected → 文本原样返回(不动)', () => {
+    it('无 expected 且无 <img> → 文本原样返回(不动)', () => {
         const html = '<h2>章</h2><p>正文</p>';
         const { text } = postProcess(html, opts());
         expect(text).toContain('正文');
+    });
+    it('无 expected 但含 <img> → 判定为幻觉图片,剥除并报 image_hallucinated', () => {
+        // 典型场景:纯文字/OCR 来源文档(没有真实 imageMap),AI 却把"图形/装饰线"编成了 <img>
+        const html = '<h2>章</h2><img src="figure1.png"><p>正文</p>';
+        const { text, issues } = postProcess(html, opts());
+        expect(text).not.toContain('<img');
+        expect(text).toContain('正文');
+        expect(issues.some((x) => x.type === 'image_hallucinated' && x.severity === 'warning')).toBe(true);
     });
 });
 

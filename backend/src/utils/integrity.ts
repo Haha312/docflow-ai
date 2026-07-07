@@ -77,7 +77,9 @@ export const countStructure = (html: string): StructuralCounts => {
  */
 export const detectStructuralAnomalies = (html: string): IntegrityIssue[] => {
     const issues: IntegrityIssue[] = [];
-    const docTitleCount = (html.match(/class\s*=\s*"[^"]*\bdoc-title\b[^"]*"/gi) ?? []).length;
+    // (?!-) 排除 doc-title-en(英文题名,与中文 doc-title 并存是学术期刊预设的正常结构,
+    // \bdoc-title\b 本身会误配到 "doc-title-en" 里的 "doc-title" 前缀,导致双语标题被误报成重复标题)
+    const docTitleCount = (html.match(/class\s*=\s*"[^"]*\bdoc-title\b(?!-)[^"]*"/gi) ?? []).length;
     if (docTitleCount > 1) {
         issues.push({ type: 'multiple_titles', severity: 'critical', detail: `检测到 ${docTitleCount} 个文档大标题(应为 1 个),排版可能异常` });
     }

@@ -454,7 +454,17 @@ export const renumberStructure = (html: string, opts: PostProcessOptions, canoni
  */
 export const reconcileImages = (html: string, expected?: string[]): { text: string; issues: IntegrityIssue[] } => {
     const issues: IntegrityIssue[] = [];
-    if (!expected || expected.length === 0) return { text: html, issues };
+    if (!expected || expected.length === 0) {
+        // 无图片来源(纯文本粘贴、图片 OCR 来源文档 —— 没有真实 imageMap 可还原)时,
+        // 任何 <img> 都是幻觉:常见于 AI 把识别文本里提到的"图形/装饰线"当成了图片占位符
+        // 直接编出一个 <img> 标签,但它没有对应的真实图片数据,渲染出来就是空白/破图框。
+        // 剥掉即可 —— 没有真实图片来源时,保留一个注定渲染失败的 <img> 没有任何价值。
+        const strayImgCount = (html.match(/<img\b[^>]*>/gi) || []).length;
+        if (strayImgCount === 0) return { text: html, issues };
+        const stripped = html.replace(/<img\b[^>]*>/gi, '');
+        issues.push({ type: 'image_hallucinated', severity: 'warning', detail: `检测到 ${strayImgCount} 处无来源图片标签(原文本没有嵌入图片),已自动移除` });
+        return { text: stripped, issues };
+    }
 
     const countOf = (s: string, key: string): number => s.split(key).length - 1;
     let out = html;

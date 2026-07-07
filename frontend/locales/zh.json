@@ -162,7 +162,7 @@
         "integrity_warn_headings": "成稿标题数少于原文({{o}}/{{i}}),请核对是否漏节",
         "integrity_warn_generic": "请核对成稿内容",
         "integrity_truncated": "生成可能不完整(检测到截断或重复失控),建议重新生成或缩短文档",
-        "integrity_low_retention": "成稿内容与原文差异较大(约 {{pct}}%),请核对是否有遗漏",
+        "integrity_low_retention": "成稿内容保留率偏低(约 {{pct}}%),请核对是否有遗漏",
         "integrity_check": "生成结果有需要核对的项，请检查",
         "rendering": "正在应用排版格式...",
         "dismiss": "关闭",

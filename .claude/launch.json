@@ -13,7 +13,7 @@
       "runtimeExecutable": "npm.cmd",
       "runtimeArgs": ["run", "dev"],
       "cwd": "frontend",
-      "port": 5174
+      "port": 5175
     }
   ]
 }

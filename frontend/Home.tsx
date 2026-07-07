@@ -35,13 +35,18 @@ const A4_PADDING_PX = 160;
 // ── 真·分页:把一段干净 HTML 按高度切成多张 A4 纸 ──
 const A4_SHEET_W = 794;                 // 纸宽 px(96dpi 下 A4 宽)
 const A4_SHEET_PAD = '80px 90px 40px';  // 纸张内边距(上 右/左 下)
-const PAGE_USABLE_H = 1000;             // 每页可用内容高度(纸高 1123 - 上80 - 下40 ≈ 1003,留点余量)
+export const PAGE_USABLE_H = 1000;      // 每页可用内容高度(纸高 1123 - 上80 - 下40 ≈ 1003,留点余量)
 
 /**
  * 把 html 写入 el,按顶层块的真实高度贪心切成多张 `.a4-page` 纸张(.cover-page 独占一页),
  * 返回纸张数。测量时临时把 el 当作单张纸排版(宽/内边距一致 → 高度准确)。
+ * @param bodyColumns 学术期刊等多栏预设的正文栏数(默认 1 = 不分栏)。测量时正文仍按单栏
+ *   高度走(offsetTop 反映的是分栏前的单栏流,不受后续 CSS column-count 影响),但多栏渲染
+ *   后同样内容占用的纸面高度会缩短为约 1/栏数——故 journal-split 分隔线之后的正文按栏数放大
+ *   可用高度阈值,否则每页会因"按单栏高度算满、按多栏渲染变很短"而大量留白、多分出很多页。
+ *   篇首信息(标题/作者/摘要等,column-span:all)不受影响,仍按单栏高度计。
  */
-function paginateIntoSheets(el: HTMLElement, html: string): number {
+export function paginateIntoSheets(el: HTMLElement, html: string, bodyColumns: number = 1): number {
   el.innerHTML = html;
   const prevStyle = el.getAttribute('style') || '';
   el.style.width = A4_SHEET_W + 'px';
@@ -55,8 +60,10 @@ function paginateIntoSheets(el: HTMLElement, html: string): number {
   const groups: HTMLElement[][] = [[]];
   let gi = 0;
   let pageStart = children[0].offsetTop;
+  let inColumnBody = false; // 过了 journal-split 分隔线 → 之后的正文按栏数放大可用高度
   children.forEach((child, idx) => {
     const isCover = !!child.classList && child.classList.contains('cover-page');
+    const isJournalSplit = child.tagName === 'HR' && child.classList.contains('journal-split');
     const top = child.offsetTop;
     if (isCover) {
       if (groups[gi].length) { groups.push([]); gi++; }   // 封面前若有内容,先收尾
@@ -65,11 +72,13 @@ function paginateIntoSheets(el: HTMLElement, html: string): number {
       pageStart = children[idx + 1] ? children[idx + 1].offsetTop : top;
       return;
     }
-    if (top - pageStart >= PAGE_USABLE_H && groups[gi].length) {
+    const usableH = inColumnBody ? PAGE_USABLE_H * bodyColumns : PAGE_USABLE_H;
+    if (top - pageStart >= usableH && groups[gi].length) {
       groups.push([]); gi++;
       pageStart = top;
     }
     groups[gi].push(child);
+    if (isJournalSplit) inColumnBody = true;
   });
 
   const realGroups = groups.filter(g => g.length);
@@ -961,7 +970,7 @@ function Home() {
         const container = previewContainerRef.current;
         const prevTop = container ? container.scrollTop : 0;
         const followBottom = !!container && aiState.isThinking && shouldAutoScroll;
-        setContentPageCount(paginateIntoSheets(node, displayHtmlRef.current || renderedContent));
+        setContentPageCount(paginateIntoSheets(node, displayHtmlRef.current || renderedContent, activeStyle.columns || 1));
         lastPaginateAtRef.current = Date.now();
         if (container) {
           isProgrammaticScrollRef.current = true;
@@ -1012,7 +1021,7 @@ function Home() {
     const el = previewContentRef.current;
     if (!el || aiState.isThinking || editMode || viewMode !== 'preview' || !renderedContent) return;
     const id = setTimeout(() => {
-      const total = paginateIntoSheets(el, displayHtmlRef.current || renderedContent);
+      const total = paginateIntoSheets(el, displayHtmlRef.current || renderedContent, activeStyle.columns || 1);
       setContentPageCount(total);
     }, 220);
     return () => clearTimeout(id);
@@ -1036,6 +1045,12 @@ function Home() {
 
   const generatePreviewStyles = () => {
     const s = activeStyle;
+    // 真分页(预览态、非编辑)时,#preview-content 的直接子元素是一张张 .a4-page 纸,
+    // 双栏 CSS 必须作用在「纸张内部」——否则加在 #preview-content 上会把「纸张本身」劈成两栏
+    // (纸1 在左栏、纸2 在右栏,内容不够时右栏还会空出一块,长得像多出一页空白)。
+    // 非分页(编辑/对比态,内容是扁平 DOM、没有 .a4-page 包裹)时才需要加在 #preview-content 本身上。
+    const paginated = viewMode === 'preview' && !editMode;
+    const columnRule = s.columns && s.columns > 1 ? `column-count: ${s.columns}; column-gap: 2em;` : '';
     return `
       @keyframes fadeInUp {
         from { opacity: 0; transform: translateY(8px); }
@@ -1052,7 +1067,7 @@ function Home() {
         line-height: ${s.lineHeight};
         color: #1a1a1a;
         text-align: ${s.bodyAlign};
-        ${s.columns && s.columns > 1 ? `column-count: ${s.columns}; column-gap: 2em;` : ''}
+        ${paginated ? '' : columnRule}
       }
       #preview-content p, #preview-content div:not(.katex-display):not(.math-display):not(.figure-caption):not(.table-caption):not(.doc-title):not(.doc-title-en):not(.author-info):not(.affiliation):not(.abstract-cn):not(.abstract-en):not(.cover-page):not(.doc-issuer):not(.doc-attachment) { margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.textIndent}; }
       /* 公文要素：强制无缩进 */
@@ -1087,7 +1102,7 @@ function Home() {
       #preview-content .cover-page .doc-title { font-size: 30pt; margin-bottom: 1.4em; }
       #preview-content .cover-meta { text-indent: 0 !important; text-align: center; font-size: 15pt; line-height: 2; margin: 0.4em 0; color: #222; }
       /* 真·分页:只读视图下每页是一张独立 A4 白纸(在灰桌面上浮动,纸间留白) */
-      #preview-content .a4-page { position: relative; box-sizing: border-box; width: 794px; min-height: 1123px; margin: 0 auto 24px; padding: 80px 90px 56px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 8px rgba(0,0,0,0.10); }
+      #preview-content .a4-page { position: relative; box-sizing: border-box; width: 794px; min-height: 1123px; margin: 0 auto 24px; padding: 80px 90px 56px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 8px rgba(0,0,0,0.10); ${paginated ? columnRule : ''} }
       #preview-content .a4-page:last-child { margin-bottom: 8px; }
       #preview-content .a4-page-footer { position: absolute; left: 90px; right: 90px; bottom: 22px; text-align: center; font-size: 10px; color: #c7c7c7; user-select: none; }
       /* 封面在所属纸张内填满整页、垂直居中 */
@@ -1100,6 +1115,7 @@ function Home() {
       #preview-content .abstract-en { text-indent: 0; font-size: ${s.englishAbstractSize || s.abstractSize || '10.5pt'}; font-family: ${getPreviewFontStack(s.englishAbstractFont || '"Times New Roman", serif')}; margin: 0.5em 0; padding: 0 1em; column-span: all; }
       #preview-content .abstract-cn p, #preview-content .abstract-en p { text-indent: 2em; margin: 0; }
       #preview-content .keywords { text-indent: 0; font-size: ${s.abstractSize || '9pt'}; font-family: ${getPreviewFontStack(s.abstractFont || '"SimSun", serif')}; margin-bottom: 1em; padding: 0 1em; column-span: all; }
+      #preview-content .doc-doi { text-indent: 0; font-size: ${s.abstractSize || '9pt'}; font-family: ${getPreviewFontStack(s.abstractFont || '"SimSun", serif')}; color: #444; margin-bottom: 1em; padding: 0 1em; column-span: all; }
       ${s.columns && s.columns > 1 ? `
       /* 期刊 doc-title 使用标准二号 (22pt)，而非公文的 26pt */
       #preview-content .doc-title { font-size: 22pt !important; font-family: ${getPreviewFontStack(s.h1Font || s.headingFont)}; }
@@ -2006,7 +2022,6 @@ function Home() {
                         </div>
                         <div className="text-center">
                           <p className="text-sm font-medium text-gray-700">{aiState.progressStep || t('home.processing_doc', '正在处理文档...')}</p>
-                          <p className="mt-1 text-xs text-gray-400">{t('home.model_thinking', '模型思考中，请稍候')}</p>
                         </div>
                         {aiState.progress > 0 ? (
                           <div className="flex flex-col items-center gap-1.5">
