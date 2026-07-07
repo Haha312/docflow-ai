@@ -27,6 +27,18 @@ const getTextCount = (html: string) => {
   return html.replace(/<[^>]+>/g, '').replace(/\s/g, '').length;
 };
 
+// 流式逐字显现:候选切点若正好落在一个未闭合的 <tag 中间,回退到该标签开始之前 —— 否则
+// dangerouslySetInnerHTML 会短暂渲染出一个残缺标签(如"...</p"缺右尖括号)。
+// 注意 text.slice(0, candidateLen) 实际只含下标 0..candidateLen-1,lastIndexOf 的
+// fromIndex 必须是 candidateLen-1,否则会把"切片末尾之后那一个字符"也当成已经在切片内。
+function safeHtmlSliceLength(text: string, candidateLen: number): number {
+  if (candidateLen >= text.length) return text.length;
+  const probe = candidateLen - 1;
+  const lastOpen = text.lastIndexOf('<', probe);
+  const lastClose = text.lastIndexOf('>', probe);
+  return lastOpen > lastClose ? lastOpen : candidateLen;
+}
+
 // A4 page dimensions at 96 dpi (297mm × 96 / 25.4 ≈ 1122px)
 const A4_HEIGHT_PX = 1122;
 // Top + bottom padding of the paper div (each side = 80px)
@@ -222,9 +234,12 @@ function Home() {
   const [contentPageCount, setContentPageCount] = useState(1);
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  // Buffer for batching SSE text updates — flush every ~80ms (matches ChatGPT/Claude streaming cadence)
+  // 流式渲染:textBufferRef 存后端已发来的最新全文,revealedLenRef 是已经"划出来"给用户看的长度。
+  // 一个持续跑的 interval 逐帧把 revealedLenRef 往 textBufferRef 追,而不是每次网络 delta 到就整段
+  // 直接跳更新 —— 后者在 SSE 一次给一大段时会看起来"一坨一坨"地跳,而不是连续流出。
   const textBufferRef = useRef<string>('');
-  const rafIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealedLenRef = useRef<number>(0);
+  const revealTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Layout Resizing States
   const [sidebarWidth, setSidebarWidth] = useState(360); // Default 360px
@@ -501,10 +516,23 @@ function Home() {
       if (previewContainerRef.current) previewContainerRef.current.scrollTop = 0;
     });
     textBufferRef.current = '';
-    if (rafIdRef.current !== null) {
-      clearTimeout(rafIdRef.current);
-      rafIdRef.current = null;
+    revealedLenRef.current = 0;
+    if (revealTimerRef.current !== null) {
+      clearInterval(revealTimerRef.current);
     }
+    // 逐帧把已显现长度往最新缓冲区追:落后越多追得越快(至少 12%),但每帧都有最小步进,
+    // 视觉上始终在"流动"而不是等一大段攒够了再整体跳一下。
+    revealTimerRef.current = setInterval(() => {
+      const full = textBufferRef.current;
+      const target = full.length;
+      const current = revealedLenRef.current;
+      if (current >= target) return;
+      const step = Math.max(3, Math.ceil((target - current) * 0.12));
+      const safeLen = safeHtmlSliceLength(full, Math.min(target, current + step));
+      if (safeLen <= current) return; // 卡在标签中间,等下一帧再看能不能推进
+      revealedLenRef.current = safeLen;
+      setOutputText(full.slice(0, safeLen));
+    }, 24);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -549,16 +577,8 @@ function Home() {
               progressStep: `${displayStatus}${remaining}`
             }));
           }
-          // Buffer incoming text; flush to DOM every 80ms (reduces DOM thrashing on long docs)
-          if (partialText !== textBufferRef.current) {
-            textBufferRef.current = partialText;
-            if (rafIdRef.current === null) {
-              rafIdRef.current = setTimeout(() => {
-                setOutputText(textBufferRef.current);
-                rafIdRef.current = null;
-              }, 80);
-            }
-          }
+          // 只更新缓冲区,DOM 显现由上面启动的 revealTimerRef 逐帧推进(见「流式渲染」注释)。
+          textBufferRef.current = partialText;
         },
         controller.signal
       );
@@ -566,11 +586,12 @@ function Home() {
       // Generation complete
       if (abortControllerRef.current !== null) {
         setAiState(prev => ({ ...prev, progress: 100, progressStep: t('home.generation_complete', '排版生成完毕') }));
-        // Flush: cancel any pending timer and show final text
-        if (rafIdRef.current !== null) {
-          clearTimeout(rafIdRef.current);
-          rafIdRef.current = null;
+        // 生成已完成:停掉逐帧显现,直接把全文钉上,不用等动画追完。
+        if (revealTimerRef.current !== null) {
+          clearInterval(revealTimerRef.current);
+          revealTimerRef.current = null;
         }
+        revealedLenRef.current = textBufferRef.current.length;
         setOutputText(textBufferRef.current);
         // Brief pause for React to finish rendering, then trigger KaTeX (runs when isThinking=false)
         setAiState(prev => ({ ...prev, progressStep: t('home.rendering', '正在应用排版格式...') }));
@@ -618,6 +639,11 @@ function Home() {
     } finally {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
+      }
+      // 兜底:成功路径已经自己清过;这里保证停止/报错等其它退出路径也不会留一个跑着的 interval。
+      if (revealTimerRef.current !== null) {
+        clearInterval(revealTimerRef.current);
+        revealTimerRef.current = null;
       }
     }
   };
@@ -1074,6 +1100,11 @@ function Home() {
       #preview-content .doc-classification, #preview-content .doc-urgency, #preview-content .doc-ref-number, #preview-content .doc-addressee, #preview-content .doc-signature, #preview-content .doc-date, #preview-content .doc-seal, #preview-content .doc-note, #preview-content .doc-intro { text-indent: 0 !important; }
       /* 表格内部的 div/p 不要缩进 */
       #preview-content td div, #preview-content th div, #preview-content td p, #preview-content th p { text-indent: 0 !important; margin: 0; }
+      /* 会议纪要:期次居中;基本信息块(会议主题/时间/地点/主持人/参会人员等)左对齐无缩进、行距收紧,
+         跟正文段落区分开,不然预览里看着跟普通段落一样、没有"信息栏"的规范感(与 docx 导出保持一致)。 */
+      #preview-content .meeting-issue { text-indent: 0 !important; text-align: center; margin: 0.3em 0 0.6em; color: #444; }
+      #preview-content .meeting-meta { margin: 0.6em 0 1em; }
+      #preview-content .meeting-meta p { text-indent: 0 !important; margin: 0.15em 0 !important; }
 
       /* Format Defenses: Protect alignments and lists from global text-indent / margin logic */
       #preview-content [style*="text-align: center"], #preview-content [style*="text-align: right"], #preview-content [align="center"], #preview-content [align="right"], #preview-content center { text-indent: 0 !important; }
@@ -1135,6 +1166,11 @@ function Home() {
       #preview-content .doc-seal { text-align: right; font-size: ${s.baseSize}; color: #cc0000; text-indent: 0; }
       #preview-content .doc-note { font-size: 12pt; color: #666; margin-top: 1em; text-indent: 0; }
       #preview-content hr.doc-divider { border: none; border-bottom: 3px solid #cc0000; margin: 0.4em 0 0.6em; }
+      /* 工作方案/工作汇报:副标题/单位·汇报人·日期等篇首信息,跟导出 docx 的居中效果对齐 */
+      #preview-content .doc-subtitle { text-indent: 0 !important; text-align: center; font-weight: bold; font-size: 16pt; margin: 0.3em 0; }
+      #preview-content .doc-meta { text-indent: 0 !important; text-align: center; font-size: 16pt; margin: 0.15em 0; }
+      /* 学术期刊:篇首信息与正文之间的分隔线 */
+      #preview-content hr.journal-split { border: none; border-top: 1px solid #ccc; margin: 1em 0; }
       #preview-content table { width: 100%; border-collapse: collapse; margin: 1em 0; font-family: ${getPreviewFontStack(s.tableFont)}; font-size: ${s.tableSize}; }
       #preview-content th, #preview-content td { border: 1px solid #e5e5e5; padding: 8px 12px; text-align: left; text-indent: 0; }
       #preview-content td p, #preview-content th p { text-indent: 0; margin: 0; }

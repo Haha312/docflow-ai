@@ -250,6 +250,14 @@ body {
 [data-doc-theme] .bg-\[\#f0f0f0\] {
   background-color: var(--df-soft-2) !important;
 }
+/* 半透明浅色类(bg-gray-50/50 等)是跟 bg-gray-50/bg-white 不同的 Tailwind 类名,之前漏盖——
+   深色主题下这些半透明浅灰/白底不会跟着变深,叠在深色页面上会显出一条突兀的灰边(如结果页顶部工具栏)。
+   注:.bg-white\/80 不在这里处理——该类名同时被 A4 纸张/二维码纸张的"强制保持白色"规则复用,
+   两条规则会打架;那个类名下的浮动提示条(公式渲染提示)保留跟随主题不生效的小瑕疵,优先级低于纸张必须是白色。 */
+[data-doc-theme] .bg-gray-50\/50,
+[data-doc-theme] .bg-gray-50\/40 {
+  background-color: var(--df-surface-2) !important;
+}
 [data-doc-theme] .text-gray-900,
 [data-doc-theme] .text-gray-800,
 [data-doc-theme] .text-gray-700 {

@@ -29,7 +29,6 @@ function validateProductionEnv(): void {
     const required: Record<string, string | undefined> = {
         JWT_SECRET: process.env.JWT_SECRET,
         DATABASE_URL: process.env.DATABASE_URL,
-        REDIS_URL: process.env.REDIS_URL,
         BACKEND_URL: process.env.BACKEND_URL || process.env.PUBLIC_URL,
         // 手机登录核心:腾讯云短信
         TENCENTCLOUD_SECRET_ID: envAny('TENCENTCLOUD_SECRET_ID', 'TENCENT_SMS_SECRET_ID'),
@@ -53,6 +52,11 @@ function validateProductionEnv(): void {
     if (missing.length) {
         console.error('[FATAL] 生产环境缺少必需环境变量,无法启动:\n  - ' + missing.join('\n  - ') + '\n请参照 backend/.env.example 配置后重启。');
         process.exit(1);
+    }
+    // REDIS_URL 不再 fail-fast(团队评估后接受用内存版 MockRedis 上线):进程重启会清空验证码/
+    // 封号/微信支付回调防重放记号,极端情况下可能重复给一笔已处理的支付发放会员。只警告,不拦启动。
+    if (!process.env.REDIS_URL) {
+        console.warn('[WARN] 生产环境未配置 REDIS_URL,将使用内存版 MockRedis:进程重启会清空验证码/封号/支付回调防重放状态,重启窗口内重复的微信支付回调可能被当作新单重复处理。');
     }
 }
 validateProductionEnv();

@@ -889,7 +889,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // ??????闂???闂??????闂備浇宕垫慨鏉懨洪悩璇茬柧婵犲﹤鍠氶崵????闂????婵????婵??闂?/?????闂?,????? SSE ????闂??
         // 婵??????????????闂??濠电姵顔栭崳顖滃緤閻ｅ瞼鐭撶痪鎯ь儍娴??婵?濠电姷鏁告慨宥夊礋椤愩埄娼曞┑??婵犵數鍋為崹璺侯潖婵犳艾绐楅柡鍥舵娇閳???,???????? chunk_skipped ????,????"??婵????"???????
         if (compressed.dropped > 0) {
-            integrityIssues.push({ type: 'chunk_compressed', severity: 'info', detail: `婵????闂??? ${compressed.dropped} ???????闂?闂??婵???濠电姷鏁告慨宥夊礋椤愩埄娼曞┑??` });
+            integrityIssues.push({ type: 'chunk_compressed', severity: 'info', detail: `压缩去重时跳过了 ${compressed.dropped} 个与相邻内容重叠的分块` });
         }
 
         // 3. 闂?????? Chunks
@@ -915,7 +915,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             const isDuplicateChunk = i > 0 && headingCovered && overlap >= 320 && coverageRatio >= 0.78;
             if (isDuplicateChunk) {
                 console.log(`[SKIP_COVERED_CHUNK] part=${i + 1}/${chunks.length} heading="${chunkFirstHeading}" overlap=${overlap} coverage=${coverageRatio.toFixed(3)} fingerprint=${headingCoverageRatio.toFixed(2)}(${matchedHeadings.length}/${chunkHeadings.size})`);
-                integrityIssues.push({ type: 'chunk_skipped', severity: 'info', detail: `??${i + 1} ???????????????闂傚倷鑳堕崢褎鏅舵禒瀣；婵炴垶鍤庢禍??婵?,???????????婵?)` });
+                integrityIssues.push({ type: 'chunk_skipped', severity: 'info', detail: `第 ${i + 1} 部分内容与已生成内容高度重叠,已跳过(避免重复输出)` });
                 // 闂?? preComputedHeadings ?闂??闂????闂???? chunk ??????缂傚倸鍊风拋鏌ュ磻??闂??
                 if (preComputedHeadings.length > 0) {
                     const key = chunkFirstHeading.toLowerCase().trim();
@@ -1110,7 +1110,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                         }
                         if (streamHallucinationDetected) {
                             finishReason = null; // skip continuation
-                            integrityIssues.push({ type: 'stream_hallucination', severity: 'critical', detail: `??${i + 1} ???闂?闂?闂?婵?/婵?????,???闂傚倷绀侀幉锟犮€冮崨鏉戠婵犲﹤鎳庨崹婵嬬叓閸ャ劍绀冮悘???` });
+                            integrityIssues.push({ type: 'stream_hallucination', severity: 'critical', detail: `第 ${i + 1} 部分输出出现异常重复/失控膨胀,已中断该部分生成` });
                         }
 
                         // ?闂???闂???? finish_reason === "length" 闂???闂??婵犵數鍋犻幓顏嗙礊閸モ晛绶ら柛褎顨嗛悞????
@@ -1280,7 +1280,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 const __beforeTruncLen = cleanChunk.length;
                 cleanChunk = truncateAtRepetitionLoop(cleanChunk);
                 if (cleanChunk.length < __beforeTruncLen) {
-                    integrityIssues.push({ type: 'loop_truncated', severity: 'critical', detail: `??${i + 1} ???闂?闂?婵?闂??,?闂傚倷绀侀幉锛勭矙閸儱纾???${__beforeTruncLen - cleanChunk.length} ?闂傚倷鑳堕～瀣焵椤掑嫬纾?` });
+                    integrityIssues.push({ type: 'loop_truncated', severity: 'critical', detail: `第 ${i + 1} 部分检测到重复循环,已截断多余的 ${__beforeTruncLen - cleanChunk.length} 个字符` });
                 }
                 // Close any HTML tags left open by truncation (e.g. <li>, <td>, <ul>)
                 cleanChunk = repairUnclosedTags(cleanChunk);
