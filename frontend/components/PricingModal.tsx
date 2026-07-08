@@ -421,7 +421,7 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                       {t('pricing.quota_banner_title', '免费额度已用尽')}
                     </p>
                     <p className="text-amber-800 text-xs mt-0.5">
-                      {t('pricing.quota_banner_subtitle', '升级会员立即解锁,从 Plus ¥29/月 起,可随时取消')}
+                      {t('pricing.quota_banner_subtitle', '升级会员立即解锁,Plus 月卡 ¥29 起,到期不自动扣费')}
                     </p>
                   </div>
                 </div>
@@ -515,15 +515,17 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                           {symbol}{price}
                         </span>
                         <span className="pricing-period text-sm font-medium text-gray-500 ml-2">
-                          /{billingCycle === 'yearly' ? t('pricing.yearly') : t('pricing.monthly')}
+                          {billingCycle === 'yearly' ? t('pricing.yearly') : t('pricing.monthly')}
                         </span>
                       </div>
 
-                      <div className="h-6">
-                        {billingCycle === 'yearly' && (
+                      <div className="h-6 flex items-center">
+                        {billingCycle === 'yearly' ? (
                           <div className="pricing-save-chip inline-flex items-center px-2.5 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-bold">
-                            {t('pricing.save_15_approx', { symbol, amount: Math.round(price / 12) })}
+                            {t('pricing.validity_yearly', { symbol, amount: Math.round(price / 12) })}
                           </div>
+                        ) : (
+                          <span className="text-xs text-gray-500 font-medium">{t('pricing.validity_monthly')}</span>
                         )}
                       </div>
 
@@ -594,6 +596,9 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                   );
                 })}
               </div>
+            </div>
+            <div className="px-6 pb-8 -mt-2 text-center">
+              <p className="text-xs text-gray-400">{t('pricing.purchase_notice')}</p>
             </div>
           </>
         )}
