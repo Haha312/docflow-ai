@@ -273,7 +273,6 @@
         "validity_monthly": "30 days of access",
         "validity_yearly": "365 days · ~{{symbol}}{{amount}}/mo · Save 15%",
         "purchase_notice": "All plans are a one-time purchase — no auto-renewal. Renew manually anytime.",
-        "quota_banner_subtitle": "Upgrade to unlock instantly. Plus Monthly Pass from ¥29 — no auto-charge.",
         "upgrade_to_yearly": "Buy Yearly Pass",
         "current_plan": "Current Plan",
         "upgrade_to_ultra": "Upgrade to Ultra",
@@ -305,7 +304,7 @@
         "alipay_qr": "Alipay QR Code",
         "secure_payment": "SSL Secure Payment Encrypted",
         "quota_banner_title": "Free quota exhausted",
-        "quota_banner_subtitle": "Upgrade now to unlock more. Plus starts at $4.99/month, cancel anytime."
+        "quota_banner_subtitle": "Upgrade to unlock instantly. Plus Monthly Pass from ¥29 — no auto-charge."
     },
     "generator": {
         "lines": "lines",
