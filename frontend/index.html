@@ -3,6 +3,21 @@
 
 <head>
   <meta charset="UTF-8" />
+  <!-- 防闪黑(FOUC):首屏渲染前就同步应用保存的主题 —— 否则默认 CSS 是深色 #090909,
+       会在 React 挂载(+2MB JS 下载解析)前先闪一段黑屏。key/默认值与 Home.tsx 保持一致。 -->
+  <script>
+    (function () {
+      var bg = { dark: '#090909', light: '#f6f7f8', blueviolet: '#f4f7fb', green: '#f4faf7', coral: '#fbf7f3' };
+      var t = 'light';
+      try {
+        var v = localStorage.getItem('docflow_theme');
+        if (['dark', 'light', 'blueviolet', 'green', 'coral'].indexOf(v) !== -1) t = v;
+      } catch (e) {}
+      var el = document.documentElement;
+      el.setAttribute('data-doc-theme', t);
+      el.style.backgroundColor = bg[t];
+    })();
+  </script>
   <link rel="icon" type="image/svg+xml" href="/icon.svg?v=4" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="DocFlow — AI 驱动的智能文档排版工具,自动识别结构、统一样式、一键导出 Word" />
