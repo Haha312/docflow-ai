@@ -1447,18 +1447,20 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         }
 
         // ??闂佽崵鍠愮划搴㈡櫠濡も偓鐓ら柟瀵稿仧缁????闂????闂?缂?闂?????闂???
+        // 无论质量是否达标,只要文档已经发给用户,就记录一条 UsageLog(让后台反映真实使用量)。
+        // 低质量结果用不同的 actionType 标记:额度计数器(usageCount.ts)只统计 'generate_document',
+        // 因此低质量生成会出现在后台日志/统计里,但不占用户额度(保留"质量不达标不计费"的原有行为)。
+        await prisma.usageLog.create({
+            data: {
+                userId: user.id,
+                actionType: lowQuality ? 'generate_document_lowquality' : 'generate_document',
+                presetUsed: preset,
+                tokenUsage: finalReportedTokens
+            }
+        });
+        await invalidateUsageCount(user.id);
         if (lowQuality) {
-            console.log(`[INTEGRITY] low-quality result (critical=${hasCritical}, retention=${integrityReport?.charRetentionPct}%), skipping UsageLog for user ${user.id}`);
-        } else {
-            await prisma.usageLog.create({
-                data: {
-                    userId: user.id,
-                    actionType: 'generate_document',
-                    presetUsed: preset,
-                    tokenUsage: finalReportedTokens
-                }
-            });
-            await invalidateUsageCount(user.id);
+            console.log(`[INTEGRITY] low-quality result (critical=${hasCritical}, retention=${integrityReport?.charRetentionPct}%), logged as generate_document_lowquality (未计入额度) for user ${user.id}`);
         }
 
         console.log(`[DONE] Document generated. Tokens: ${finalReportedTokens} lowQuality=${lowQuality}`);

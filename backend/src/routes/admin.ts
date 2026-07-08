@@ -29,11 +29,16 @@ router.get('/stats', authenticate, requireAdmin, async (req: AuthRequest, res: R
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
+        // 只统计"文档生成"类日志(含低质量的 generate_document_lowquality),
+        // 排除 refund_success / cancel_subscription 等非生成动作,避免污染调用量/活跃/preset 统计。
+        const GEN_ONLY = { actionType: { startsWith: 'generate_document' } };
+
         // 1. Total Token Usage Today
         const todayUsage = await prisma.usageLog.aggregate({
             _sum: { tokenUsage: true },
             _count: { id: true },
             where: {
+                ...GEN_ONLY,
                 createdAt: { gte: today }
             }
         });
@@ -41,12 +46,14 @@ router.get('/stats', authenticate, requireAdmin, async (req: AuthRequest, res: R
         // 2. Total Token Usage All Time
         const totalUsage = await prisma.usageLog.aggregate({
             _sum: { tokenUsage: true },
-            _count: { id: true }
+            _count: { id: true },
+            where: { ...GEN_ONLY }
         });
 
         // 3. Recent Logs (Last 50) with more details
         const recentLogs = await prisma.usageLog.findMany({
             take: 50,
+            where: { ...GEN_ONLY },
             orderBy: { createdAt: 'desc' },
             include: { user: { select: { phone: true, email: true, subscriptionStatus: true } } }
         });
@@ -65,6 +72,7 @@ router.get('/stats', authenticate, requireAdmin, async (req: AuthRequest, res: R
                 _sum: { tokenUsage: true },
                 _count: { id: true },
                 where: {
+                    ...GEN_ONLY,
                     createdAt: {
                         gte: dayStart,
                         lte: dayEnd
@@ -83,13 +91,14 @@ router.get('/stats', authenticate, requireAdmin, async (req: AuthRequest, res: R
         // 5. Preset Usage Distribution
         const presetStats = await prisma.usageLog.groupBy({
             by: ['presetUsed'],
+            where: { ...GEN_ONLY },
             _count: { id: true },
             _sum: { tokenUsage: true }
         });
 
         // 6. Active Users Today
         const activeUsersToday = await prisma.usageLog.findMany({
-            where: { createdAt: { gte: today } },
+            where: { ...GEN_ONLY, createdAt: { gte: today } },
             distinct: ['userId'],
             select: { userId: true }
         });
@@ -344,7 +353,7 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
         const [usageCounts, bannedStatuses] = await Promise.all([
             prisma.usageLog.groupBy({
                 by: ['userId'],
-                where: { userId: { in: userIds } },
+                where: { userId: { in: userIds }, actionType: { startsWith: 'generate_document' } },
                 _count: { id: true },
             }),
             // 批量查 Redis banned 状态 (并行,但只 1 轮 Promise.all 而非 N 轮)

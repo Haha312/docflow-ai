@@ -27,6 +27,8 @@ body {
   --df-shell: #090909;
   --df-surface: #111111;
   --df-surface-2: #0d0d0d;
+  --df-surface-solid: #111111;
+  --df-surface-2-solid: #0d0d0d;
   --df-soft: rgba(255, 255, 255, 0.05);
   --df-soft-2: rgba(255, 255, 255, 0.08);
   --df-border: rgba(255, 255, 255, 0.1);
@@ -51,6 +53,8 @@ body {
   --df-shell: rgba(255, 255, 255, 0.92);
   --df-surface: #ffffff;
   --df-surface-2: #f0f2f4;
+  --df-surface-solid: #ffffff;
+  --df-surface-2-solid: #f0f2f4;
   --df-soft: rgba(15, 23, 42, 0.04);
   --df-soft-2: rgba(15, 23, 42, 0.07);
   --df-border: rgba(15, 23, 42, 0.1);
@@ -75,6 +79,8 @@ body {
   --df-shell: rgba(250, 252, 255, 0.9);
   --df-surface: rgba(255, 255, 255, 0.78);
   --df-surface-2: rgba(236, 242, 249, 0.88);
+  --df-surface-solid: #ffffff;
+  --df-surface-2-solid: #ecf2f9;
   --df-soft: rgba(47, 91, 143, 0.07);
   --df-soft-2: rgba(47, 91, 143, 0.11);
   --df-border: rgba(39, 81, 128, 0.14);
@@ -99,6 +105,8 @@ body {
   --df-shell: rgba(250, 255, 252, 0.9);
   --df-surface: rgba(255, 255, 255, 0.8);
   --df-surface-2: rgba(232, 245, 239, 0.88);
+  --df-surface-solid: #ffffff;
+  --df-surface-2-solid: #e8f5ef;
   --df-soft: rgba(16, 124, 96, 0.07);
   --df-soft-2: rgba(16, 124, 96, 0.12);
   --df-border: rgba(14, 116, 92, 0.15);
@@ -123,6 +131,8 @@ body {
   --df-shell: rgba(255, 252, 248, 0.9);
   --df-surface: rgba(255, 255, 255, 0.82);
   --df-surface-2: rgba(249, 238, 230, 0.88);
+  --df-surface-solid: #ffffff;
+  --df-surface-2-solid: #f9eee6;
   --df-soft: rgba(190, 84, 62, 0.07);
   --df-soft-2: rgba(190, 84, 62, 0.12);
   --df-border: rgba(161, 78, 61, 0.15);
@@ -763,7 +773,8 @@ body {
 [data-doc-theme] #preview-content .a4-page,
 [data-doc-theme] .qr-paper,
 [data-doc-theme] .bg-white\/80,
-[data-doc-theme] .mx-auto.bg-white {
+[data-doc-theme] .mx-auto.bg-white,
+[data-doc-theme] .df-compare-paper.bg-white {
   background-color: #ffffff !important;
   color: #111827 !important;
 }
@@ -815,7 +826,7 @@ body {
 
 .modal-surface {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--df-surface) 96%, #ffffff 4%) 0%, var(--df-surface) 100%);
+    linear-gradient(180deg, color-mix(in srgb, var(--df-surface-solid) 96%, #ffffff 4%) 0%, var(--df-surface-solid) 100%);
   border: 1px solid var(--df-border);
   color: var(--df-text);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
@@ -979,7 +990,7 @@ body {
 
 .style-editor-surface {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--df-surface) 97%, #ffffff 3%) 0%, var(--df-surface) 100%) !important;
+    linear-gradient(180deg, color-mix(in srgb, var(--df-surface-solid) 97%, #ffffff 3%) 0%, var(--df-surface-solid) 100%) !important;
   border-color: var(--df-border) !important;
   color: var(--df-text) !important;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.26) !important;
@@ -1104,14 +1115,14 @@ body {
 
 .prism-modal .pricing-modal {
   background:
-    linear-gradient(180deg, var(--df-surface) 0%, var(--df-surface-2) 100%) !important;
+    linear-gradient(180deg, var(--df-surface-solid) 0%, var(--df-surface-2-solid) 100%) !important;
   border-color: var(--df-border) !important;
   color: var(--df-text) !important;
 }
 
 .prism-modal .pricing-card {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--df-surface) 94%, #ffffff 6%) 0%, var(--df-surface) 100%) !important;
+    linear-gradient(180deg, color-mix(in srgb, var(--df-surface-solid) 94%, #ffffff 6%) 0%, var(--df-surface-solid) 100%) !important;
   border-color: var(--df-border) !important;
   color: var(--df-text) !important;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.08);
@@ -1267,7 +1278,7 @@ body {
 }
 
 .profile-panel {
-  background: var(--df-surface);
+  background: var(--df-surface-solid);
   border: 1px solid var(--df-border);
   color: var(--df-text);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
@@ -1391,7 +1402,7 @@ body {
 
 .help-panel {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--df-surface) 96%, #ffffff 4%) 0%, var(--df-surface) 100%);
+    linear-gradient(180deg, color-mix(in srgb, var(--df-surface-solid) 96%, #ffffff 4%) 0%, var(--df-surface-solid) 100%);
   border: 1px solid var(--df-border);
   color: var(--df-text);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);

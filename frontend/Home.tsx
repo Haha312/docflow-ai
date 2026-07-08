@@ -1784,7 +1784,7 @@ function Home() {
                   <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-400 uppercase tracking-wider">
                     {t('home.original_text', '原文')}
                   </div>
-                  <div className="flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed custom-scrollbar">
+                  <div className="df-compare-paper bg-white flex-1 overflow-auto p-6 text-sm text-gray-600 leading-relaxed custom-scrollbar">
                     {inputFileName.endsWith('.docx') ? (
                       <div
                         dangerouslySetInnerHTML={{ __html: sanitizedInputHtml }}
@@ -1936,7 +1936,7 @@ function Home() {
 
                   {/* Preview container (original) */}
                   <div
-                    className={`flex-1 overflow-auto ${viewMode === 'preview' ? 'bg-[#f0f0f0] pt-6 px-6 pb-2' : 'bg-white p-8'}`}
+                    className={`flex-1 overflow-auto ${viewMode === 'preview' ? 'bg-[#f0f0f0] pt-6 px-6 pb-2' : 'df-compare-paper bg-white p-8'}`}
                     ref={previewContainerRef}
                     onScroll={handlePreviewScroll}
                   >
