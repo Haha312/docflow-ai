@@ -671,6 +671,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
+            res.setHeader('X-Accel-Buffering', 'no'); // 禁止 Nginx 等反代缓冲 SSE,保证 token 逐个到达前端(否则被攒成大块=一坨一坨)
             res.write(`data: ${JSON.stringify({ ping: true, progress: { current: 0, total: 1, status: 'RECOGNIZING_IMAGES', estimatedRemainingSeconds: null } })}\n\n`);
             const recognized = await recognizeImagesForLayout(imageInputs);
             contentForChunking = [
@@ -877,6 +878,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
+            res.setHeader('X-Accel-Buffering', 'no'); // 禁止 Nginx 等反代缓冲 SSE,保证 token 逐个到达前端(否则被攒成大块=一坨一坨)
         }
 
         // ?????闂傚倷鐒﹂幃鍫曞磿鏉堛劍娅犻柤鎭掑劜濞????闂傚倷鐒﹂幃鍫曞磿鏉堛劍娅犻柤鎭掑劜濞呯娀鏌″搴″箹闁???闂傚倷鑳堕…鍫ユ晝閵堝瑙﹂悗锝庡墰閻??闂?闂???闂??闂備浇顕ф绋匡耿闁秴纾婚柣鎰▕濞??闂??闂傚倷绀侀幖顐﹀嫉椤掑嫬绠伴悹鍥ф▕濞?????婵????闂?? img ??缂?

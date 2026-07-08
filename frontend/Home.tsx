@@ -983,8 +983,10 @@ function Home() {
       return;
     }
 
-    // 分页(预览 + 非编辑)→ 切成多张真·A4 纸;生成过程中也实时分页(节流);仅编辑态用扁平单 div
-    const paginated = viewMode === 'preview' && !editMode;
+    // 分页(预览 + 非编辑 + 已生成完毕)→ 切成多张真·A4 纸。
+    // 流式生成中不走昂贵的真分页(paginateIntoSheets 要测量 offsetTop 重排,只能限流到 ~600ms/次,
+    // 导致可见内容每 600ms 才刷一次 = 一坨一坨);改用下面 else 分支的便宜扁平渲染逐帧刷 = 平滑打字。
+    const paginated = viewMode === 'preview' && !editMode && !aiState.isThinking;
     if (paginated) {
       // 以「干净内容」为源:未编辑用 renderedContent,编辑过用捕获的 displayHtmlRef
       if (!isContentEditedRef.current) displayHtmlRef.current = renderedContent;
@@ -1014,6 +1016,10 @@ function Home() {
         doPaginate(); // 完成态:立即精确分页
       }
     } else {
+      // 流式扁平渲染:重排前记下滚动位置,写完立刻钉回;贴底(shouldAutoScroll)时跟随最新内容。
+      const container = previewContainerRef.current;
+      const prevTop = container ? container.scrollTop : 0;
+      const followBottom = !!container && aiState.isThinking && shouldAutoScroll;
       if (!isContentEditedRef.current) {
         el.innerHTML = renderedContent;
         displayHtmlRef.current = renderedContent;
@@ -1022,6 +1028,11 @@ function Home() {
       }
       const totalH = el.scrollHeight + A4_PADDING_PX;
       setContentPageCount(Math.max(1, Math.ceil(totalH / A4_HEIGHT_PX)));
+      if (container && aiState.isThinking) {
+        isProgrammaticScrollRef.current = true;
+        container.scrollTop = followBottom ? container.scrollHeight : prevTop;
+        requestAnimationFrame(() => { isProgrammaticScrollRef.current = false; });
+      }
     }
 
     // TOC 从渲染后的 DOM 提取(分页后 headings 在纸张内,querySelectorAll 仍可命中)
@@ -1950,15 +1961,15 @@ function Home() {
                         )}
                         {viewMode === 'preview' ? (
                           /* A4 纸张模式 */
-                          !editMode ? (
-                            /* 真·分页:灰桌面 + 多张独立 A4 纸(生成中也实时分页,由 paginateIntoSheets 填充 #preview-content) */
+                          !editMode && !aiState.isThinking ? (
+                            /* 生成完毕的只读态:真·分页,灰桌面 + 多张独立 A4 纸(paginateIntoSheets 填充 #preview-content) */
                             <div
                               id="preview-content"
                               ref={previewContentRef}
                               className="relative outline-none"
                             />
                           ) : (
-                            /* 编辑 / 流式:单张白纸 */
+                            /* 编辑态 / 流式生成中:单张白纸(流式期间逐帧便宜渲染=平滑打字,不做昂贵分页) */
                             <div
                               className="mx-auto bg-white border border-gray-200 mb-2 relative shadow-sm flex flex-col"
                               style={{ maxWidth: '794px', width: '100%', minHeight: '1123px', padding: '80px 90px 40px' }}
