@@ -394,8 +394,8 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
             </div>
 
             <div className="mt-auto text-center">
-              <div className="flex items-center justify-center gap-2 text-xs text-gray-400 bg-gray-50 py-2 rounded-full inline-block px-4 mx-auto">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              <div className="inline-flex items-center justify-center gap-2 text-xs text-gray-400 bg-gray-50 py-2 rounded-full px-4">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                 {t('pricing.secure_payment', 'SSL Secure Payment Encrypted')}
               </div>
             </div>
