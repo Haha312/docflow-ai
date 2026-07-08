@@ -35,7 +35,7 @@ async function main() {
         const info = await transporter.sendMail({
             from: process.env.SMTP_FROM,
             to: process.env.SMTP_USER, // Send to self
-            subject: 'DocFlow AI SMTP Test',
+            subject: 'DocFlow SMTP Test',
             text: 'If you see this, SMTP is working!',
         });
         console.log('Message sent: %s', info.messageId);

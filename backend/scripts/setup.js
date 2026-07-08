@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-console.log('🚀 DocuFlow AI Backend Setup\n');
+console.log('🚀 DocFlow Backend Setup\n');
 
 const envPath = path.join(__dirname, '../.env');
 

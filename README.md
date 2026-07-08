@@ -1,6 +1,6 @@
-# DocuFlow AI
+# DocFlow
 
-DocuFlow AI is an AI-assisted document restructuring product. It turns pasted text or uploaded documents into structured, styled HTML previews and exportable Word documents, with account, quota, payment, and admin workflows around the generation service.
+DocFlow is an AI-assisted document restructuring product. It turns pasted text or uploaded documents into structured, styled HTML previews and exportable Word documents, with account, quota, payment, and admin workflows around the generation service.
 
 ## Project Layout
 

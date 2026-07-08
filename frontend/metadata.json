@@ -1,5 +1,5 @@
 {
-  "name": "DocuFlow AI",
+  "name": "DocFlow",
   "description": "An intelligent document restructuring tool that transforms raw content into professionally formatted Word documents based on selected presets. Includes a detailed Product Requirement Document (PRD) viewer.",
   "requestFramePermissions": []
 }

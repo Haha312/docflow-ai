@@ -1,6 +1,6 @@
-# DocuFlow AI Backend
+# DocFlow Backend
 
-DocuFlow AI 的后端服务层,提供用户认证、会员订阅管理、以及安全的 AI 接口转发服务。
+DocFlow 的后端服务层,提供用户认证、会员订阅管理、以及安全的 AI 接口转发服务。
 
 ## 📋 功能特性
 

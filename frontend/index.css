@@ -779,10 +779,10 @@ body {
   color: #111827 !important;
 }
 
-[data-doc-theme="light"] img[alt="DocFlow AI"],
-[data-doc-theme="blueviolet"] img[alt="DocFlow AI"],
-[data-doc-theme="green"] img[alt="DocFlow AI"],
-[data-doc-theme="coral"] img[alt="DocFlow AI"] {
+[data-doc-theme="light"] img[alt="DocFlow"],
+[data-doc-theme="blueviolet"] img[alt="DocFlow"],
+[data-doc-theme="green"] img[alt="DocFlow"],
+[data-doc-theme="coral"] img[alt="DocFlow"] {
   filter: none !important;
   opacity: 0.72 !important;
 }

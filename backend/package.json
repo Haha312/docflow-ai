@@ -1,7 +1,7 @@
 {
     "name": "docuflow-ai-backend",
     "version": "1.0.0",
-    "description": "Backend service for DocuFlow AI - Document restructuring platform",
+    "description": "Backend service for DocFlow - Document restructuring platform",
     "main": "dist/server.js",
     "type": "commonjs",
     "scripts": {

@@ -164,7 +164,7 @@ router.post('/create-checkout-session', authenticate, async (req: AuthRequest, r
 
         try {
             const codeUrl = await createWechatV3NativeOrder({
-                description: `DocFlow AI - ${plan.title}`,
+                description: `DocFlow - ${plan.title}`,
                 outTradeNo,
                 amountFen: Math.round(plan.amountCNY * 100),
                 notifyUrl,

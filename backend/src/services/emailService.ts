@@ -47,13 +47,13 @@ export const sendRenewalReminder = async (
 
     try {
         const info = await transporter.sendMail({
-            from: process.env.SMTP_FROM || '"DocFlow AI" <no-reply@docuflow.ai>',
+            from: process.env.SMTP_FROM || '"DocFlow" <no-reply@docuflow.ai>',
             to,
-            subject: `DocFlow AI - 您的 ${planName} 会员还有 ${daysLeft} 天到期`,
+            subject: `DocFlow - 您的 ${planName} 会员还有 ${daysLeft} 天到期`,
             text: `您的 ${planName} 会员将于 ${expiryStr} 到期 (剩余 ${daysLeft} 天)。立即续费以保持完整权益:${upgradeUrl}`,
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 560px; margin: 0 auto;">
-                    <h2 style="color: #000;">DocFlow AI</h2>
+                    <h2 style="color: #000;">DocFlow</h2>
                     <p>您好,</p>
                     <p>您的 <strong>${planName}</strong> 会员将于 <strong>${expiryStr}</strong> 到期(剩余 <strong style="color:#dc2626;">${daysLeft}</strong> 天)。</p>
                     <p>到期后账号将自动降级为免费版,文档生成次数将受限。立即续费,保持完整权益。</p>
@@ -90,13 +90,13 @@ export const sendPaymentSuccess = async (
 
     try {
         const info = await transporter.sendMail({
-            from: process.env.SMTP_FROM || '"DocFlow AI" <no-reply@docuflow.ai>',
+            from: process.env.SMTP_FROM || '"DocFlow" <no-reply@docuflow.ai>',
             to,
-            subject: `DocFlow AI - 您的 ${planName} 已激活`,
+            subject: `DocFlow - 您的 ${planName} 已激活`,
             text: `感谢您的购买!您的 ${planName} 会员已激活,金额 ${amountStr},有效期至 ${endStr}。访问:${frontendUrl}`,
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 560px; margin: 0 auto;">
-                    <h2 style="color: #000;">DocFlow AI</h2>
+                    <h2 style="color: #000;">DocFlow</h2>
                     <p>您好,</p>
                     <p>感谢您的购买!您的 <strong>${planName}</strong> 会员已激活。</p>
                     <table style="width:100%;margin:20px 0;border-collapse:collapse;">
@@ -127,15 +127,15 @@ export const sendVerificationEmail = async (to: string, code: string): Promise<b
 
     try {
         const info = await transporter.sendMail({
-            from: process.env.SMTP_FROM || '"DocFlow AI" <no-reply@docuflow.ai>',
+            from: process.env.SMTP_FROM || '"DocFlow" <no-reply@docuflow.ai>',
             to,
-            subject: 'DocFlow AI - 邮箱验证码',
+            subject: 'DocFlow - 邮箱验证码',
             text: `您的验证码是: ${code}。有效期 10 分钟。`,
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-                    <h2 style="color: #000;">DocFlow AI</h2>
+                    <h2 style="color: #000;">DocFlow</h2>
                     <p>您好，</p>
-                    <p>您正在注册或登录 DocFlow AI，您的验证码是：</p>
+                    <p>您正在注册或登录 DocFlow，您的验证码是：</p>
                     <h1 style="color: #4F46E5; letter-spacing: 5px;">${code}</h1>
                     <p>该验证码 10 分钟内有效。如果这不是您本人的操作，请忽略此邮件。</p>
                 </div>

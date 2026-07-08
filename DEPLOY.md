@@ -1,4 +1,4 @@
-# DocFlow AI 部署指南(腾讯云轻量应用服务器)
+# DocFlow 部署指南(腾讯云轻量应用服务器)
 
 技术栈:Node.js/Express 后端(TypeScript,编译后用 PM2 常驻)+ Prisma/PostgreSQL 数据库 + React/Vite 前端(静态文件,Nginx 直接托管)+ Nginx 反向代理与 HTTPS。不用 Docker,轻量服务器上直接装环境最省事。
 

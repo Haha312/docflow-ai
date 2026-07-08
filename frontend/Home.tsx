@@ -1222,11 +1222,11 @@ function Home() {
             >
               <img
                 src="/icon.svg"
-                alt="DocFlow AI"
+                alt="DocFlow"
                 className="w-8 h-8 rounded-lg"
                 draggable={false}
               />
-              <span className="text-lg font-semibold text-gray-900 group-hover:text-gray-600 transition-colors">DocFlow AI</span>
+              <span className="text-lg font-semibold text-gray-900 group-hover:text-gray-600 transition-colors">DocFlow</span>
             </button>
           </div>
 
@@ -2006,7 +2006,7 @@ function Home() {
                               {/* Page number footer */}
                               {outputText && (
                                 <div className="mt-auto pt-4 border-t border-gray-100 flex items-center justify-between select-none pointer-events-none">
-                                  <span className="text-xs text-gray-300 tracking-wide">DocFlow AI</span>
+                                  <span className="text-xs text-gray-300 tracking-wide">DocFlow</span>
                                   <span className="text-xs text-gray-300 tabular-nums">
                                     {aiState.isThinking
                                       ? t('home.page_count_streaming', '已生成约 {{n}} 页', { n: contentPageCount })

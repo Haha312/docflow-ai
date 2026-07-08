@@ -201,7 +201,7 @@ export default app;
 
 if (!process.env.VERCEL) {
     const server = app.listen(Number(PORT), '0.0.0.0', () => {
-        console.log('\nDocuFlow AI Backend Server');
+        console.log('\nDocFlow Backend Server');
         console.log('================================');
         console.log(`Server running on: http://localhost:${PORT}`);
         console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);

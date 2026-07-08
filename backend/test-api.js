@@ -1,7 +1,7 @@
 const fetch = require('node-fetch');
 
 async function testBackend() {
-    console.log('🧪 DocuFlow AI 后端功能测试\n');
+    console.log('🧪 DocFlow 后端功能测试\n');
     console.log('='.repeat(50));
 
     let authToken = '';
