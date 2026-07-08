@@ -63,8 +63,10 @@ interface RedisLike {
     on(event: string, callback: (...args: any[]) => void): void;
 }
 
+// 不再是硬性拦启动的检查(团队评估后接受生产环境用内存版 MockRedis 的重启窗口风险,
+// 与 server.ts 的 validateProductionEnv 保持一致——那边已经把这条从 fail-fast 改成了警告)。
 if (process.env.NODE_ENV === 'production' && !process.env.REDIS_URL) {
-    throw new Error('REDIS_URL is required in production.');
+    console.warn('[WARN] 生产环境未配置 REDIS_URL,将使用内存版 MockRedis(见 server.ts 的同款提示)。');
 }
 
 const redis: RedisLike = process.env.REDIS_URL
