@@ -271,7 +271,7 @@
         "save_15": "Save 15%",
         "save_15_approx": "Save 15% (~{{symbol}}{{amount}}/mo)",
         "validity_monthly": "30 days of access",
-        "validity_yearly": "365 days · ~{{symbol}}{{amount}}/mo · Save 15%",
+        "validity_yearly": "~{{symbol}}{{amount}}/mo · Save 15%",
         "purchase_notice": "All plans are a one-time purchase — no auto-renewal. Renew manually anytime.",
         "upgrade_to_yearly": "Buy Yearly Pass",
         "current_plan": "Current Plan",

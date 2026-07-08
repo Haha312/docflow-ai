@@ -520,12 +520,10 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
                       </div>
 
                       <div className="h-6 flex items-center">
-                        {billingCycle === 'yearly' ? (
+                        {billingCycle === 'yearly' && (
                           <div className="pricing-save-chip inline-flex items-center px-2.5 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-bold">
                             {t('pricing.validity_yearly', { symbol, amount: Math.round(price / 12) })}
                           </div>
-                        ) : (
-                          <span className="text-xs text-gray-500 font-medium">{t('pricing.validity_monthly')}</span>
                         )}
                       </div>
 

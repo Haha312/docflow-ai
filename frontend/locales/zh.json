@@ -275,7 +275,7 @@
         "save_15": "省15%",
         "save_15_approx": "节省 15% (约 {{symbol}}{{amount}}/月)",
         "validity_monthly": "30 天有效",
-        "validity_yearly": "365 天有效 · 每月约 {{symbol}}{{amount}} · 省15%",
+        "validity_yearly": "每月约 {{symbol}}{{amount}} · 省15%",
         "purchase_notice": "所有方案均为一次性购买,到期不自动续费,可随时手动再买。",
         "upgrade_to_yearly": "购买年卡",
         "current_plan": "当前在用方案",
