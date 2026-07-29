@@ -651,6 +651,7 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const BASE_SHARED_PROMPT = [
             'Formatting and structural rules:',
             '1. Use <h1 class="doc-title"> only for the document title. Do not use plain <h1> for sections.',
+            '   If the source has a real document title, keep it as the title. If the source starts DIRECTLY with chapter headings (e.g. 第一章/1./一、) and has no title of its own, SYNTHESIZE a concise title (8-20 Chinese characters) that summarizes the whole document. NEVER reuse a chapter heading as the document title.',
             '2. Use <h2> for top-level chapters, then <h3>, <h4>, and deeper levels for nested sections.',
             `3. Apply this numbering rule to headings starting at <h2>: ${numberingRules}`,
             '4. Preserve all source content. Do not summarize, invent, drop, or reorder body content.',
