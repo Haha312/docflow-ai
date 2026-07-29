@@ -204,6 +204,22 @@ export const ensureFigureCaptions = (html: string, priorFigCount: number): strin
         const imgEnd = m.index + m[0].length;
         const after600 = html.slice(imgEnd, imgEnd + 600);
         if (/class="figure-caption"/.test(after600)) continue;
+        // 行内图标不补题:占位符与正文文字同段(如 <p>__IMG_67__ 先进性原则</p> 的
+        // 项目符号小图)是装饰图/行内嵌图,给它塞"Figure N"既错又把编号搅乱;
+        // 只有独占一段的占位符才是真正意义上的插图(真实文档实测:73 图里 17 个是图标)。
+        {
+            const pStart = html.lastIndexOf('<p', m.index);
+            const pCloseBefore = html.lastIndexOf('</p>', m.index);
+            const pEnd = html.indexOf('</p>', imgEnd);
+            if (pStart !== -1 && pEnd !== -1 && pCloseBefore < pStart) {
+                const inner = html.slice(pStart, pEnd)
+                    .replace(/<[^>]+>/g, '')
+                    .replace(/__IMG_\d+__/g, '')
+                    .replace(/&nbsp;/g, '')
+                    .trim();
+                if (inner.length >= 4) continue;
+            }
+        }
         const before = html.slice(0, imgEnd);
         const captionsInOriginal = (before.match(/class="figure-caption"/g) ?? []).length;
         const figNum = priorFigCount + captionsInOriginal + injectedCount + 1;

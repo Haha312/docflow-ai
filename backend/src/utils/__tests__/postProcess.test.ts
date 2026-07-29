@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { postProcess, enforceSingleTitleAndDemote, extractSourceCaptions, PostProcessOptions } from '../postProcess';
+import { postProcess, enforceSingleTitleAndDemote, extractSourceCaptions, reconcileCaptionsToSource, PostProcessOptions } from '../postProcess';
 import { buildSkeleton } from '../skeleton';
 
 const opts = (over: Partial<PostProcessOptions> = {}): PostProcessOptions => ({
@@ -247,6 +247,20 @@ describe('结构先行:reconcileHeadingsToSkeleton 根治章节漂移(6→10)', 
         expect(text).not.toContain('Table 2-1');
     });
 
+    it('骨架标题以正文段落形态存在 → 晋升为标题并参与编号(无样式 Word 回归)', () => {
+        const skeleton = buildSkeleton([
+            { level: 1, text: '1. 项目概述', number: '1' },
+            { level: 2, text: '1.1. 项目背景', number: '1.1' },
+        ]);
+        // 无样式文档:标题是手打编号+加粗的普通段落(或补回引擎原样插回的源段落)
+        const html = '<h1 class="doc-title">T</h1><p><strong>1. 项目概述</strong></p><p>正文若干。</p><p><strong>1.1. 项目背景</strong></p>';
+        const { text, issues } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        expect(issues.some((i) => i.type === 'heading_missing')).toBe(false);
+        expect(issues.some((i) => i.type === 'heading_promoted')).toBe(true);
+        expect(text).toMatch(/<h2[^>]*>1\.\s*项目概述<\/h2>/);
+        expect(text).toMatch(/<h3[^>]*>1\.1\.?\s*项目背景<\/h3>/);
+    });
+
     it('个别缺章(单章)→ heading_missing 仅 warning(不阻断计费)', () => {
         const skeleton = buildSkeleton([
             { level: 1, text: '甲章', number: '1' },
@@ -440,5 +454,57 @@ describe('extractSourceCaptions — 真实 Word 形态回归', () => {
     it('普通段落不误判为图题', () => {
         const set = extractSourceCaptions('<p>图形化界面的设计原则如下所述。</p>');
         expect(set.figures).toHaveLength(0);
+    });
+});
+
+describe('reconcileCaptionsToSource — 分类裁剪与源编号自洽性(真实文档回归)', () => {
+    // 场景:73 张图全部无题注、20 张表只有 2 个题注且源编号乱(表63 在 表1 前)
+
+    it('源文某类完全无题注 → 该类 AI 生成的编号题注照单全收', () => {
+        const src = extractSourceCaptions('<p>表1 数据安全设计清单</p>'); // 只有表题,无图题
+        const html = [
+            '<div class="figure-caption">图1 系统总体架构</div>',
+            '<div class="figure-caption">图2 部署拓扑</div>',
+            '<div class="table-caption">表1 数据安全设计清单</div>',
+        ].join('');
+        const { text } = reconcileCaptionsToSource(html, src);
+        expect(text).toContain('图1 系统总体架构');
+        expect(text).toContain('图2 部署拓扑');
+        expect(text).toContain('表1 数据安全设计清单');
+    });
+
+    it('源题注编号不自洽(表63 在 表1 前)→ 保留重编后的顺序号,标题对齐源文', () => {
+        const src = extractSourceCaptions('<p>表63 应用安全设计清单</p><p>表1 数据安全设计清单</p>');
+        // renumberStructure 已把成稿两个表题统一编为 表1/表2
+        const html = [
+            '<div class="table-caption">表1 应用安全设计清单</div>',
+            '<div class="table-caption">表2 数据安全设计清单</div>',
+        ].join('');
+        const { text } = reconcileCaptionsToSource(html, src);
+        expect(text).toContain('表1 应用安全设计清单');
+        expect(text).toContain('表2 数据安全设计清单'); // 标题对齐到源文全称
+        expect(text).not.toContain('表63'); // 源乱号不得写回
+    });
+
+    it('源题注编号自洽 → 仍改写回源题注(保留源编号,原行为不回归)', () => {
+        const src = extractSourceCaptions('<p>图3-1 总体架构图</p><p>图3-2 数据流图</p>');
+        const html = [
+            '<div class="figure-caption">图1 总体架构</div>',
+            '<div class="figure-caption">图2 数据流</div>',
+        ].join('');
+        const { text } = reconcileCaptionsToSource(html, src);
+        expect(text).toContain('图3-1 总体架构图');
+        expect(text).toContain('图3-2 数据流图');
+    });
+
+    it('有源题注的类仍然裁掉编造题注(原行为不回归)', () => {
+        const src = extractSourceCaptions('<p>表1 数据安全设计清单</p>');
+        const html = [
+            '<div class="table-caption">表1 数据安全设计清单</div>',
+            '<div class="table-caption">表2 凭空编造的表题</div>',
+        ].join('');
+        const { text } = reconcileCaptionsToSource(html, src);
+        expect(text).toContain('表1 数据安全设计清单');
+        expect(text).not.toContain('凭空编造');
     });
 });

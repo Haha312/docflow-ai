@@ -518,8 +518,10 @@ export const restoreMissingContent = (sourceHtml: string, outputHtml: string): R
             continue;
         }
 
-        // 段落 / 列表:顺序对账
-        const minLen = 10;
+        // 段落 / 列表:顺序对账。下限 5:无样式 Word 的手打短标题(如「4.1 亮点」=5 字符)
+        // 也是段落,曾因下限 10 直接漏出对账 → 整节标题彻底丢失(真实文档实测踩过)。
+        // 更短的(如「其他」)仍排除 —— 有序游标 + 全文既存检查兜底不了那么泛的串。
+        const minLen = 5;
         if (key.length < minLen) continue;
 
         const hit = outNorm.indexOf(key, cursor);

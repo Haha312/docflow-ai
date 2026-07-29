@@ -106,6 +106,39 @@ const normalizeCaptionTitle = (text: string): string =>
         .replace(/[^0-9a-zA-Z\u4e00-\u9fff]+/g, '')
         .toLowerCase();
 
+/**
+ * 源题注编号是否自洽(起始为 1、同章/扁平连续 +1、跨章递增重计)。
+ * 不自洽(真实文档实测:源文只有「表63、表1」两个题注,来自母文档的 SEQ 域残号)时,
+ * 源编号不能进成稿:renumberStructure 不保源号(照常统一重编),
+ * reconcileCaptionsToSource 也只把标题对齐到源文而保留重编后的号 ——
+ * 否则会直接制造「表1~表62 缺失」的编号断裂。
+ */
+export const sourceNumbersCoherent = (list: SourceCaption[]): boolean => {
+    if (list.length === 0) return true;
+    let prevChapter: number | null = null;
+    let prevSeq = 0;
+    let first = true;
+    for (const c of list) {
+        const parts = (c.normPrefix || '').replace(/^[图表]/, '').split('-').map(Number);
+        if (parts.length === 0 || parts.some((n) => !Number.isFinite(n) || n <= 0)) return false;
+        const chapter = parts.length >= 2 ? parts[0] : null;
+        const seq = parts[parts.length - 1];
+        if (first) {
+            if (seq !== 1) return false;
+            first = false;
+        } else if ((chapter === null) !== (prevChapter === null)) {
+            return false; // 扁平式与章节式混杂
+        } else if (chapter !== null && prevChapter !== null && chapter !== prevChapter) {
+            if (chapter < prevChapter || seq !== 1) return false;
+        } else if (seq !== prevSeq + 1) {
+            return false;
+        }
+        prevChapter = chapter;
+        prevSeq = seq;
+    }
+    return true;
+};
+
 const parseCaption = (textOrHtml: string): SourceCaption | null => {
     const text = stripHtmlToText(textOrHtml).replace(/^(?:__IMG_\d+__\s*)+/, '').trim();
     const m = text.match(/^(图|表)\s*(\d+(?:[-.\u2010-\u2015\uFF0D]\d+)*)[\s\u3000、.：:：]*(.*)$/);
@@ -226,6 +259,16 @@ export const reconcileCaptionsToSource = (
         globalIndex += 1;
     }
 
+    const coherent: Record<'图' | '表', boolean> = {
+        '图': sourceNumbersCoherent(sourceCaptions.figures),
+        '表': sourceNumbersCoherent(sourceCaptions.tables),
+    };
+    // 只裁「源文该类确有题注」的类:源文某类完全无题注(如 73 张图全部无题)时,
+    // AI 按配置生成的顺序编号题注是产品价值(帮用户补编号),照单全收。
+    const pruneKinds = new Set<'图' | '表'>();
+    if (sourceCaptions.figures.length > 0) pruneKinds.add('图');
+    if (sourceCaptions.tables.length > 0) pruneKinds.add('表');
+
     const selected = new Map<number, SourceCaption>();
     let missing = 0;
     for (const kind of ['图', '表'] as const) {
@@ -254,14 +297,19 @@ export const reconcileCaptionsToSource = (
 
     let pruned = 0;
     let index = 0;
-    const text = html.replace(re, (_full, attrs: string) => {
+    const text = html.replace(re, (_full, attrs: string, _cls: string, inner: string) => {
         const expected = selected.get(index);
+        const kind: '图' | '表' = /figure-caption/i.test(attrs) ? '图' : '表';
         index += 1;
         if (!expected) {
+            if (!pruneKinds.has(kind)) return _full;
             pruned += 1;
             return '';
         }
-        return `<div${attrs}>${expected.text}</div>`;
+        if (coherent[kind]) return `<div${attrs}>${expected.text}</div>`;
+        // 源编号不自洽:保留成稿现有(已统一重编)的编号,标题对齐到源文
+        const cur = stripHtmlToText(inner).match(/^([图表]\s*\d+(?:[-.‐-―－]\d+)*)/);
+        return cur ? `<div${attrs}>${cur[1]} ${expected.title}</div>` : `<div${attrs}>${expected.text}</div>`;
     });
 
     const issues: IntegrityIssue[] = [];
@@ -430,7 +478,23 @@ export const renumberStructure = (html: string, opts: PostProcessOptions, canoni
         const isFigure = /figure-caption/i.test(divAttrs);
         const kind: '图' | '表' = isFigure ? '图' : '表';
         const existingPrefix = sourceCaptionPrefix(divInner, kind);
-        if (opts.skeleton && opts.skeleton.length > 0 && existingPrefix) {
+        // 保源号仅限「该类源题注编号自洽」时:源编号本身乱(表63 在 表1 前)的照常统一重编,
+        // 否则补回的源题注会把乱号原样带进成稿(真实文档实测踩过)。
+        const srcListForKind = kind === '图' ? opts.sourceCaptions?.figures : opts.sourceCaptions?.tables;
+        const kindCoherent = !srcListForKind || srcListForKind.length === 0 || sourceNumbersCoherent(srcListForKind);
+        if (opts.skeleton && opts.skeleton.length > 0 && existingPrefix && kindCoherent) {
+            // 保留原号也要同步计数器:否则后面出现的无号题注会从 1 重数
+            // (真实文档实测:56 个保号题注之后,自动补题的图标题注被编成 图1..图8)。
+            const nums = existingPrefix.match(/(\d+)(?!.*\d)/);
+            const lastNum = nums ? parseInt(nums[1], 10) : 0;
+            const isChapterRel = /\d[-‐-―－.]\d/.test(existingPrefix);
+            if (isFigure) {
+                if (isChapterRel) figInChapter = Math.max(figInChapter, lastNum);
+                else figGlobal = Math.max(figGlobal, lastNum);
+            } else {
+                if (isChapterRel) tabInChapter = Math.max(tabInChapter, lastNum);
+                else tabGlobal = Math.max(tabGlobal, lastNum);
+            }
             return `<div${divAttrs}>${removeDuplicateEnglishCaptionPrefix(divInner).replace(/^\s+/, '')}</div>`;
         }
         let num: string;
@@ -538,6 +602,28 @@ export const reconcileHeadingsToSkeleton = (
         return `<h${cur}${cleanAttrs}>${inner}</h${cur}>`;
     });
 
+    // 缺失标题救回:源文标题以普通段落形态存在时(无样式 Word 的手打编号标题、
+    // 确定性补回原样插回的源段落),把匹配骨架的段落晋升为标题。只报缺失不救,
+    // 成稿的目录结构就塌了(真实文档实测:28 个标题全以 <p> 形态躺在正文里)。
+    let promoted = 0;
+    let finalText = text;
+    if (matcher.unusedNodes().length > 0) {
+        finalText = finalText.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, (full, inner: string) => {
+            if (matcher.unusedNodes().length === 0) return full;
+            if (/__(?:IMG|TBL)_\d+__/.test(inner)) return full;
+            const norm = normalizeHeadingText(inner);
+            if (!norm || norm.length < 2 || norm.length > 80) return full;
+            const m2 = matcher.match(norm);
+            if (!m2) return full;
+            promoted += 1;
+            const lvl = m2.node.outputLevel;
+            return `<h${lvl} data-sk="${m2.node.id}">${stripHtmlToText(inner).trim()}</h${lvl}>`;
+        });
+    }
+    if (promoted > 0) {
+        issues.push({ type: 'heading_promoted', severity: 'info', detail: `已将 ${promoted} 个以正文段落形态存在的源文标题晋升为标题(规整,未丢内容)` });
+    }
+
     const missing = matcher.unusedNodes();
     if (demoted > 0) {
         // 这是「成功的规整」而非风险:AI 多吐的非源文标题被正确降级,内容并未丢失。
@@ -557,7 +643,7 @@ export const reconcileHeadingsToSkeleton = (
             detail: `源文 ${missing.length} 个标题在输出中缺失(其中章级 ${chapMissing} 个),疑似内容缺失`,
         });
     }
-    return { text, issues, demoted, missing };
+    return { text: finalText, issues, demoted, missing };
 };
 
 /**

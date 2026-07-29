@@ -32,7 +32,6 @@ import {
     hasSameBodyHallucination,
     normalizeText,
     reorderCorporateDocument,
-    reinjectMissingPlaceholders,
 } from '../utils/generationHtml';
 
 type PreComputedHeading = { level: number; text: string; number: string };
@@ -95,6 +94,34 @@ const truncateAtRepetitionLoop = (html: string): string => {
     }
 
     // ???? 2. Numbered-list patterns ????????????????????????????????????????????????????????????????????????????????????????
+    // \u2500\u2500 n-gram flood:\u5931\u63A7\u679A\u4E3E(\u9017\u53F7\u8FDE\u6392\u3001\u9010\u9879\u53D8\u5C3E)\u4ECE\u7D27\u51D1\u8FDE\u6392\u8D77\u70B9\u5207\u65AD \u2500\u2500
+    // \u4E0E hasNgramFlood \u540C\u53E3\u5F84:\u53EA\u8BA4\u76F8\u90BB\u95F4\u8DDD \u226440 \u5B57\u7684\u7D27\u51D1\u590D\u73B0(\u7EAF\u9891\u6B21\u4F1A\u8BEF\u6740\u5408\u6CD5\u9AD8\u9891\u672F\u8BED)
+    {
+        const squeezed = tail.replace(/\s+/g, '');
+        const last = new Map<string, number>();
+        const run = new Map<string, number>();
+        const runStart = new Map<string, number>();
+        let flooded = '';
+        let floodStart = -1;
+        for (let i = 0; i + 7 <= squeezed.length; i += 1) {
+            const g = squeezed.slice(i, i + 7);
+            const prev = last.get(g);
+            last.set(g, i);
+            if (prev !== undefined && i - prev <= 40) {
+                const n = (run.get(g) ?? 1) + 1;
+                run.set(g, n);
+                if (n >= 15) { flooded = g; floodStart = runStart.get(g) ?? i; break; }
+            } else {
+                run.set(g, 1);
+                runStart.set(g, i);
+            }
+        }
+        if (flooded && floodStart >= 0) {
+            const result = cutAt(plain.length - tailLen + Math.max(0, floodStart - 20), 200, `ngram flood "${flooded}"`);
+            if (result) return result;
+        }
+    }
+
     const numberedRe = /[\uFF08(]\s*\d+\s*[\uFF09)]\s*[^\n\uFF08(]{5,120}/g;
     const items = [...tail.matchAll(numberedRe)];
     if (items.length >= 5) {
@@ -232,6 +259,36 @@ const hasCharSpam = (text: string): boolean => {
 };
 
 /**
+ * 失控枚举检测:同一 7 字串在尾部窗口高频复现。
+ * 「电网一张图数据XX、电网一张图数据YY、…」这种逗号连排、每项结尾变化的失控枚举,
+ * 句子检测(要句末标点)和短语检测(要完全相同)都探不到 —— 真实文档实测漏过 13K 字。
+ * 阈值 25 次/3000 字 ≈ 每 120 字一次,正常行文密度达不到。
+ */
+const hasNgramFlood = (text: string): boolean => {
+    const plain = text.replace(/<[^>]+>/g, '').replace(/\s+/g, '').slice(-3000);
+    if (plain.length < 600) return false;
+    // 只认「紧凑连排」:同一 7 字串反复出现且相邻两次间距 ≤40 字。真失控是 ~9 字一跳
+    // (「电网一张图数据XX、」逐项变尾),而合法的高频术语(如本领域文档里「数字化设计成果」
+    // 一个窗口能出现 21 次)间距在百字以上 —— 纯频次阈值会误杀合法内容(实测两个模型
+    // 在同一处被误判"失控",实为源文本身的合法枚举密度)。
+    const last = new Map<string, number>();
+    const run = new Map<string, number>();
+    for (let i = 0; i + 7 <= plain.length; i += 1) {
+        const g = plain.slice(i, i + 7);
+        const prev = last.get(g);
+        last.set(g, i);
+        if (prev !== undefined && i - prev <= 40) {
+            const n = (run.get(g) ?? 1) + 1;
+            run.set(g, n);
+            if (n >= 15) return true;
+        } else {
+            run.set(g, 1);
+        }
+    }
+    return false;
+};
+
+/**
  * Close any structurally-significant HTML tags left open after truncation.
  * Runs as a safety net after truncateAtRepetitionLoop() to avoid broken markup
  * propagating into subsequent chunks or the final document.
@@ -314,7 +371,7 @@ const validateChunkOutput = (
         issues.push(`too few list items: ${outputListItems}/${inputListItems}`);
     }
 
-    if (hasSameBodyHallucination(chunkOutput) || hasStreamSentenceRepetition(chunkOutput) || hasCharSpam(chunkOutput)) {
+    if (hasSameBodyHallucination(chunkOutput) || hasStreamSentenceRepetition(chunkOutput) || hasCharSpam(chunkOutput) || hasNgramFlood(chunkOutput)) {
         issues.push('repetition detected');
     }
 
@@ -806,13 +863,36 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // ULTRA ?濠???????闂?闂????缂???闂?婵??闂????闂????SSE ping ????????)
         // ??闂?濠?????12000 chars ?闂?
         // 濠?????? ????chunk 闂?????????????chunk ????
-        const modelCfg     = selectedModelCfg;
-        const useKey       = modelCfg?.apiKey  || geminiApiKey!;
-        const useBase      = modelCfg?.baseUrl || (dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '');
-        const currentModel = modelCfg?.modelId || PRIMARY_MODEL;
-        const useProxy     = modelCfg ? (modelCfg.needsProxy ?? false) : true;
+        let modelCfg     = selectedModelCfg;
+        let useKey       = modelCfg?.apiKey  || geminiApiKey!;
+        let useBase      = modelCfg?.baseUrl || (dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '');
+        let currentModel = modelCfg?.modelId || PRIMARY_MODEL;
+        let useProxy     = modelCfg ? (modelCfg.needsProxy ?? false) : true;
         // Gemini ????usage 缂?闂?????濠?缂???闂?婵??濠?闂傚倷娴囬妴鈧柛?闂??婵?
-        const includeUsage = useProxy;
+        let includeUsage = useProxy;
+        // 模型升级预案:同一块连续两次失败(尤其失控重复)= 当前模型对这段内容系统性失效,
+        // 换提示词重试救不回来(真实文档实测:deepseek 在高重复度规格文本上三次全崩)。
+        // 最后一次重试换用另一个已配置 key 的备用模型,此后整个请求都用它。
+        let modelEscalated = false;
+        const escalateModel = (): boolean => {
+            if (modelEscalated) return false;
+            const currentKey = pickModelKey(requestedModelKey);
+            for (const candidate of ['gemini-pro', 'doubao', 'gemini-flash', 'deepseek']) {
+                if (candidate === currentKey) continue;
+                const cfg = getModelConfig(candidate, dbConfig);
+                if (!cfg?.apiKey || !cfg.baseUrl || !cfg.modelId) continue;
+                console.warn(`[MODEL_ESCALATE] ${currentModel} -> ${cfg.modelId} (${candidate})`);
+                modelCfg = cfg;
+                useKey = cfg.apiKey;
+                useBase = cfg.baseUrl;
+                currentModel = cfg.modelId;
+                useProxy = cfg.needsProxy ?? false;
+                includeUsage = useProxy;
+                modelEscalated = true;
+                return true;
+            }
+            return false;
+        };
 
         // 表格冻结:表格不进 AI。发给 AI 的是 __TBL_N__ 占位符,生成后原样换回 ——
         // AI 只决定表格在版面里的位置,表格内容 100% 等于原文(动机见 restoreContent.ts)。
@@ -1127,6 +1207,11 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                                         console.log(`[STREAM_HALL] chunk ${i+1}: char spam, breaking`);
                                         streamHallucinationDetected = true; break;
                                     }
+                                    // Guard 4b: n-gram flood(逗号连排、逐项变尾的失控枚举)
+                                    if (hasNgramFlood(chunkOutput)) {
+                                        console.log(`[STREAM_HALL] chunk ${i+1}: ngram flood, breaking`);
+                                        streamHallucinationDetected = true; break;
+                                    }
                                     // Guard 5: output >> input length
                                     // Use max(inputLen, 2000) as floor to avoid false positives
                                     // on image-heavy chunks with little text. Threshold: 10??.
@@ -1286,6 +1371,13 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                             validationRetryReason = cmsg.replace(/^CHUNK_VALIDATION_FAILED:\s*/, '').slice(0, 700);
                             if (chunkAttempt < MAX_CHUNK_ATTEMPTS) {
                                 console.warn(`[CHUNK_VALIDATE_RETRY] part=${i + 1}/${chunks.length} attempt=${chunkAttempt}: ${validationRetryReason}`);
+                                // 连续两次失败 → 换提示词重试大概率也救不回来,最后一次换备用模型
+                                if (chunkAttempt >= MAX_CHUNK_ATTEMPTS - 1) escalateModel();
+                                continue;
+                            }
+                            // 三次都失败:若还没换过模型,换模型加赛一次(不占用常规重试预算)
+                            if (escalateModel()) {
+                                console.warn(`[CHUNK_VALIDATE_RETRY] part=${i + 1}/${chunks.length} extra attempt with escalated model`);
                                 continue;
                             }
                             integrityIssues.push({
@@ -1322,8 +1414,10 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                     cleanChunk = detectCorporateElementClasses(cleanChunk);
                     cleanChunk = reorderCorporateDocument(cleanChunk);
                 }
-                // Re-insert any __IMG_N__ placeholders the AI dropped (safety net)
-                cleanChunk = reinjectMissingPlaceholders(chunkContent, cleanChunk);
+                // 注:原先此处有 reinjectMissingPlaceholders 兜底(把 AI 丢的 __IMG_N__ 塞到
+                // 就近题注旁)。它的位置是错的,还会让 restoreMissingContent 误判「占位符已存在」
+                // 而把整段原文再补一份(真实文档实测:图标段双份并存)。丢失占位符现在统一由
+                // 确定性补回引擎按原文顺序在正确位置补回,故移除。
                 // Ensure every __IMG_N__ has a figure caption ??inject generic one if missing
                 cleanChunk = ensureFigureCaptions(cleanChunk, cumulativeFigureCount);
                 lastContext = cleanChunk.replace(/<[^>]+>/g, ' ');
@@ -1400,6 +1494,10 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         // 表格解冻:__TBL_N__ 占位符换回原表(重复的只还原第一处;AI 弄丢的占位符
         // 由紧随其后的 restoreMissingContent 按原位把整表补回)。
         fullRestoredText = unfreezeTables(fullRestoredText, frozenTables.map);
+        // 占位符清单倾倒清理:模型偶发把大量 __IMG_N__ 连排倾倒成"清单"(真实文档实测
+        // 73 个 0..72 一次性排开)。≥8 连排不可能是正文(实测正常一段最多 4 图),整段删掉;
+        // 被误删的真实占位符由紧随其后的补回引擎按原文位置补回。
+        fullRestoredText = fullRestoredText.replace(/(?:__IMG_\d+__\s*){8,}/g, '\n');
         const restored = restoreMissingContent(contentForChunking, fullRestoredText);
         fullRestoredText = restored.text;
         integrityIssues.push(...restored.issues);
@@ -1410,7 +1508,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         // 它的整表指纹匹配在 AI 改写表格内容时会失配,把已被相似度配对处理过的表
         // 再往文末追加一份(真实文档实测出现过双份并存),故移除。
 
-        const pp = postProcess(fullRestoredText, {
+        const ppOpts = {
             scheme: styleConfig.headingNumbering,
             figureChapterRelative: styleConfig.figureNumbering === 'chapter-relative',
             tableChapterRelative: styleConfig.tableNumbering === 'chapter-relative',
@@ -1418,7 +1516,8 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             preserveSourceHeadingNumbers: !!preserveSourceHeadingNumbers,
             sourceCaptions: extractSourceCaptions(contentForChunking),
             skeleton, // ?闂????:????闂??????闂傚倷娴囬鏍礂濞嗘挸绀夐幖杈剧稻椤?婵??heading_demoted / heading_missing ????????闂???
-        });
+        };
+        const pp = postProcess(fullRestoredText, ppOpts);
         // EMF/WMF 闂????Visio/CAD)??????? docx ???闂?闂??????????ImageMagick ??PNG,????闂??
         // 婵犵數鍋為崹鍫曞箰閹绢喖纾??闂????闂傚倷绀侀幉锟犳嚌妤ｅ啫瀚夋い鎺嗗亾妞?闂?婵???濠????ImageMagick ????婵??闂???濠???(????闂傚倷绀侀幉锟犫€﹂崶顒€绐楅幖绮瑰煑???????),????缂傚倸鍊风拋鏌ュ磻??
         if (imageCount > 0) {
@@ -1442,12 +1541,20 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         // 在图片还原之前再跑一次:幂等 —— 第一次补回过的内容此时都在,天然跳过;
         // 只有被误删的图题/占位符会重新按原位插回(携带源编号,与保留源号的路径一致)。
         const restored2 = restoreMissingContent(contentForChunking, pp.text);
+        let afterPP = restored2.text;
+        let ppIssues = pp.issues;
         if (restored2.issues.length > 0) {
             integrityIssues.push(...restored2.issues);
             console.log(`[RESTORE#2] ${restored2.issues.map(i => i.detail).join(' | ')}`);
+            // 二次补回有产出 → 幂等地再跑一遍确定性后处理:补回的段落形态标题要晋升+编号,
+            // 补回的图题要参与统一重编(真实文档实测:pass-2 补回的「3.1 经济效益」因晋升
+            // 已跑完而滞留段落形态)。完整性结论(heading_missing 等)以基于最终内容的第二遍为准。
+            const pp2 = postProcess(restored2.text, ppOpts);
+            afterPP = pp2.text;
+            ppIssues = pp2.issues;
         }
-        const finalText = imageCount > 0 ? restoreImages(restored2.text, imageMap) : restored2.text;
-        integrityIssues.push(...pp.issues);
+        const finalText = imageCount > 0 ? restoreImages(afterPP, imageMap) : afterPP;
+        integrityIssues.push(...ppIssues);
         integrityIssues.push(...detectStructuralAnomalies(finalText)); // ????濠????>1 ??????
 
         // 交付前完整校验(P1):在把成稿交给用户之前逐项核对原文与成稿。
