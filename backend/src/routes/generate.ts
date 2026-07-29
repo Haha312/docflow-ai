@@ -16,7 +16,7 @@ import { extractImagesAsPlaceholders, restoreImages, convertVectorImagesToPng } 
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
 import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies, reconcileMissingTables, validateFinalIntegrity } from '../utils/integrity';
 import { extractSourceCaptions, postProcess } from '../utils/postProcess';
-import { verifyBeforeDelivery } from '../utils/verifyDelivery';
+import { verifyBeforeDelivery, verifyTableStructure, verifySentenceCoverage } from '../utils/verifyDelivery';
 import { buildSkeleton, expectedChapterCount, type SkeletonNode } from '../utils/skeleton';
 import { normalizeHeadingText } from '../utils/headingText';
 import {
@@ -315,6 +315,24 @@ const validateChunkOutput = (
 
     if (hasSameBodyHallucination(chunkOutput) || hasStreamSentenceRepetition(chunkOutput) || hasCharSpam(chunkOutput)) {
         issues.push('repetition detected');
+    }
+
+    // 表格结构完整性:上面只比了 <table> 个数,一个表少一半 <td> 个数不变也查不出来。
+    // 这里查行列数不一致/未闭合/空表 —— 就是用户反馈的「表格没画完整」。
+    const tableStructIssues = verifyTableStructure(chunkOutput)
+        .filter((i) => i.type === 'table_malformed' || i.type === 'table_unclosed');
+    if (tableStructIssues.length > 0) {
+        issues.push(`malformed table(s): ${tableStructIssues.map((i) => i.detail).join('; ')}`);
+    }
+
+    // 逐句核对:上面的长度比例检查会把「丢了几句」平均掉(总字数还在阈值内)。
+    // 这里逐句核对原文语句是否真的还在,并把丢失的原句写进 issue —— 重试提示词会带上它,
+    // 等于直接告诉模型「你漏了这几句,补回去」,比笼统说"输出太短"有效得多。
+    // 阈值:≥2 句才触发重试(避免个别边界情况引发无谓的重生成);
+    // 交付前的 verifyBeforeDelivery 仍会把哪怕 1 句的缺失如实报告给用户。
+    const { missingSentences } = verifySentenceCoverage(chunkInput, chunkOutput);
+    if (missingSentences.length >= 2) {
+        issues.push(`missing source sentence(s): ${missingSentences.slice(0, 5).map((s) => `「${s}」`).join(' ')}`);
     }
 
     return issues;
@@ -1061,7 +1079,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                     chunkOutput = '';
                     try {
                     const userContent = validationRetryReason
-                        ? `${baseUserContent}\n\n--- STRICT RETRY REQUIREMENTS ---\nThe previous attempt failed validation: ${validationRetryReason}\nRegenerate this part from scratch. Preserve every required heading and every source paragraph/table/list/image placeholder. Do not summarize, omit, repeat, or stop early.`
+                        ? `${baseUserContent}\n\n--- STRICT RETRY REQUIREMENTS ---\nThe previous attempt failed validation: ${validationRetryReason}\nRegenerate this part from scratch. Preserve every required heading and every source paragraph/table/list/image placeholder. Do not summarize, omit, repeat, or stop early.\nIf specific source sentences are quoted above as missing, reproduce each of them verbatim in its original position.\nIf a table was reported as malformed, rebuild that table so every row has the same number of cells and every <table>/<tr>/<td> tag is properly closed.`
                         : baseUserContent;
                     if (useOpenAICompat) {
                         // 婵?? OpenAI Compatible Endpoint (DeepSeek / ???? / Qwen / ???? Gemini)

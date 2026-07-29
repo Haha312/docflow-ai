@@ -167,11 +167,19 @@ export interface CaptionNumber {
     raw: string;
 }
 
+/**
+ * 章节相对编号的分隔符。Word 文档里这一位极易是「看起来像减号但不是减号」的字符:
+ * U+2011 不换行连字符(Word 自动替换产生)、U+2010 连字符、U+2012 数字短横、
+ * U+2013 短破折号、U+2014 长破折号、U+2015 横线、U+FF0D 全角减号,以及点号变体。
+ * 只认 ASCII '-' 会把「图 3‑1」误判成扁平编号「图3」并报「缺少章号」(实测踩过)。
+ */
+const NUM_SEPARATORS = '\\u002D\\u2010\\u2011\\u2012\\u2013\\u2014\\u2015\\uFF0D.．。·';
+
 /** 从 caption 文本里解析 图3 / 图3-2 / 表 3.2 这类编号 */
 export const parseCaptionNumber = (text: string, kind: '图' | '表'): CaptionNumber | null => {
     const plain = (text || '').replace(/<[^>]+>/g, '').trim();
-    // 图3-2 / 图3.2 / 图 3-2
-    const rel = plain.match(new RegExp(`^${kind}\\s*(\\d+)\\s*[-.．]\\s*(\\d+)`));
+    // 图3-2 / 图3.2 / 图 3-2 / 图 3‑2(各种连字符变体)
+    const rel = plain.match(new RegExp(`^${kind}\\s*(\\d+)\\s*[${NUM_SEPARATORS}]\\s*(\\d+)`));
     if (rel) {
         return { chapter: parseInt(rel[1], 10), seq: parseInt(rel[2], 10), raw: plain };
     }
@@ -206,12 +214,19 @@ export const verifyCaptionNumbering = (html: string): IntegrityIssue[] => {
         const problems: string[] = [];
         const isRelative = nums.some((n) => n.chapter !== null);
 
+        // 编号断档直接报「缺了哪几个」而不是「这个应该是几号」—— 断档几乎总是
+        // 因为对应的图/表整个丢了,直接点名缺失编号比让用户自己推算有用得多。
+        const gapText = (from: number, to: number, chapter: number | null): string => {
+            const label = (s: number) => (chapter !== null ? `${kind}${chapter}-${s}` : `${kind}${s}`);
+            return from === to ? `${label(from)} 缺失` : `${label(from)}~${label(to)} 缺失`;
+        };
+
         if (isRelative) {
             let prevChapter: number | null = null;
             let expectedSeq = 1;
             for (const n of nums) {
                 if (n.chapter === null) {
-                    problems.push(`${n.raw}(缺少章号)`);
+                    problems.push(`${n.raw}(编号格式与其它图表不一致)`);
                     continue;
                 }
                 if (prevChapter === null || n.chapter !== prevChapter) {
@@ -221,22 +236,22 @@ export const verifyCaptionNumbering = (html: string): IntegrityIssue[] => {
                     prevChapter = n.chapter;
                     expectedSeq = 1;
                 }
-                if (n.seq !== expectedSeq) {
-                    problems.push(`${n.raw}(应为 ${kind}${n.chapter}-${expectedSeq})`);
-                    expectedSeq = n.seq + 1;
-                } else {
-                    expectedSeq += 1;
+                if (n.seq > expectedSeq) {
+                    problems.push(gapText(expectedSeq, n.seq - 1, n.chapter));
+                } else if (n.seq < expectedSeq) {
+                    problems.push(`${n.raw}(编号重复或回退)`);
                 }
+                expectedSeq = n.seq + 1;
             }
         } else {
             let expected = 1;
             for (const n of nums) {
-                if (n.seq !== expected) {
-                    problems.push(`${n.raw}(应为 ${kind}${expected})`);
-                    expected = n.seq + 1;
-                } else {
-                    expected += 1;
+                if (n.seq > expected) {
+                    problems.push(gapText(expected, n.seq - 1, null));
+                } else if (n.seq < expected) {
+                    problems.push(`${n.raw}(编号重复或回退)`);
                 }
+                expected = n.seq + 1;
             }
         }
 

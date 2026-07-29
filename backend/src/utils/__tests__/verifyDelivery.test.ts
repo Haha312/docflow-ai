@@ -98,6 +98,22 @@ describe('parseCaptionNumber', () => {
     it('无编号返回 null', () => {
         expect(parseCaptionNumber('实验结果对比', '图')).toBeNull();
     });
+
+    // 回归:Word 会把连字符自动替换成 U+2011 不换行连字符,只认 ASCII '-' 会把
+    // 「图 3‑1」误判成扁平编号「图3」并报「缺少章号」(真实文档实测踩到过)。
+    it.each([
+        ['-', 'ASCII 连字符'],
+        ['‐', 'U+2010 连字符'],
+        ['‑', 'U+2011 不换行连字符'],
+        ['‒', 'U+2012 数字短横'],
+        ['–', 'U+2013 短破折号'],
+        ['—', 'U+2014 长破折号'],
+        ['－', 'U+FF0D 全角减号'],
+        ['.', '英文点'],
+        ['．', '全角点'],
+    ])('各种连字符变体都能解析为章节相对编号: %s (%s)', (sep) => {
+        expect(parseCaptionNumber(`图 3${sep}1 总体架构`, '图')).toMatchObject({ chapter: 3, seq: 1 });
+    });
 });
 
 describe('verifyCaptionNumbering', () => {
@@ -109,13 +125,21 @@ describe('verifyCaptionNumbering', () => {
         expect(verifyCaptionNumbering(html)).toEqual([]);
     });
 
-    it('跳号 → figure_numbering_broken', () => {
+    it('跳号 → 直接报缺失的编号', () => {
         const html = `
             <div class="figure-caption">图1 甲</div>
             <div class="figure-caption">图3 乙</div>`;
         const issues = verifyCaptionNumbering(html);
         expect(issues.map((i) => i.type)).toContain('figure_numbering_broken');
-        expect(issues[0].detail).toContain('应为 图2');
+        expect(issues[0].detail).toContain('图2 缺失');
+    });
+
+    it('连续断档合并成区间(图4-20~图4-22 缺失)', () => {
+        const html = `
+            <div class="figure-caption">图4-19 甲</div>
+            <div class="figure-caption">图4-23 乙</div>`;
+        const issues = verifyCaptionNumbering(html);
+        expect(issues[0].detail).toContain('图4-20~图4-22 缺失');
     });
 
     it('重号 → 报错', () => {
