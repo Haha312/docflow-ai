@@ -70,18 +70,16 @@ describe('verifyTableStructure', () => {
         expect(issues.map((i) => i.type)).toContain('table_empty');
     });
 
-    it('合法的 rowspan 合并表不应误报', () => {
-        // 第2行因 rowspan 少一个 td,但众数行宽仍为 3,偏离行只有 1 行
+    it('合法的 rowspan 合并表:跳过行宽检查,完全不误报', () => {
+        // 被 rowspan 跨越的行单元格数天然少于列数,行宽模型判不了对错 ——
+        // 真实文档的报价明细表大量纵向合并,逐行检查全是误报,故含 rowspan 即跳过。
         const html = `<table>
             <tr><td rowspan="2">合并</td><td>b</td><td>c</td></tr>
             <tr><td>d</td><td>e</td></tr>
             <tr><td>f</td><td>g</td><td>h</td></tr>
             <tr><td>i</td><td>j</td><td>k</td></tr>
         </table>`;
-        const issues = verifyTableStructure(html);
-        // 允许报 malformed(rowspan 无法在行内判定),但绝不能报 unclosed/empty
-        expect(issues.map((i) => i.type)).not.toContain('table_unclosed');
-        expect(issues.map((i) => i.type)).not.toContain('table_empty');
+        expect(verifyTableStructure(html)).toEqual([]);
     });
 });
 

@@ -14,9 +14,10 @@ const router = Router();
 import OpenAI from 'openai';
 import { extractImagesAsPlaceholders, restoreImages, convertVectorImagesToPng } from '../utils/imageUtils';
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
-import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies, reconcileMissingTables, validateFinalIntegrity } from '../utils/integrity';
+import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies, validateFinalIntegrity } from '../utils/integrity';
 import { extractSourceCaptions, postProcess } from '../utils/postProcess';
 import { verifyBeforeDelivery, verifyTableStructure, verifySentenceCoverage } from '../utils/verifyDelivery';
+import { restoreMissingContent, freezeTables, unfreezeTables } from '../utils/restoreContent';
 import { buildSkeleton, expectedChapterCount, type SkeletonNode } from '../utils/skeleton';
 import { normalizeHeadingText } from '../utils/headingText';
 import {
@@ -294,11 +295,11 @@ const validateChunkOutput = (
         issues.push(`missing heading(s): ${missingHeadings.slice(0, 5).join(' | ')}`);
     }
 
-    const inputPlaceholders = [...chunkInput.matchAll(/__IMG_\d+__/g)].map(m => m[0]);
+    const inputPlaceholders = [...chunkInput.matchAll(/__(?:IMG|TBL)_\d+__/g)].map(m => m[0]);
     if (inputPlaceholders.length > 0) {
-        const outputSet = new Set([...chunkOutput.matchAll(/__IMG_\d+__/g)].map(m => m[0]));
+        const outputSet = new Set([...chunkOutput.matchAll(/__(?:IMG|TBL)_\d+__/g)].map(m => m[0]));
         const missingImages = inputPlaceholders.filter(p => !outputSet.has(p));
-        if (missingImages.length > 0) issues.push(`missing image placeholder(s): ${missingImages.join(', ')}`);
+        if (missingImages.length > 0) issues.push(`missing placeholder(s): ${missingImages.join(', ')}`);
     }
 
     const inputTables = (chunkInput.match(/<table\b/gi) ?? []).length;
@@ -318,9 +319,10 @@ const validateChunkOutput = (
     }
 
     // 表格结构完整性:上面只比了 <table> 个数,一个表少一半 <td> 个数不变也查不出来。
-    // 这里查行列数不一致/未闭合/空表 —— 就是用户反馈的「表格没画完整」。
+    // 只把「行列数不一致」作为重试触发条件;「未闭合」不触发 —— 合并前的
+    // repairUnclosedTags 本来就会补闭合标签,为它重生成整块纯属浪费。
     const tableStructIssues = verifyTableStructure(chunkOutput)
-        .filter((i) => i.type === 'table_malformed' || i.type === 'table_unclosed');
+        .filter((i) => i.type === 'table_malformed');
     if (tableStructIssues.length > 0) {
         issues.push(`malformed table(s): ${tableStructIssues.map((i) => i.detail).join('; ')}`);
     }
@@ -592,8 +594,8 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             '2. Use <h2> for top-level chapters, then <h3>, <h4>, and deeper levels for nested sections.',
             `3. Apply this numbering rule to headings starting at <h2>: ${numberingRules}`,
             '4. Preserve all source content. Do not summarize, invent, drop, or reorder body content.',
-            '5. Preserve every image placeholder exactly, such as __IMG_0__. Do not rename or remove placeholders.',
-            '6. Put figure captions directly below image placeholders and table captions directly above tables.',
+            '5. Preserve every placeholder exactly, such as __IMG_0__ or __TBL_0__. Do not rename, remove, or duplicate placeholders. __TBL_N__ stands for a table that will be re-inserted verbatim later - NEVER reconstruct or invent table markup yourself; just keep the placeholder on its own line at its original position.',
+            '6. Put figure captions directly below image placeholders and table captions directly above table placeholders.',
             '   If the source already has a figure/table caption number, preserve that exact number and language. Do not translate 图/表 to Figure/Table and do not add a second number.',
             '   Preserve table header rows and cell text exactly; do not rewrite, merge, split, or invent table headers.',
             '7. Use semantic HTML only: headings, paragraphs, lists, tables, and caption divs.',
@@ -812,9 +814,17 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // Gemini ????usage 缂?闂?????濠?缂???闂?婵??濠?闂傚倷娴囬妴鈧柛?闂??婵?
         const includeUsage = useProxy;
 
+        // 表格冻结:表格不进 AI。发给 AI 的是 __TBL_N__ 占位符,生成后原样换回 ——
+        // AI 只决定表格在版面里的位置,表格内容 100% 等于原文(动机见 restoreContent.ts)。
+        // contentForChunking 保持含真表,继续作为补回/校验/统计的原文基准。
+        const frozenTables = freezeTables(contentForChunking);
+        const contentForAI = frozenTables.text;
+        const frozenTableCount = Object.keys(frozenTables.map).length;
+        if (frozenTableCount > 0) console.log(`[TBL_FREEZE] ${frozenTableCount} table(s) frozen as placeholders`);
+
         const safeChunkSize = estimateSafeChunkSize(requestedModelKey, userTier);
-        const estimatedChunks = Math.max(1, Math.ceil(contentForChunking.length / safeChunkSize));
-        console.log(`[ESTIMATE_BUDGET] model=${requestedModelKey || 'gemini-pro'} safeChunkSize=${safeChunkSize} contentLen=${contentForChunking.length}`);
+        const estimatedChunks = Math.max(1, Math.ceil(contentForAI.length / safeChunkSize));
+        console.log(`[ESTIMATE_BUDGET] model=${requestedModelKey || 'gemini-pro'} safeChunkSize=${safeChunkSize} contentLen=${contentForAI.length}`);
         console.log(`[ESTIMATED_CHUNKS] ${estimatedChunks}`);
 
         const integrityIssues: IntegrityIssue[] = [];
@@ -822,15 +832,15 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         if (userTier === 'ULTRA') {
             // ULTRA ?闂???? chunk??x??????????濠?闂??????????闂????闂?
             const ultraChunkSize = safeChunkSize * 3;
-            if (contentForChunking.length <= ultraChunkSize) {
+            if (contentForAI.length <= ultraChunkSize) {
                 console.log('[ULTRA] Mode: Single-pass full document processing');
-                chunks = [contentForChunking];
+                chunks = [contentForAI];
             } else {
-                console.log(`[ULTRA] Mode: Large doc (${contentForChunking.length} chars), splitting into ${ultraChunkSize}-char chunks`);
-                chunks = splitContentBySemantics(contentForChunking, ultraChunkSize);
+                console.log(`[ULTRA] Mode: Large doc (${contentForAI.length} chars), splitting into ${ultraChunkSize}-char chunks`);
+                chunks = splitContentBySemantics(contentForAI, ultraChunkSize);
             }
         } else {
-            chunks = splitContentBySemantics(contentForChunking, safeChunkSize);
+            chunks = splitContentBySemantics(contentForAI, safeChunkSize);
         }
         const beforeCompression = chunks.length;
         const compressed = compressChunksByCoverage(chunks, 0.78, 280);
@@ -846,8 +856,8 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             headingPath: [],
             strategy: 'legacy',
         }));
-        if (contentForChunking.length > safeChunkSize) {
-            structuredChunks = splitContentIntoStructuredChunks(contentForChunking, userTier === 'ULTRA' ? safeChunkSize * 3 : safeChunkSize);
+        if (contentForAI.length > safeChunkSize) {
+            structuredChunks = splitContentIntoStructuredChunks(contentForAI, userTier === 'ULTRA' ? safeChunkSize * 3 : safeChunkSize);
             const structuredCompressed = compressChunksByCoverage(structuredChunks.map(c => c.content), 0.78, 280);
             if (structuredCompressed.dropped > 0) {
                 integrityIssues.push({ type: 'chunk_compressed', severity: 'info', detail: `Skipped ${structuredCompressed.dropped} overlapping chunk(s) during structured splitting` });
@@ -1024,6 +1034,7 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 - Placeholders like \`__IMG_55__\` appear in your input. The number is a FIXED UNIQUE ID ??copy it verbatim.
                 - FORBIDDEN: Changing any digit in a placeholder. Output \`__IMG_55__\` as \`__IMG_55__\`, never as \`__IMG_56__\` or \`__IMG_1__\`.
                 - FORBIDDEN: Inventing placeholder numbers not present in your input.
+                - \`__TBL_N__\` placeholders follow the SAME rules: copy each verbatim on its own line. It stands for a table that is re-inserted later - NEVER write \`<table>\` markup yourself.
 
                 **RULES**:
                 1. Your FIRST line of output must be the formatted version of "${chunkFirstHeading}".
@@ -1382,9 +1393,22 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         // ???? P0-3 缂???闂??? ??P0-1 闂??闂?? ??P0-4 ?????闂???闂?????
         // ?闂? AI 濠?婵犵妲呴崑鍡樻櫠濡ゅ懎鍨傚┑鍌氭啞閸???????/闂????婵??????闂?闂????? AI ????),?闂??????闂???????濠????
         // ???闂??????闂??闂???? ???婵??闂??(??闂傚倷绀侀幉锟犲箰閸濄儳鐭撻悗娑櫳戝▍??闂?闂?闂??delta,????????缂?闂????????濠?)??
-        const tableRepair = reconcileMissingTables(contentForChunking, fullRestoredText);
-        fullRestoredText = tableRepair.text;
-        integrityIssues.push(...tableRepair.issues);
+        // 确定性补回(P1):重试没救回来的缺失内容(整段/图题/图片/标题/整表),按原文顺序
+        // 定位原位插回;成稿里"缺单元格"的表格整表换回原文版本。这是确定性修复,
+        // 不再依赖 AI —— 详见 restoreContent.ts 顶部说明。必须在 postProcess 之前跑:
+        // 补回的图题要参与统一重编号,补回的标题要被骨架层校正级别。
+        // 表格解冻:__TBL_N__ 占位符换回原表(重复的只还原第一处;AI 弄丢的占位符
+        // 由紧随其后的 restoreMissingContent 按原位把整表补回)。
+        fullRestoredText = unfreezeTables(fullRestoredText, frozenTables.map);
+        const restored = restoreMissingContent(contentForChunking, fullRestoredText);
+        fullRestoredText = restored.text;
+        integrityIssues.push(...restored.issues);
+        if (restored.issues.length > 0) {
+            console.log(`[RESTORE] ${restored.issues.map(i => i.detail).join(' | ')}`);
+        }
+        // 注:原先此处还有 reconcileMissingTables 附录兜底,已被上面的原位补回取代 ——
+        // 它的整表指纹匹配在 AI 改写表格内容时会失配,把已被相似度配对处理过的表
+        // 再往文末追加一份(真实文档实测出现过双份并存),故移除。
 
         const pp = postProcess(fullRestoredText, {
             scheme: styleConfig.headingNumbering,
@@ -1412,7 +1436,17 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             }
         }
         // 闂傚倷绀侀幉锟犮€冮崼鐔稿弿鐎规洖娲ㄧ粈???闂?缂傚倸鍊搁崐鐑芥嚄閸洖绐楃€广儱娲ㄩ崡??闂傚倷绀侀幉锟犫€﹂崶顒€绐楃€广儱娲︾€????<img>(postProcess ?婵?闂備浇宕垫慨鏉懨洪敐鍥╃焼濞撴埃鍋撻柣??+ 缂傚倸鍊搁崐鎼佸磹閹间礁绠规い鎰剁畱妗????,濠??濠电姷鏁告慨宥夊礋椤愩埄娼撴繝鐢靛仜閻°劑鏁冮姀銈囧祦??婵犵數鍋為崹鍫曞箰閹绢喖纾??
-        const finalText = imageCount > 0 ? restoreImages(pp.text, imageMap) : pp.text;
+        // 二次确定性补回:postProcess 的图表题裁剪(reconcileCaptionsToSource)对措辞改写
+        // 敏感,会把 AI 忠实输出但略有变化的真实图题误判成「编造」删掉,连带同段的图片
+        // 占位符一起丢(真实文档实测:第一次补回时它们还在 → 没补;裁剪后就真没了)。
+        // 在图片还原之前再跑一次:幂等 —— 第一次补回过的内容此时都在,天然跳过;
+        // 只有被误删的图题/占位符会重新按原位插回(携带源编号,与保留源号的路径一致)。
+        const restored2 = restoreMissingContent(contentForChunking, pp.text);
+        if (restored2.issues.length > 0) {
+            integrityIssues.push(...restored2.issues);
+            console.log(`[RESTORE#2] ${restored2.issues.map(i => i.detail).join(' | ')}`);
+        }
+        const finalText = imageCount > 0 ? restoreImages(restored2.text, imageMap) : restored2.text;
         integrityIssues.push(...pp.issues);
         integrityIssues.push(...detectStructuralAnomalies(finalText)); // ????濠????>1 ??????
 

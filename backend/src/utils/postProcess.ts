@@ -62,19 +62,19 @@ const toChineseNumber = (n: number): string => {
 
 // ── 剥离图/表题已有编号(图1 / 图1-1 / 表2 等)──
 const stripCaptionPrefix = (inner: string, kind: '图' | '表'): string => {
-    const re = new RegExp('^(\\s*(?:<(?:strong|b|span|em)\\b[^>]*>\\s*)?)' + kind + '\\s*\\d+(?:[-.]\\d+)*[\\s\\u3000、.::]*', 'i');
+    const re = new RegExp('^(\\s*(?:<(?:strong|b|span|em)\\b[^>]*>\\s*)?)' + kind + '\\s*\\d+(?:[-.\\u2010-\\u2015\\uFF0D]\\d+)*[\\s\\u3000、.::]*', 'i');
     return inner.replace(re, '$1');
 };
 
 const sourceCaptionPrefix = (inner: string, kind: '图' | '表'): string => {
     const text = (inner || '').replace(/<[^>]+>/g, '').trim();
-    const m = text.match(new RegExp('^' + kind + '\\s*(\\d+(?:[-.]\\d+)*)\\b'));
+    const m = text.match(new RegExp('^' + kind + '\\s*(\\d+(?:[-.\\u2010-\\u2015\\uFF0D]\\d+)*)\\b'));
     return m ? `${kind}${m[1]}` : '';
 };
 
 const removeDuplicateEnglishCaptionPrefix = (inner: string): string =>
     inner.replace(
-        /^(\s*(?:<(?:strong|b|span|em)\b[^>]*>\s*)?(?:图|表)\s*\d+(?:[-.]\d+)*\s+)(?:Figure|Table)\s+\d+(?:[-.]\d+)*\s*/i,
+        /^(\s*(?:<(?:strong|b|span|em)\b[^>]*>\s*)?(?:图|表)\s*\d+(?:[-.\u2010-\u2015\uFF0D]\d+)*\s+)(?:Figure|Table)\s+\d+(?:[-.\u2010-\u2015\uFF0D]\d+)*\s*/i,
         '$1'
     );
 
@@ -92,19 +92,23 @@ const stripHtmlToText = (html: string): string =>
         .replace(/\s+/g, ' ')
         .trim();
 
+// 本文件所有 caption 编号正则的分隔符类均为 [-.‐-―－](含连字符变体):
+// Word 会把连字符自动替换成 U+2011 不换行连字符等,真实文档里「图 3‑1」用 U+2011 而
+// 「图4-1」用 ASCII '-'(实测踩过)。只认 ASCII 会把「图 3‑1」解析成「图3」,
+// 前缀对不上 → 匹配失败 → AI 忠实输出的图题被当成「编造」裁掉。
 const normalizeCaptionPrefix = (kind: '图' | '表', number = ''): string =>
-    `${kind}${number.replace(/\./g, '-').replace(/\s+/g, '')}`;
+    `${kind}${number.replace(/[.‐-―－]/g, '-').replace(/\s+/g, '')}`;
 
 const normalizeCaptionTitle = (text: string): string =>
     stripHtmlToText(text)
-        .replace(/^[图表]\s*\d+(?:[-.]\d+)*[\s\u3000、.：:：]*/i, '')
+        .replace(/^[图表]\s*\d+(?:[-.\u2010-\u2015\uFF0D]\d+)*[\s\u3000、.：:：]*/i, '')
         .replace(/[（(][A-Za-z_][A-Za-z0-9_\s.-]*[）)]/g, '')
         .replace(/[^0-9a-zA-Z\u4e00-\u9fff]+/g, '')
         .toLowerCase();
 
 const parseCaption = (textOrHtml: string): SourceCaption | null => {
-    const text = stripHtmlToText(textOrHtml);
-    const m = text.match(/^(图|表)\s*(\d+(?:[-.]\d+)*)[\s\u3000、.：:：]*(.*)$/);
+    const text = stripHtmlToText(textOrHtml).replace(/^(?:__IMG_\d+__\s*)+/, '').trim();
+    const m = text.match(/^(图|表)\s*(\d+(?:[-.\u2010-\u2015\uFF0D]\d+)*)[\s\u3000、.：:：]*(.*)$/);
     if (!m) return null;
     const kind = m[1] as '图' | '表';
     const prefix = `${kind}${m[2]}`;

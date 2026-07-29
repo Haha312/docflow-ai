@@ -117,6 +117,11 @@ export const verifyTableStructure = (html: string): IntegrityIssue[] => {
             continue;
         }
 
+        // 含 rowspan 的表:被跨越行的单元格数天然少于列数,行宽模型判不了对错
+        // (真实文档的报价明细表大量纵向合并,逐行宽度检查全是误报)。跳过行宽检查,
+        // 空表/未闭合检查仍生效。
+        if (/\browspan\s*=/i.test(t[0])) continue;
+
         // 众数行宽作为该表的"应有列数"
         const freq = new Map<number, number>();
         for (const r of nonEmptyRows) freq.set(r.width, (freq.get(r.width) ?? 0) + 1);
@@ -276,7 +281,11 @@ export const verifyCaptionNumbering = (html: string): IntegrityIssue[] => {
 
 /** 提取正文句子(去掉表格/图注等结构块后按句末标点切分) */
 export const extractSentences = (html: string): string[] => {
-    const withoutTables = (html || '').replace(/<table\b[\s\S]*?<\/table>/gi, ' ');
+    // 防御:上传内容尾部可能带隐藏数据块(公式/结构 JSON),不是正文,不能算句子
+    const withoutData = (html || '')
+        .replace(/<!--\s*FORMULA_DATA\s*-->[\s\S]*$/, '')
+        .replace(/<!--\s*STRUCTURE_DATA\s*-->[\s\S]*$/, '');
+    const withoutTables = withoutData.replace(/<table\b[\s\S]*?<\/table>/gi, ' ');
     const withoutCaptions = withoutTables.replace(/<div[^>]*class\s*=\s*["'][^"']*(?:figure|table)-caption[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, ' ');
     const plain = withoutCaptions
         .replace(/<[^>]+>/g, '\n')

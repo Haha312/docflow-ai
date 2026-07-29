@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { postProcess, enforceSingleTitleAndDemote, PostProcessOptions } from '../postProcess';
+import { postProcess, enforceSingleTitleAndDemote, extractSourceCaptions, PostProcessOptions } from '../postProcess';
 import { buildSkeleton } from '../skeleton';
 
 const opts = (over: Partial<PostProcessOptions> = {}): PostProcessOptions => ({
@@ -412,4 +412,33 @@ describe('多预设(各TAB)生成逻辑正确性矩阵', () => {
             expect(new Set(figs).size).toBe(2);
         });
     }
+});
+
+describe('extractSourceCaptions — 真实 Word 形态回归', () => {
+    // 真实文档实测的图号断档真凶:图题与图片占位符挤在同一段,提取器不认 →
+    // 源图题集缺失 → 裁剪器把 AI 忠实输出的对应图题当「编造」删掉。
+    it('图片占位符与图题同段也能提取', () => {
+        const set = extractSourceCaptions('<p>__IMG_28__图4-20成果评分细则定制样例图</p>');
+        expect(set.figures).toHaveLength(1);
+        expect(set.figures[0].prefix).toBe('图4-20');
+        expect(set.figures[0].normPrefix).toBe('图4-20');
+    });
+
+    it('U+2011 不换行连字符编号(图 3‑1)解析出完整前缀', () => {
+        const set = extractSourceCaptions('<p>图 3‑1信息中心及上层应用总体技术路线</p>');
+        expect(set.figures).toHaveLength(1);
+        // normPrefix 把连字符变体折成 ASCII '-'
+        expect(set.figures[0].normPrefix).toBe('图3-1');
+    });
+
+    it('表题同理(U+2011)', () => {
+        const set = extractSourceCaptions('<p>表 5‑1 服务器端硬件配置表</p>');
+        expect(set.tables).toHaveLength(1);
+        expect(set.tables[0].normPrefix).toBe('表5-1');
+    });
+
+    it('普通段落不误判为图题', () => {
+        const set = extractSourceCaptions('<p>图形化界面的设计原则如下所述。</p>');
+        expect(set.figures).toHaveLength(0);
+    });
 });
