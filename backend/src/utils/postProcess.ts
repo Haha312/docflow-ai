@@ -395,6 +395,9 @@ const isJournalFrontMatterHeading = (attrs: string): boolean =>
  *        "研究报告"等封面类型行(<p class="cover-meta"> 或纯 <p> 均可),一并丢弃。
  *      · 文本不同 → 维持原"降级为 <h2> 并去 doc-title class"修复(中部小标题被误升)。
  */
+/** 章节形态的编号开头(第X章/第X部分、一、/(一)、1./1.1 等)—— 这类文本是章标题,永远不该当文档标题 */
+const CHAPTER_LIKE_RE = /^(?:第\s*[一二三四五六七八九十百千0-9]+\s*[章部分篇节]|[一二三四五六七八九十]+\s*[、.．]|[（(]\s*[一二三四五六七八九十]+\s*[）)]|\d+(?:\.\d+)*\s*[.、．\s])/;
+
 export const enforceSingleTitleAndDemote = (html: string): string => {
     let seenTitle = false;
     let canonical = '';
@@ -402,6 +405,15 @@ export const enforceSingleTitleAndDemote = (html: string): string => {
         /<h1(\b[^>]*)>([\s\S]*?)<\/h1>(\s*<p\b[^>]*>[\s\S]*?<\/p>)?/gi,
         (_m, attrs: string, inner: string, trailingP?: string) => {
             const trailing = trailingP ?? '';
+            // 确定性护栏:「第一章 XX」这类编号章标题被 AI 误标成文档标题(纯文本粘贴、
+            // 无骨架时实测发生)→ 不认作标题,直接降级为章(h2),文档就是没有大标题。
+            if (!seenTitle && CHAPTER_LIKE_RE.test(stripHtmlToText(inner).trim())) {
+                const cleaned0 = attrs.replace(/\s*class\s*=\s*"([^"]*)"/i, (_mm, cls: string) => {
+                    const kept = cls.split(/\s+/).filter((x) => x && x.toLowerCase() !== 'doc-title').join(' ');
+                    return kept ? ` class="${kept}"` : '';
+                });
+                return `<h2${cleaned0}>${inner}</h2>${trailing}`;
+            }
             if (!seenTitle) {
                 seenTitle = true;
                 canonical = normalizeHeadingText(inner);
@@ -583,15 +595,25 @@ export const reconcileHeadingsToSkeleton = (
     // 这里先用输出文档标题的文本把对应骨架节点"消费"掉(顺序匹配器会吃掉最靠前的同名节点)。
     if (docTitleNorm) matcher.match(docTitleNorm);
     let demoted = 0;
+    let lastHeadingNorm = '';
     const re = /<h([2-6])(\b[^>]*)>([\s\S]*?)<\/h\1>/gi;
     const text = html.replace(re, (_full, lvlStr: string, attrs: string, inner: string) => {
         const cleanAttrs = (attrs || '').replace(/\s*data-sk="[^"]*"/i, '');
         if (isJournalFrontMatterHeading(cleanAttrs)) return `<h${lvlStr}${cleanAttrs}>${inner}</h${lvlStr}>`;
-        const m = matcher.match(normalizeHeadingText(inner));
+        const norm = normalizeHeadingText(inner);
+        const m = matcher.match(norm);
         if (m) {
+            lastHeadingNorm = norm;
             const lvl = m.node.outputLevel;
             return `<h${lvl}${cleanAttrs} data-sk="${m.node.id}">${inner}</h${lvl}>`;
         }
+        // 紧邻同文的非骨架标题 = AI 把同一标题吐了两遍(实测:「项目背景」h2 后又跟
+        // 一个「项目背景」→ 被降级成 1.1 挂在目录里)→ 直接丢弃,不降级保留。
+        if (norm && norm === lastHeadingNorm) {
+            demoted += 1;
+            return '';
+        }
+        lastHeadingNorm = norm;
         // 不在骨架中的标题:只把【章级 h2】降为子节(h3)——它们才会让章数膨胀(6→10);
         // 更深的 h3~h6 不动(不影响章数,且避免重复运行时反复下沉,保证幂等)。
         const cur = parseInt(lvlStr, 10);
@@ -652,9 +674,11 @@ export const reconcileHeadingsToSkeleton = (
  * 这样 reconcileImages 才能看到并修复占位符。
  */
 export const postProcess = (html: string, opts: PostProcessOptions): { text: string; issues: IntegrityIssue[] } => {
-    // 基准标题 = 第一个 <h1> 的标准化文本(供降级/重编号阶段判定"重复标题")。
-    const canonicalTitle = normalizeHeadingText(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '');
+    // 先跑标题规整,再取基准标题:「第一章 XX」被误标成标题时会被护栏降级为章,
+    // 若照旧从原始第一个 h1 取基准,重编号阶段的"重复标题防御"会把降级后的同文 h2
+    // 误删(实测:整个第一章标题消失)。基准必须来自规整后仍存活的 h1。
     let out = enforceSingleTitleAndDemote(html);
+    const canonicalTitle = normalizeHeadingText(out.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? '');
     // 结构先行:若有权威骨架,先把标题层级对齐到骨架(否则信任 AI 标签,保持旧行为)。
     // 传入文档标题文本 → reconcile 据此先消费"标题节点",避免标题被当成缺失的章。
     const skel = reconcileHeadingsToSkeleton(out, opts.skeleton, canonicalTitle);

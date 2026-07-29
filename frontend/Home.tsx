@@ -144,6 +144,22 @@ function Home() {
 
   const [showPRD, setShowPRD] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'preview'>('preview');
+  // 生成工作台的实时动态:阶段 key(驱动步骤时间线)+ 已排版字数(SSE 增量节流统计)+ 计时
+  const [genStage, setGenStage] = useState<'parse' | 'generate' | 'verify' | 'finalize'>('parse');
+  const [liveChars, setLiveChars] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const lastStatsAtRef = useRef(0);
+  useEffect(() => {
+    if (!aiState.isThinking) return;
+    setElapsedSec(0);
+    const t0 = Date.now();
+    const id = setInterval(() => setElapsedSec(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [aiState.isThinking]);
+  // 显示用百分比按阶段封顶:单块文档 current/total=1/1 会让 AI 排版一开始就报 100%,
+  // 而校验/补回还没跑 —— 满格绿条+100% 却迟迟不出稿,观感即"卡死"。
+  const stageCap = genStage === 'generate' ? 90 : genStage === 'verify' ? 96 : genStage === 'finalize' ? 99 : 15;
+  const displayPct = aiState.isThinking ? Math.min(aiState.progress, stageCap) : aiState.progress;
   // 主题(与后台共用 localStorage 键 'docflow_theme';CSS 由 index.css 的 :root[data-doc-theme] 驱动)
   const [themeMode, setThemeMode] = useState<'dark' | 'light' | 'blueviolet' | 'green' | 'coral'>(() => {
     try {
@@ -496,6 +512,9 @@ function Home() {
       .replace(/<p[^>]*>\s*<a\s+href="#_Toc[^"]*"[^>]*>[\s\S]*?<\/a>\s*<\/p>/gi, '')
       .replace(/<a\s+id="[^"]*"[^>]*><\/a>/gi, '');
 
+    setGenStage('parse');
+    setLiveChars(0);
+    lastStatsAtRef.current = 0;
     setShouldAutoScroll(true); // 每次新生成重置自动滚动
     // 生成开始时立即滚回顶部，避免 A4 minHeight 导致视口停在空白底部
     requestAnimationFrame(() => {
@@ -528,6 +547,9 @@ function Home() {
             setImageMap(prev => ({ ...prev, ...newImageMap }));
           }
           if (progressData) {
+            // 工作台步骤时间线的阶段推导
+            const st = progressData.status;
+            setGenStage(st === 'VERIFYING' || st === 'PROCESSING_IMAGES' ? 'verify' : st === 'FINALIZING' ? 'finalize' : 'generate');
             const pct = Math.round((progressData.current / progressData.total) * 100);
             const remaining = progressData.estimatedRemainingSeconds
               ? t('home.estimated_time', ' (预计剩余 {{seconds}} 秒)', { seconds: Math.ceil(progressData.estimatedRemainingSeconds) })
@@ -552,6 +574,9 @@ function Home() {
             } else if (displayStatus.startsWith('PART_COMPLETE|')) {
               const [, cur, tot] = displayStatus.split('|');
               displayStatus = t('home.status_part_complete', '第 {{cur}}/{{tot}} 部分完成', { cur, tot });
+            } else if (displayStatus.startsWith('RETRYING|')) {
+              const [, part, attempt] = displayStatus.split('|');
+              displayStatus = t('home.status_retrying', '第 {{part}} 部分质量未达标,正在重新生成(第 {{attempt}} 次)...', { part, attempt });
             }
 
             setAiState(prev => ({
@@ -562,6 +587,14 @@ function Home() {
           }
           // 生成期间只更新缓冲区,不渲染(见 handleProcess 顶部说明)。
           textBufferRef.current = partialText;
+          // 工作台实时指标:已排版字数(节流 300ms,避免每个 token 都触发渲染)
+          if (partialText) {
+            const nowTs = Date.now();
+            if (nowTs - lastStatsAtRef.current > 300) {
+              lastStatsAtRef.current = nowTs;
+              setLiveChars(partialText.replace(/<[^>]+>/g, '').replace(/\s+/g, '').length);
+            }
+          }
         },
         controller.signal
       );
@@ -1660,7 +1693,7 @@ function Home() {
                     <span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" /><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" /></span>
                     {t('home.stop_generation', '停止生成')}
                   </button>
-                  <span className="text-xs text-gray-400 truncate">{aiState.progressStep}{aiState.progress > 0 ? ` · ${aiState.progress}%` : ''}</span>
+                  <span className="text-xs text-gray-400 truncate">{aiState.progressStep}{displayPct > 0 ? ` · ${displayPct}%` : ''}</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -2027,39 +2060,86 @@ function Home() {
                         )}
                       </>
                     ) : aiState.isThinking ? (
-                      /* 等待开始：骨架纸 + 进度，呈现"文档正在排版"的感受 */
-                      <div className="h-full flex flex-col items-center justify-center gap-5 py-6">
-                        {/* 骨架 A4 纸：标题 + 段落占位行，逐行脉冲动画（去掉整卡的扫光效果） */}
-                        <div className="w-[300px] max-w-[78%] bg-white border border-gray-200 rounded-sm shadow-sm px-7 py-6 relative overflow-hidden">
-                          <div className="h-4 w-2/3 mx-auto bg-gray-200 rounded mb-6 animate-pulse" />
-                          <div className="h-2.5 w-2/5 bg-gray-200 rounded mb-3 animate-pulse" />
-                          {[0.95, 0.88, 0.6].map((w, i) => (
-                            <div key={`a${i}`} className="h-2 bg-gray-100 rounded mb-2.5 animate-pulse" style={{ width: `${w * 100}%`, animationDelay: `${i * 150}ms` }} />
-                          ))}
-                          <div className="h-2.5 w-2/5 bg-gray-200 rounded mb-3 mt-6 animate-pulse" style={{ animationDelay: '300ms' }} />
-                          {[0.9, 0.5].map((w, i) => (
-                            <div key={`b${i}`} className="h-2 bg-gray-100 rounded mb-2.5 animate-pulse" style={{ width: `${w * 100}%`, animationDelay: `${(i + 3) * 150}ms` }} />
-                          ))}
-                        </div>
-                        <div className="text-center">
-                          <p className="text-sm font-medium text-gray-700">{aiState.progressStep || t('home.processing_doc', '正在处理文档...')}</p>
-                        </div>
-                        {aiState.progress > 0 ? (
-                          <div className="flex flex-col items-center gap-1.5">
-                            <span className="text-xs text-gray-400 font-mono tabular-nums">{aiState.progress}%</span>
-                            <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-500 ${aiState.progress >= 100 ? 'bg-green-500' : 'bg-gray-400'}`}
-                                style={{ width: `${aiState.progress}%` }}
-                              />
+                      /* 生成等待:排版引擎工作台 —— 步骤时间线 + 实时指标,让"AI 在干活"可见 */
+                      (() => {
+                        const steps = [
+                          { key: 'parse', label: t('home.step_parse', '解析文档结构') },
+                          { key: 'freeze', label: t('home.step_freeze', '表格 · 图片原样保护') },
+                          { key: 'generate', label: t('home.step_ai', 'AI 智能排版') },
+                          { key: 'verify', label: t('home.step_verify', '逐句校验 · 缺失自动补回') },
+                          { key: 'finalize', label: t('home.step_final', '成稿整理交付') },
+                        ];
+                        const activeIdx = genStage === 'parse' ? 0 : genStage === 'generate' ? 2 : genStage === 'verify' ? 3 : 4;
+                        const mm = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+                        const ss = String(elapsedSec % 60).padStart(2, '0');
+                        return (
+                          <div className="h-full flex items-center justify-center py-6">
+                            <div className="w-[380px] max-w-[92%] bg-white border border-gray-200 rounded-2xl shadow-sm px-7 py-6">
+                              {/* 头部:呼吸光点 + 计时器 */}
+                              <div className="flex items-center gap-2.5 mb-5">
+                                <span className="relative flex h-2.5 w-2.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                                </span>
+                                <span className="text-sm font-semibold text-gray-800">{t('home.engine_working', 'DocFlow 排版引擎工作中')}</span>
+                                <span className="ml-auto text-xs text-gray-400 font-mono tabular-nums">{mm}:{ss}</span>
+                              </div>
+                              {/* 步骤时间线 */}
+                              <div>
+                                {steps.map((s, i) => {
+                                  const done = i < activeIdx;
+                                  const active = i === activeIdx;
+                                  return (
+                                    <div key={s.key} className="flex gap-3">
+                                      <div className="flex flex-col items-center">
+                                        {done ? (
+                                          <span className="w-5 h-5 flex-shrink-0 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center">
+                                            <svg className="w-3 h-3 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12" /></svg>
+                                          </span>
+                                        ) : active ? (
+                                          <span className="w-5 h-5 flex-shrink-0 rounded-full border-2 border-gray-200 border-t-gray-700 animate-spin" />
+                                        ) : (
+                                          <span className="w-5 h-5 flex-shrink-0 rounded-full border border-gray-200 bg-gray-50" />
+                                        )}
+                                        {i < steps.length - 1 && (
+                                          <span className="w-px flex-1 min-h-[12px]" style={{ backgroundColor: done ? '#a7f3d0' : '#eeeeee' }} />
+                                        )}
+                                      </div>
+                                      <div className="pb-3 min-w-0 flex-1">
+                                        <p className={`text-[13px] leading-5 ${active ? 'text-gray-900 font-medium' : done ? 'text-gray-500' : 'text-gray-300'}`}>{s.label}</p>
+                                        {active && (
+                                          <p className="text-xs text-gray-400 mt-0.5 truncate">
+                                            {aiState.progressStep || t('home.processing_doc', '正在处理文档...')}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {/* 实时指标 */}
+                              <div className="mt-1 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+                                <span>
+                                  {t('home.live_chars', '已排版')}{' '}
+                                  <span className="font-mono tabular-nums text-gray-800 font-medium">{liveChars.toLocaleString()}</span>{' '}
+                                  {t('home.live_chars_unit', '字')}
+                                </span>
+                                <span className="font-mono tabular-nums">{displayPct > 0 ? `${displayPct}%` : ''}</span>
+                              </div>
+                              <div className="mt-2 h-1 bg-gray-100 rounded-full overflow-hidden relative">
+                                {displayPct > 0 ? (
+                                  <div
+                                    className="h-full rounded-full transition-all duration-500 bg-gray-500"
+                                    style={{ width: `${displayPct}%` }}
+                                  />
+                                ) : (
+                                  <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-400 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
+                                )}
+                              </div>
                             </div>
                           </div>
-                        ) : (
-                          <div className="w-48 h-1 bg-gray-100 rounded-full overflow-hidden relative">
-                            <div className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-gray-400 to-transparent animate-[shimmer_1.5s_ease-in-out_infinite]" />
-                          </div>
-                        )}
-                      </div>
+                        );
+                      })()
                     ) : (
                       <div className="h-full flex flex-col items-center justify-center text-gray-300">
                         <svg className="w-12 h-12 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">

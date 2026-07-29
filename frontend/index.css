@@ -812,16 +812,16 @@ body {
 }
 
 .modal-backdrop {
-  background: rgba(0, 0, 0, 0.58);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(20px) saturate(0.85);
+  -webkit-backdrop-filter: blur(20px) saturate(0.85);
 }
 
 [data-doc-theme="light"] .modal-backdrop,
 [data-doc-theme="blueviolet"] .modal-backdrop,
 [data-doc-theme="green"] .modal-backdrop,
 [data-doc-theme="coral"] .modal-backdrop {
-  background: rgba(17, 24, 39, 0.28);
+  background: rgba(17, 24, 39, 0.45);
 }
 
 .modal-surface {
@@ -1395,9 +1395,9 @@ body {
 }
 
 .help-modal-backdrop {
-  background: rgba(0, 0, 0, 0.58);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(20px) saturate(0.85);
+  -webkit-backdrop-filter: blur(20px) saturate(0.85);
 }
 
 .help-panel {
@@ -1416,7 +1416,7 @@ body {
 [data-doc-theme="blueviolet"] .help-modal-backdrop,
 [data-doc-theme="green"] .help-modal-backdrop,
 [data-doc-theme="coral"] .help-modal-backdrop {
-  background: rgba(17, 24, 39, 0.28);
+  background: rgba(17, 24, 39, 0.45);
 }
 
 [data-doc-theme="blueviolet"] .help-panel,

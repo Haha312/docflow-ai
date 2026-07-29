@@ -31,7 +31,7 @@ export const LegalModal: React.FC<{ type: LegalType; onClose: () => void }> = ({
         type="button"
         aria-label={t('common.close', '关闭')}
         onClick={onClose}
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-black/60 backdrop-blur-xl"
       />
       <div
         className="relative z-10 w-full max-w-2xl max-h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col"

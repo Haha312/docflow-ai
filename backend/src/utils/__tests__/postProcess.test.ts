@@ -10,6 +10,19 @@ const opts = (over: Partial<PostProcessOptions> = {}): PostProcessOptions => ({
 });
 
 describe('enforceSingleTitleAndDemote', () => {
+    it('「第一章 XX」被 AI 误标成文档标题 → 降级为章,不当标题(纯文本粘贴回归)', () => {
+        const html = '<h1 class="doc-title">第一章 项目背景</h1><p>正文。</p><h2>第二章 建设目标</h2>';
+        const out = enforceSingleTitleAndDemote(html);
+        expect(out).not.toContain('doc-title');
+        expect(out).toMatch(/<h2[^>]*>第一章 项目背景<\/h2>/);
+    });
+
+    it('真正的文档标题(无编号)不受章形态护栏影响', () => {
+        const html = '<h1 class="doc-title">三维数据中心建设方案</h1><h2>第一章 项目背景</h2>';
+        const out = enforceSingleTitleAndDemote(html);
+        expect(out).toContain('<h1 class="doc-title">三维数据中心建设方案</h1>');
+    });
+
     it('keeps the first doc-title and demotes later ones to h2', () => {
         const html = '<h1 class="doc-title">真标题</h1><h2>章</h2><h1 class="doc-title">中部误升标题</h1><p>x</p>';
         const out = enforceSingleTitleAndDemote(html);

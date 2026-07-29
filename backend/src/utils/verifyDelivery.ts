@@ -316,6 +316,11 @@ export const verifySentenceCoverage = (
         const key = normalizeForCompare(s);
         if (key.length < 12) continue;
         if (outputNorm.includes(key)) continue;
+        // 枚举编号被排版吸收:「1. 完成数据标准体系建设…」转成 <li> 后编号由列表结构
+        // 表达,正文里只剩句体 —— 剥掉头部枚举标记再找一次(真实实测误报重试+吓人红条)
+        // 注意 key 已过 normalizeForCompare:顿号折成逗号、全角括号折半角、空白已删
+        const stripped = key.replace(/^(?:(?:\d+|[一二三四五六七八九十]+)[.,、]|\(\d+\))/, '');
+        if (stripped !== key && stripped.length >= 10 && outputNorm.includes(stripped)) continue;
         // 长句允许 AI 轻微改写:取首尾片段双侧命中即认为保留
         if (key.length >= 40) {
             const head = key.slice(0, 20);

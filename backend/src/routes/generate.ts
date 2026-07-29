@@ -15,7 +15,7 @@ import OpenAI from 'openai';
 import { extractImagesAsPlaceholders, restoreImages, convertVectorImagesToPng } from '../utils/imageUtils';
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
 import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies, validateFinalIntegrity } from '../utils/integrity';
-import { extractSourceCaptions, postProcess } from '../utils/postProcess';
+import { extractSourceCaptions, postProcess, type PostProcessOptions } from '../utils/postProcess';
 import { verifyBeforeDelivery, verifyTableStructure, verifySentenceCoverage } from '../utils/verifyDelivery';
 import { restoreMissingContent, freezeTables, unfreezeTables } from '../utils/restoreContent';
 import { buildSkeleton, expectedChapterCount, type SkeletonNode } from '../utils/skeleton';
@@ -576,6 +576,9 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         }
     });
 
+    // 绝不空手交付:内容准备完成后填充;AI 链路终态失败时用它做确定性保底稿(见 catch)
+    let fallbackCtx: { source: string; opts: PostProcessOptions } | null = null;
+
     try {
         const user = req.user;
         if (!user) {
@@ -810,6 +813,46 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // 1c. ?闂????:????(?闂? LEVEL_NORM ??preComputedHeadings ????闂???缂?,
         //     ?闂?????????AI ?闂傚倷鑳堕、濠冦仈缁嬫５娲冀椤愶絽鍘瑰┑鐘诧工閻楀﹪鍩??????闂傚倷绀侀幉锛勭矙閹烘鍋嬮柣鎰閺?婵犵數鍋為崹鍫曞箰閹绢喖纾????缂傚倸鍊搁崐鐑芥嚄閸洖绐楃€广儱娲ㄩ崡?闂????缂????????h1=?闂????闂傚倷鑳剁划顖炴偡閿曗偓椤啴宕稿Δ鈧悿?=?闂?h3=????,
         //     ??????????闂??濠????H1=????缂傚倸鍊风欢锟犲垂闂堟稓鏆﹂柣銏ゆ涧閸??缂傚倸鍊风拋鏌ュ磻??"h1=????"????闂?闂??缂傚倷鑳堕崑鎾愁熆濮椻偓閹宕楅崗鍏肩彿闂佸湱铏庨崰鏍不閻愮儤鐓熼柕蹇曞У閸熺偞绻??/ ??闂???????
+        // 伪骨架:输入既无 STRUCTURE_DATA 也无任何 <h> 标签(纯文本粘贴/无样式且无
+        // 大纲级别的 Word)时,标题结构只能靠 AI 猜 —— 实测同一文档两次生成结构都不
+        // 一样(「第一章」被当大标题、「第二章」被当正文)。按行模式确定性识别章节:
+        // 行长 ≤40 才算标题候选(长段落即使带 1.1 前缀也是正文),以句号/分号结尾的
+        // 是列表项或整句(如「1. 完成数据标准体系建设,发布数据接入规范。」)不算标题。
+        if (preComputedHeadings.length === 0 && !/<h[1-6]\b/i.test(contentForChunking)) {
+            const lineTexts: string[] = [];
+            if (/<p\b/i.test(contentForChunking)) {
+                const pRe = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+                let pm: RegExpExecArray | null;
+                while ((pm = pRe.exec(contentForChunking)) !== null) lineTexts.push(pm[1].replace(/<[^>]+>/g, '').trim());
+            } else {
+                lineTexts.push(...contentForChunking.split(/\r?\n/).map((s) => s.replace(/<[^>]+>/g, '').trim()));
+            }
+            const derived: PreComputedHeading[] = [];
+            for (const line of lineTexts) {
+                if (!line || line.length > 40) continue;
+                if (/[。;；,，]$/.test(line)) continue;
+                let level = 0;
+                if (/^第\s*[一二三四五六七八九十百0-9]+\s*[章篇部]/.test(line)) level = 1;
+                else if (/^[一二三四五六七八九十]+\s*、/.test(line)) level = 1;
+                else if (/^\d+\.\d+\.\d+(?:\s|[.、．])/.test(line)) level = 3;
+                else if (/^\d+\.\d+(?:\s|[.、．])/.test(line)) level = 2;
+                else if (/^\d+\s*[.、．]\s*\S/.test(line) && !/^\d+\s*[.、．]\s*\d/.test(line)) level = 1;
+                else if (/^[（(]\s*[一二三四五六七八九十]+\s*[）)]/.test(line)) level = 2;
+                if (level > 0) derived.push({ level, text: line, number: '' });
+            }
+            // 至少 2 个候选且含章级才启用,避免把零星短句误判成结构
+            if (derived.length >= 2 && derived.some((h) => h.level === 1)) {
+                const counters = [0, 0, 0, 0, 0, 0];
+                for (const h of derived) {
+                    counters[h.level - 1] += 1;
+                    for (let k = h.level; k < 6; k += 1) counters[k] = 0;
+                    h.number = counters.slice(0, h.level).join('.');
+                }
+                preComputedHeadings = derived;
+                console.log(`[PSEUDO_SKELETON] derived ${derived.length} headings from text patterns`);
+            }
+        }
+
         const skeleton: SkeletonNode[] = buildSkeleton(preComputedHeadings);
         if (skeleton.length > 0) {
             console.log(`[SKELETON] Frozen ${skeleton.length} headings, ${expectedChapterCount(skeleton)} chapters`);
@@ -901,6 +944,20 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         const contentForAI = frozenTables.text;
         const frozenTableCount = Object.keys(frozenTables.map).length;
         if (frozenTableCount > 0) console.log(`[TBL_FREEZE] ${frozenTableCount} table(s) frozen as placeholders`);
+
+        // 内容与骨架就绪 → 填充保底上下文(AI 全挂时按原文结构出确定性基础稿,不放用户鸽子)
+        fallbackCtx = {
+            source: contentForChunking,
+            opts: {
+                scheme: styleConfig.headingNumbering,
+                figureChapterRelative: styleConfig.figureNumbering === 'chapter-relative',
+                tableChapterRelative: styleConfig.tableNumbering === 'chapter-relative',
+                expectedImagePlaceholders: Object.keys(imageMap),
+                preserveSourceHeadingNumbers: !!preserveSourceHeadingNumbers,
+                sourceCaptions: extractSourceCaptions(contentForChunking),
+                skeleton,
+            },
+        };
 
         const safeChunkSize = estimateSafeChunkSize(requestedModelKey, userTier);
         const estimatedChunks = Math.max(1, Math.ceil(contentForAI.length / safeChunkSize));
@@ -1371,6 +1428,8 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                             validationRetryReason = cmsg.replace(/^CHUNK_VALIDATION_FAILED:\s*/, '').slice(0, 700);
                             if (chunkAttempt < MAX_CHUNK_ATTEMPTS) {
                                 console.warn(`[CHUNK_VALIDATE_RETRY] part=${i + 1}/${chunks.length} attempt=${chunkAttempt}: ${validationRetryReason}`);
+                                // 把重试播报给前端 —— 否则长重试期间进度纹丝不动,用户以为卡死了
+                                try { res.write(`data: ${JSON.stringify({ ping: true, progress: { current: i, total: chunks.length, status: `RETRYING|${i + 1}|${chunkAttempt + 1}`, estimatedRemainingSeconds: null } })}\n\n`); } catch { /* client closed */ }
                                 // 连续两次失败 → 换提示词重试大概率也救不回来,最后一次换备用模型
                                 if (chunkAttempt >= MAX_CHUNK_ATTEMPTS - 1) escalateModel();
                                 continue;
@@ -1378,11 +1437,16 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                             // 三次都失败:若还没换过模型,换模型加赛一次(不占用常规重试预算)
                             if (escalateModel()) {
                                 console.warn(`[CHUNK_VALIDATE_RETRY] part=${i + 1}/${chunks.length} extra attempt with escalated model`);
+                                try { res.write(`data: ${JSON.stringify({ ping: true, progress: { current: i, total: chunks.length, status: `RETRYING|${i + 1}|${chunkAttempt + 1}`, estimatedRemainingSeconds: null } })}\n\n`); } catch { /* client closed */ }
                                 continue;
                             }
+                            // info 而非 warning:这是生成过程的中间态诊断(重试没救回来的原因记录),
+                            // 不是最终成稿的结论 —— 确定性补回会在其后把内容补齐,最终状态由
+                            // verifyBeforeDelivery 的中文结论负责。挂 warning 会在前端红条里
+                            // 展示英文内部术语,吓用户且与最终结论重复(用户实测反馈)。
                             integrityIssues.push({
                                 type: 'chunk_validation_failed',
-                                severity: 'warning',
+                                severity: 'info',
                                 detail: `Part ${i + 1} validation warning: ${validationRetryReason.slice(0, 500)}`,
                             });
                             break;
@@ -1678,6 +1742,29 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             code = 'GEN_REGION_UNSUPPORTED';
         }
 
+        // 绝不空手交付:AI 链路终态失败(超时/网络/服务不可用/超长/密钥失效)时,
+        // 交付按原文结构确定性整理的基础稿 —— 骨架标题对齐+编号、表格图片原样、
+        // 内容与原文一致,并以 critical 提示明确告知这是保底版本。
+        // VISION_*(纯图片输入识别失败)没有可整理的文本源,仍走错误路径。
+        if (!res.writableEnded && fallbackCtx && !code.startsWith('VISION_')) {
+            try {
+                const fb = postProcess(fallbackCtx.source, fallbackCtx.opts);
+                const fbCounts = countStructure(fallbackCtx.source);
+                const fbReport = buildIntegrityReport(fbCounts, countStructure(fb.text), [{
+                    type: 'ai_fallback',
+                    severity: 'critical',
+                    detail: 'AI 排版服务暂时不可用,已交付按原文结构整理的基础版本(内容与原文一致,样式为基础排版),建议稍后重新生成',
+                }]);
+                console.warn(`[FALLBACK_DELIVERY] ${code}: delivered deterministic baseline (${fb.text.length} chars)`);
+                res.write(`data: ${JSON.stringify({ integrityReport: fbReport })}\n\n`);
+                res.write(`data: ${JSON.stringify({ text: fb.text })}\n\n`);
+                res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+                res.end();
+                return;
+            } catch (fbErr) {
+                console.error('[FALLBACK_DELIVERY] baseline build failed, falling back to error:', fbErr);
+            }
+        }
         if (!res.writableEnded) {
             const payload: { error: string; errorDetail?: string } = { error: code };
             if (process.env.NODE_ENV !== 'production') payload.errorDetail = rawMsg.slice(0, 200);

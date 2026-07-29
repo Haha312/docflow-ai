@@ -229,7 +229,7 @@ export function PricingModal({ isOpen, onClose, reason }: PricingModalProps) {
 
   return (
     <div className="prism-modal fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70" onClick={handleBackdropClick} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-xl" onClick={handleBackdropClick} />
 
       <div
         className="pricing-modal relative z-10 w-full max-w-4xl mx-4 bg-[#111111] border border-white/10 rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden"
