@@ -121,6 +121,12 @@ export async function generateDocumentViaBackend(
                                 fullText = data.text;
                                 onProgress(fullText, data.progress);
                             }
+                            // 纯进度事件(如 PART_COMPLETE):没有 ping/delta/text 字段,
+                            // 此前会落到所有分支之外被静默丢弃,导致"第 x/y 部分完成"和
+                            // 剩余时间预估从未显示过。放在最后兜底,不影响上面各分支。
+                            else if (data.progress) {
+                                onProgress(fullText, data.progress);
+                            }
                         } catch (e) {
                             if (e instanceof SyntaxError) {
                                 console.warn('SSE parse error, skipping:', dataStr.substring(0, 100));

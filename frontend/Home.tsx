@@ -27,18 +27,6 @@ const getTextCount = (html: string) => {
   return html.replace(/<[^>]+>/g, '').replace(/\s/g, '').length;
 };
 
-// 流式逐字显现:候选切点若正好落在一个未闭合的 <tag 中间,回退到该标签开始之前 —— 否则
-// dangerouslySetInnerHTML 会短暂渲染出一个残缺标签(如"...</p"缺右尖括号)。
-// 注意 text.slice(0, candidateLen) 实际只含下标 0..candidateLen-1,lastIndexOf 的
-// fromIndex 必须是 candidateLen-1,否则会把"切片末尾之后那一个字符"也当成已经在切片内。
-function safeHtmlSliceLength(text: string, candidateLen: number): number {
-  if (candidateLen >= text.length) return text.length;
-  const probe = candidateLen - 1;
-  const lastOpen = text.lastIndexOf('<', probe);
-  const lastClose = text.lastIndexOf('>', probe);
-  return lastOpen > lastClose ? lastOpen : candidateLen;
-}
-
 // A4 page dimensions at 96 dpi (297mm × 96 / 25.4 ≈ 1122px)
 const A4_HEIGHT_PX = 1122;
 // Top + bottom padding of the paper div (each side = 80px)
@@ -234,12 +222,10 @@ function Home() {
   const [contentPageCount, setContentPageCount] = useState(1);
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  // 流式渲染:textBufferRef 存后端已发来的最新全文,revealedLenRef 是已经"划出来"给用户看的长度。
-  // 一个持续跑的 interval 逐帧把 revealedLenRef 往 textBufferRef 追,而不是每次网络 delta 到就整段
-  // 直接跳更新 —— 后者在 SSE 一次给一大段时会看起来"一坨一坨"地跳,而不是连续流出。
+  // textBufferRef 存后端已发来的最新全文。生成期间不渲染它(见 handleProcess 中的说明):
+  // 中途文本可能因块重试而作废,且成稿需先经确定性修正 + 交付前完整校验,
+  // 校验通过后由完成分支一次性写入 outputText。这里只作为兜底缓冲。
   const textBufferRef = useRef<string>('');
-  const revealedLenRef = useRef<number>(0);
-  const revealTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Layout Resizing States
   const [sidebarWidth, setSidebarWidth] = useState(360); // Default 360px
@@ -516,23 +502,12 @@ function Home() {
       if (previewContainerRef.current) previewContainerRef.current.scrollTop = 0;
     });
     textBufferRef.current = '';
-    revealedLenRef.current = 0;
-    if (revealTimerRef.current !== null) {
-      clearInterval(revealTimerRef.current);
-    }
-    // 逐帧把已显现长度往最新缓冲区追:落后越多追得越快(至少 12%),但每帧都有最小步进,
-    // 视觉上始终在"流动"而不是等一大段攒够了再整体跳一下。
-    revealTimerRef.current = setInterval(() => {
-      const full = textBufferRef.current;
-      const target = full.length;
-      const current = revealedLenRef.current;
-      if (current >= target) return;
-      const step = Math.max(3, Math.ceil((target - current) * 0.12));
-      const safeLen = safeHtmlSliceLength(full, Math.min(target, current + step));
-      if (safeLen <= current) return; // 卡在标签中间,等下一帧再看能不能推进
-      revealedLenRef.current = safeLen;
-      setOutputText(full.slice(0, safeLen));
-    }, 24);
+    // 【交付前完整校验】不再把生成中的文字实时刷到预览区:
+    //   1. 流式中途的文本可能是错的 —— 某一块校验失败重试时,已经刷出去的字撤不回来,
+    //      只有最后那次完整替换(SSE 的 {text})才是权威成稿;
+    //   2. 成稿要先经过 postProcess 确定性修正 + verifyBeforeDelivery 逐项核对,
+    //      核对通过(或带明确提示)才交付,中途半成品不应展示给用户。
+    // 生成期间只展示阶段进度骨架屏,outputText 保持为空,由完成分支一次性写入。
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -558,11 +533,19 @@ function Home() {
               ? t('home.estimated_time', ' (预计剩余 {{seconds}} 秒)', { seconds: Math.ceil(progressData.estimatedRemainingSeconds) })
               : '';
 
+            // 后端 7 种 status 全部映射为中文阶段提示。此前 VERIFYING / PROCESSING_IMAGES /
+            // FINALIZING 没有分支,会把原始英文 token 直接显示给用户。
             let displayStatus = progressData.status;
             if (displayStatus === 'GENERATING') {
               displayStatus = t('home.status_generating', '正在智能排版...');
             } else if (displayStatus === 'RECOGNIZING_IMAGES') {
               displayStatus = t('home.status_recognizing_images', '正在识别图片内容...');
+            } else if (displayStatus === 'VERIFYING') {
+              displayStatus = t('home.status_verifying', '正在校验完整性...');
+            } else if (displayStatus === 'PROCESSING_IMAGES') {
+              displayStatus = t('home.status_processing_images', '正在整理图表...');
+            } else if (displayStatus === 'FINALIZING') {
+              displayStatus = t('home.status_finalizing', '正在生成成稿...');
             } else if (displayStatus.startsWith('PARTIAL_GENERATING|')) {
               const [, cur, tot] = displayStatus.split('|');
               displayStatus = t('home.status_partial_generating', '正在生成第 {{cur}}/{{tot}} 部分...', { cur, tot });
@@ -577,7 +560,7 @@ function Home() {
               progressStep: `${displayStatus}${remaining}`
             }));
           }
-          // 只更新缓冲区,DOM 显现由上面启动的 revealTimerRef 逐帧推进(见「流式渲染」注释)。
+          // 生成期间只更新缓冲区,不渲染(见 handleProcess 顶部说明)。
           textBufferRef.current = partialText;
         },
         controller.signal
@@ -586,13 +569,9 @@ function Home() {
       // Generation complete
       if (abortControllerRef.current !== null) {
         setAiState(prev => ({ ...prev, progress: 100, progressStep: t('home.generation_complete', '排版生成完毕') }));
-        // 生成已完成:停掉逐帧显现,直接把全文钉上,不用等动画追完。
-        if (revealTimerRef.current !== null) {
-          clearInterval(revealTimerRef.current);
-          revealTimerRef.current = null;
-        }
-        revealedLenRef.current = textBufferRef.current.length;
-        setOutputText(textBufferRef.current);
+        // 校验通过的权威成稿一次性交付(genResult.html 即 SSE 的 {text},已经过
+        // postProcess 确定性修正与 verifyBeforeDelivery 逐项核对)。
+        setOutputText(genResult?.html ?? textBufferRef.current);
         // Brief pause for React to finish rendering, then trigger KaTeX (runs when isThinking=false)
         setAiState(prev => ({ ...prev, progressStep: t('home.rendering', '正在应用排版格式...') }));
         await new Promise(r => setTimeout(r, 300));
@@ -639,11 +618,6 @@ function Home() {
     } finally {
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
-      }
-      // 兜底:成功路径已经自己清过;这里保证停止/报错等其它退出路径也不会留一个跑着的 interval。
-      if (revealTimerRef.current !== null) {
-        clearInterval(revealTimerRef.current);
-        revealTimerRef.current = null;
       }
     }
   };

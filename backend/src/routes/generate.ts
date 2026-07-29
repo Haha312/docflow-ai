@@ -16,6 +16,7 @@ import { extractImagesAsPlaceholders, restoreImages, convertVectorImagesToPng } 
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
 import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies, reconcileMissingTables, validateFinalIntegrity } from '../utils/integrity';
 import { extractSourceCaptions, postProcess } from '../utils/postProcess';
+import { verifyBeforeDelivery } from '../utils/verifyDelivery';
 import { buildSkeleton, expectedChapterCount, type SkeletonNode } from '../utils/skeleton';
 import { normalizeHeadingText } from '../utils/headingText';
 import {
@@ -1396,6 +1397,20 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         const finalText = imageCount > 0 ? restoreImages(pp.text, imageMap) : pp.text;
         integrityIssues.push(...pp.issues);
         integrityIssues.push(...detectStructuralAnomalies(finalText)); // ????濠????>1 ??????
+
+        // 交付前完整校验(P1):在把成稿交给用户之前逐项核对原文与成稿。
+        // 查的是 countStructure 的比例式统计查不出来的三类问题:表格少单元格、图表编号跳号、
+        // 整句丢失。详见 verifyDelivery.ts 顶部说明。校验失败不阻断交付(按产品决策:
+        // 照常交付但明确告知),只把问题并入 integrityIssues 让用户看到具体位置。
+        try {
+            const delivery = verifyBeforeDelivery(contentForChunking, finalText);
+            if (delivery.issues.length > 0) {
+                integrityIssues.push(...delivery.issues);
+                console.log(`[VERIFY] ${delivery.issues.length} issue(s): ${delivery.issues.map(i => i.type).join(', ')}`);
+            }
+        } catch (e) {
+            console.warn('[VERIFY] delivery verification failed (non-fatal):', e);
+        }
 
         let integrityReport: ReturnType<typeof buildIntegrityReport> | undefined;
         try {
