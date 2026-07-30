@@ -1,5 +1,6 @@
 import mammoth from 'mammoth';
 import { extractRawTextWithFormulas, extractDocumentStructure } from './docxParser';
+import { computeDocxNumbering, applyNumberingToHtml } from './docxNumbering';
 
 /** 根据用户等级获取文件大小限制 (MB)。
  *  注:文件大小几乎全是图片,而图片在发给后端前就被剥离成占位符(见 Home.tsx),
@@ -71,6 +72,19 @@ export async function parseUploadedFile(
       ...(dynamicStyleMap.length > 0 ? { styleMap: dynamicStyleMap } : {}),
     });
     let finalContent = result.value;
+
+    // 1b. Word 编号还原:图题「图 N」、编号小标题、章号等由 numbering.xml 引擎计算,
+    //     mammoth 输出会丢号并把它们变成从 1 重数的 <ol> —— 按 Word 同款规则重算
+    //     字面编号写回(详见 docxNumbering.ts)。失败静默跳过,不阻断解析。
+    try {
+      const numbered = await computeDocxNumbering(arrayBuffer);
+      if (numbered.length > 0) {
+        finalContent = applyNumberingToHtml(finalContent, numbered);
+        console.log(`[NUMBERING] restored ${numbered.length} numbered paragraphs`);
+      }
+    } catch (numErr) {
+      console.warn('Failed to restore Word numbering', numErr);
+    }
 
     // 2. 提取原始 XML 中的 Word 原生公式(OMML),作为隐藏标记附加,供后端处理。
     try {
