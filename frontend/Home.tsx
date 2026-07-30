@@ -160,6 +160,22 @@ function Home() {
   // 而校验/补回还没跑 —— 满格绿条+100% 却迟迟不出稿,观感即"卡死"。
   const stageCap = genStage === 'generate' ? 90 : genStage === 'verify' ? 96 : genStage === 'finalize' ? 99 : 15;
   const displayPct = aiState.isThinking ? Math.min(aiState.progress, stageCap) : aiState.progress;
+  // 工作台活动日志流:阶段变化逐条追加(带耗时戳),让"AI 在干活"逐行可见
+  const [genLog, setGenLog] = useState<{ t: string; text: string }[]>([]);
+  const [docStats, setDocStats] = useState<{ paras: number; tables: number; imgs: number } | null>(null);
+  // 交付质检摘要(正向的完成卡,替代"只有出问题才说话"):无警告时展示
+  const [deliveryDigest, setDeliveryDigest] = useState<string | null>(null);
+  const genStartRef = useRef(0);
+  const lastLogStatusRef = useRef('');
+  const genLogRef = useRef<HTMLDivElement | null>(null);
+  const pushGenLog = (text: string) => {
+    const sec = Math.max(0, Math.floor((Date.now() - genStartRef.current) / 1000));
+    const stamp = `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
+    setGenLog(prev => (prev.length > 0 && prev[prev.length - 1].text === text ? prev : [...prev.slice(-30), { t: stamp, text }]));
+  };
+  useEffect(() => {
+    genLogRef.current?.scrollTo({ top: genLogRef.current.scrollHeight });
+  }, [genLog]);
   // 主题(与后台共用 localStorage 键 'docflow_theme';CSS 由 index.css 的 :root[data-doc-theme] 驱动)
   const [themeMode, setThemeMode] = useState<'dark' | 'light' | 'blueviolet' | 'green' | 'coral'>(() => {
     try {
@@ -515,6 +531,22 @@ function Home() {
     setGenStage('parse');
     setLiveChars(0);
     lastStatsAtRef.current = 0;
+    // 活动日志:开场先报文档底细(数字比口号有说服力)
+    genStartRef.current = Date.now();
+    lastLogStatusRef.current = '';
+    setGenLog([]);
+    setDeliveryDigest(null);
+    {
+      const tables = (contentForBackend.match(/<table\b/gi) ?? []).length;
+      const imgs = (contentForBackend.match(/__IMG_\d+__/g) ?? []).length;
+      const paras = /<p\b/i.test(contentForBackend)
+        ? (contentForBackend.match(/<p\b/gi) ?? []).length
+        : contentForBackend.split(/\r?\n/).filter(s => s.trim()).length;
+      setDocStats({ paras, tables, imgs });
+      pushGenLog(t('home.log_parsed', '已解析文档:{{paras}} 段 · {{tables}} 张表格 · {{imgs}} 张图片', { paras, tables, imgs }));
+      if (tables > 0) pushGenLog(t('home.log_tables_frozen', '表格已冻结保护,将与原文一字不差', { count: tables }));
+      if (imgs > 0) pushGenLog(t('home.log_images_kept', '图片已登记托管({{count}} 张),生成后原位回填', { count: imgs }));
+    }
     setShouldAutoScroll(true); // 每次新生成重置自动滚动
     // 生成开始时立即滚回顶部，避免 A4 minHeight 导致视口停在空白底部
     requestAnimationFrame(() => {
@@ -584,6 +616,11 @@ function Home() {
               progress: Math.max(prev.progress, pct),
               progressStep: `${displayStatus}${remaining}`
             }));
+            // 活动日志:状态每次变化追加一行(ping 会重复同状态,靠 lastLogStatusRef 去重)
+            if (st !== lastLogStatusRef.current) {
+              lastLogStatusRef.current = st;
+              pushGenLog(displayStatus);
+            }
           }
           // 生成期间只更新缓冲区,不渲染(见 handleProcess 顶部说明)。
           textBufferRef.current = partialText;
@@ -610,7 +647,18 @@ function Home() {
         await new Promise(r => setTimeout(r, 300));
         setAiState({ isThinking: false, error: null, stopMessage: null, progressStep: t('home.done', '完成'), progress: 0, estimatedSec: null, startedAt: null });
         // P0-4: 据后端完整性报告决定是否给"可能不完整"提示
+        pushGenLog(t('home.log_delivered', '交付前校验完成,成稿已交付'));
         const report = genResult?.integrityReport;
+        // 正向质检摘要:校验干净时也要"说话"——用数字告诉用户我们核对过什么
+        if (report && !(report.truncated || report.charRetentionPct < 90 || (report.issues ?? []).some(x => x.severity !== 'info'))) {
+          const fixes = (report.issues ?? []).length;
+          const parts = [
+            t('home.digest_retention', '内容完整性 {{pct}}%', { pct: Math.min(report.charRetentionPct, 100) }),
+            docStats?.tables ? t('home.digest_tables', '{{count}} 张表格原样保真', { count: docStats.tables }) : '',
+            fixes > 0 ? t('home.digest_fixes', '自动修复 {{count}} 处', { count: fixes }) : '',
+          ].filter(Boolean).join(' · ');
+          setDeliveryDigest(`${t('home.digest_prefix', '交付前校验通过')} · ${parts}`);
+        }
         if (report && (report.truncated || report.charRetentionPct < 90 || (report.issues ?? []).some(x => x.severity !== 'info'))) {
           const issues = report.issues ?? [];
           const hasCritical = issues.some(x => x.severity === 'critical');
@@ -1768,6 +1816,14 @@ function Home() {
                 <p className="text-xs text-gray-500">{aiState.stopMessage}</p>
               </div>
             )}
+            {/* 正向质检摘要:校验干净时的完成卡(绿),让"我们核对过"成为加分项而非只有坏消息 */}
+            {deliveryDigest && !integrityNotice && !aiState.isThinking && (
+              <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
+                <svg className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                <p className="text-xs text-emerald-700 min-w-0 truncate">{deliveryDigest}</p>
+                <button onClick={() => setDeliveryDigest(null)} className="ml-auto text-emerald-400 hover:text-emerald-600 text-sm leading-none flex-shrink-0" aria-label={t('common.close', '关闭')}>×</button>
+              </div>
+            )}
             {/* P0-4 完整性提示条:按严重度配色(critical=红 / warning=琥珀),并列出具体问题明细 */}
             {integrityNotice && !aiState.isThinking && (() => {
               const crit = integrityNotice.level === 'critical';
@@ -2117,6 +2173,17 @@ function Home() {
                                   );
                                 })}
                               </div>
+                              {/* 活动日志流:逐行滚动的引擎动作记录 */}
+                              {genLog.length > 0 && (
+                                <div ref={genLogRef} className="mt-1 mb-2 max-h-[96px] overflow-y-auto rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+                                  {genLog.map((l, i) => (
+                                    <p key={i} className={`text-[11px] leading-[18px] flex gap-1.5 ${i === genLog.length - 1 ? 'text-gray-700' : 'text-gray-400'}`}>
+                                      <span className="font-mono tabular-nums text-gray-300 flex-shrink-0">{l.t}</span>
+                                      <span className="min-w-0">{l.text}</span>
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
                               {/* 实时指标 */}
                               <div className="mt-1 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
                                 <span>
