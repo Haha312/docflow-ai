@@ -1108,15 +1108,29 @@ function Home() {
     setTocItems(items);
   }, [renderedContent, viewMode, editMode, aiState.isThinking]);
 
-  // 图片(base64)解码后高度才确定 → 内容稳定后再分页一次,纠正首次测量偏差
+  // 图片(base64)解码后高度才确定 → 等全部图片真正解码完再重分页,并验证页高收敛。
+  // 此前固定 220ms 重排一次:对几十张大图远远不够,首次按 0 高度测量把几十个块塞进
+  // 同一页,解码后单页高达 5 万 px(真实文档实测 35 页里 18 页超高)。
   useEffect(() => {
     const el = previewContentRef.current;
     if (!el || aiState.isThinking || editMode || viewMode !== 'preview' || !renderedContent) return;
+    let cancelled = false;
     const id = setTimeout(() => {
-      const total = paginateIntoSheets(el, displayHtmlRef.current || renderedContent, activeStyle.columns || 1);
-      setContentPageCount(total);
+      void (async () => {
+        for (let round = 0; round < 3; round += 1) {
+          const imgs = Array.from(el.querySelectorAll('img')) as HTMLImageElement[];
+          await Promise.allSettled(imgs.map((im) => (typeof im.decode === 'function' ? im.decode().catch(() => { /* 解码失败按 0 高处理 */ }) : Promise.resolve())));
+          if (cancelled || !previewContentRef.current) return;
+          const total = paginateIntoSheets(el, displayHtmlRef.current || renderedContent, activeStyle.columns || 1);
+          setContentPageCount(total);
+          // 页高收敛校验:重排后若仍有明显超高页(测量时又有新图未解码),再来一轮
+          const stillBad = Array.from(el.querySelectorAll('.a4-page'))
+            .some((p) => (p as HTMLElement).getBoundingClientRect().height > 1123 * 1.3);
+          if (!stillBad) break;
+        }
+      })();
     }, 220);
-    return () => clearTimeout(id);
+    return () => { cancelled = true; clearTimeout(id); };
   }, [renderedContent, editMode, aiState.isThinking, viewMode]);
 
   // 进入/退出编辑

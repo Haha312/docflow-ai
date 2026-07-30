@@ -158,6 +158,78 @@ export const tokenizeSourceBlocks = (sourceHtml: string): SourceBlock[] => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// 列表形态题注还原(P0-1)
+// ─────────────────────────────────────────────────────────────
+//
+// Word 的题注常用「编号列表样式」实现("图 N"由列表编号机制自动生成),mammoth 转换
+// 会丢掉列表编号,题注文字变成孤立的单项 <ol><li>题文</li></ol>(真实文档实测:
+// 47 图 0 个文本图题,题文全在列表项里)。后果:源图题=空 → AI 自由编号 + 自动补题
+// 混编 → 图1/图1-1/Figure N 三种格式并存。此处确定性还原:紧邻图片占位符(其后)或
+// 表格(其前)的单项列表 → 还原为带顺序编号的题注段。
+
+export interface ListCaptionResult { text: string; figures: number; tables: number; }
+
+export const restoreListCaptions = (html: string, startFig = 0, startTab = 0): ListCaptionResult => {
+    const s = html || '';
+    let fig = startFig;
+    let tab = startTab;
+    let figures = 0;
+    let tables = 0;
+    const re = /<(ol|ul)\b[^>]*>\s*<li\b[^>]*>([\s\S]*?)<\/li>\s*<\/\1>/gi;
+    const text = s.replace(re, (full, _tag: string, inner: string, offset: number) => {
+        if (/<li\b/i.test(inner)) return full; // 嵌套多项,不是题注
+        const t = inner.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        if (t.length < 2 || t.length > 60) return full;
+        if (/[。;;]$/.test(t)) return full;            // 整句/列表项,不是题注
+        if (/^[图表]\s*\d/.test(t)) return full;        // 已带编号的真题注,交给既有链路
+        const before = s.slice(Math.max(0, offset - 400), offset);
+        const after = s.slice(offset + full.length, offset + full.length + 80);
+        if (/__IMG_\d+__[\s\S]{0,120}$/.test(before)) {
+            fig += 1; figures += 1;
+            return `<p>图${fig} ${t}</p>`;
+        }
+        if (/^\s*<table\b/i.test(after)) {
+            tab += 1; tables += 1;
+            return `<p>表${tab} ${t}</p>`;
+        }
+        return full;
+    });
+    return { text, figures, tables };
+};
+
+// ─────────────────────────────────────────────────────────────
+// 目录块剔除(P0-2)
+// ─────────────────────────────────────────────────────────────
+//
+// 源文的 Word 目录被 mammoth 展开成普通文字行("1.1研究背景 3"带页码),
+// 链接形态的清理(#_Toc)管不到它。整块进成稿会让目录条目被误判成标题,
+// TOC 出现同名双份、正文多出「目录」残章(真实文档实测)。
+// 识别:「目录」独立段之后连续 ≥3 行「文字 + 结尾页码(阿拉伯或罗马数字)」→ 整块删除。
+
+export const stripTocBlock = (html: string): string => {
+    const s = html || '';
+    const headRe = /<(p|h[1-6])\b[^>]*>\s*(?:<[^>]+>\s*)*目\s*录\s*(?:<\/[^>]+>\s*)*<\/\1>/i;
+    const hm = headRe.exec(s);
+    if (!hm) return s;
+    const blockRe = /<(p|h[1-6])\b[^>]*>[\s\S]*?<\/\1>/gi;
+    blockRe.lastIndex = hm.index + hm[0].length;
+    let end = hm.index + hm[0].length;
+    let count = 0;
+    let m: RegExpExecArray | null;
+    while ((m = blockRe.exec(s)) !== null) {
+        const gap = s.slice(end, m.index);
+        if (gap.trim().length > 0) break; // 中间夹了别的内容(如图片),目录块结束
+        const t = m[0].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        if (!/^.{1,70}?\s*(\d{1,4}|[IVXivx]{1,6})$/.test(t)) break;
+        end = m.index + m[0].length;
+        count += 1;
+        blockRe.lastIndex = end;
+    }
+    if (count < 3) return s; // 不像目录,不动
+    return s.slice(0, hm.index) + s.slice(end);
+};
+
+// ─────────────────────────────────────────────────────────────
 // 表格冻结:表格根本不进 AI(与图片占位符同门架构)
 // ─────────────────────────────────────────────────────────────
 //

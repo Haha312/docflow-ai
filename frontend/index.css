@@ -811,6 +811,23 @@ body {
   color: var(--df-text, #f4f4f5);
 }
 
+/* P0-3/P0-5 成稿排版兜底:
+   1) 无空格超长字符串(PDF 转制 Word 的英文粘连)强制可断行,不许横向撑爆 A4;
+   2) 图片高度封顶在一页可用高度内,单张大图不再把纸张顶成几倍高。 */
+#preview-content p,
+#preview-content li,
+#preview-content td,
+#preview-content th,
+#preview-content div {
+  overflow-wrap: anywhere;
+}
+#preview-content img {
+  max-width: 100%;
+  height: auto;
+  max-height: 950px;
+  object-fit: contain;
+}
+
 .modal-backdrop {
   background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(20px) saturate(0.85);

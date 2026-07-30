@@ -5,7 +5,65 @@ import {
     restoreMissingContent,
     freezeTables,
     unfreezeTables,
+    restoreListCaptions,
+    stripTocBlock,
 } from '../restoreContent';
+
+describe('restoreListCaptions — 列表形态题注还原(mammoth 丢编号回归)', () => {
+    it('图片后的单项 ol → 还原为带编号的图题段', () => {
+        const html = '<p>__IMG_0__</p><ol><li><strong>特高压工程技术路线图</strong></li></ol><p>正文继续。</p>';
+        const r = restoreListCaptions(html);
+        expect(r.figures).toBe(1);
+        expect(r.text).toContain('<p>图1 特高压工程技术路线图</p>');
+        expect(r.text).not.toContain('<ol>');
+    });
+
+    it('表格前的单项 ol → 还原为带编号的表题段;编号从既有最大号续', () => {
+        const html = '<ol><li>质量维度对照表</li></ol><table><tr><td>a</td></tr></table>';
+        const r = restoreListCaptions(html, 0, 1); // 源文已有 表1
+        expect(r.tables).toBe(1);
+        expect(r.text).toContain('<p>表2 质量维度对照表</p>');
+    });
+
+    it('普通单项列表(不邻图/表)不动;整句列表项不动;多项列表不动', () => {
+        const html = [
+            '<p>要求如下。</p><ol><li>完成数据标准体系建设。</li></ol>',
+            '<p>__IMG_1__</p><ol><li>这一项是完整句子所以带句号。</li></ol>',
+            '<ol><li>甲</li><li>乙</li></ol><table><tr><td>x</td></tr></table>',
+        ].join('');
+        const r = restoreListCaptions(html);
+        expect(r.figures + r.tables).toBe(0);
+    });
+});
+
+describe('stripTocBlock — 纯文本目录剔除', () => {
+    it('「目录」段 + 连续带页码行 → 整块删除', () => {
+        const html = [
+            '<p>摘要内容在此保留不动。</p>',
+            '<p>目录</p>',
+            '<p>1前言 1</p>',
+            '<p>1.1研究背景 1</p>',
+            '<p>1.2研究目的与意义 3</p>',
+            '<p>摘要 I</p>',
+            '<h1>前言</h1><p>正文开始了这里不是目录。</p>',
+        ].join('');
+        const out = stripTocBlock(html);
+        expect(out).not.toContain('<p>目录</p>');
+        expect(out).not.toContain('研究背景 1');
+        expect(out).toContain('<h1>前言</h1>');
+        expect(out).toContain('摘要内容在此保留不动');
+    });
+
+    it('目录行不足 3 行 → 不动(避免误删)', () => {
+        const html = '<p>目录</p><p>1前言 1</p><h1>前言</h1>';
+        expect(stripTocBlock(html)).toBe(html);
+    });
+
+    it('无目录段 → 原样返回', () => {
+        const html = '<p>正文而已。</p>';
+        expect(stripTocBlock(html)).toBe(html);
+    });
+});
 
 describe('buildNormIndex', () => {
     it('归一化规则与索引映射:去标签/空白,折标点,小写化', () => {

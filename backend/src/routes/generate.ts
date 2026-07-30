@@ -17,7 +17,7 @@ import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } fr
 import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies, validateFinalIntegrity } from '../utils/integrity';
 import { extractSourceCaptions, postProcess, type PostProcessOptions } from '../utils/postProcess';
 import { verifyBeforeDelivery, verifyTableStructure, verifySentenceCoverage } from '../utils/verifyDelivery';
-import { restoreMissingContent, freezeTables, unfreezeTables } from '../utils/restoreContent';
+import { restoreMissingContent, freezeTables, unfreezeTables, restoreListCaptions, stripTocBlock } from '../utils/restoreContent';
 import { buildSkeleton, expectedChapterCount, type SkeletonNode } from '../utils/skeleton';
 import { normalizeHeadingText } from '../utils/headingText';
 import {
@@ -352,12 +352,9 @@ const validateChunkOutput = (
         issues.push(`missing heading(s): ${missingHeadings.slice(0, 5).join(' | ')}`);
     }
 
-    const inputPlaceholders = [...chunkInput.matchAll(/__(?:IMG|TBL)_\d+__/g)].map(m => m[0]);
-    if (inputPlaceholders.length > 0) {
-        const outputSet = new Set([...chunkOutput.matchAll(/__(?:IMG|TBL)_\d+__/g)].map(m => m[0]));
-        const missingImages = inputPlaceholders.filter(p => !outputSet.has(p));
-        if (missingImages.length > 0) issues.push(`missing placeholder(s): ${missingImages.join(', ')}`);
-    }
+    // 注:占位符缺失不再触发重试(P0-4)。丢失的 __IMG_N__/__TBL_N__ 由确定性补回引擎
+    // 按原文顺序在正确位置插回,与重试等效但零成本;真实文档实测为占位符重试三轮
+    // 花掉 40 分钟且大概率仍缺。若占位符缺失伴随整段丢失,下面的句子核对仍会触发重试。
 
     const inputTables = (chunkInput.match(/<table\b/gi) ?? []).length;
     const outputTables = (chunkOutput.match(/<table\b/gi) ?? []).length;
@@ -432,6 +429,8 @@ const envNumber = (fallback: number, ...names: string[]): number => {
 };
 
 const PRIMARY_MODEL = env('GEMINI_MODEL') || 'gemini-3-pro-preview';
+// 单次模型尝试的时间预算(P0-4):超时按验证失败处理,走重试/换模型,而不是无限等
+const ATTEMPT_TIME_BUDGET_MS = envNumber(300_000, 'ATTEMPT_TIME_BUDGET_MS');
 const MAX_CONCURRENT_GENERATIONS = Math.max(1, Number(process.env.MAX_CONCURRENT_GENERATIONS || 50));
 const AI_IDLE_TIMEOUT_MS = envNumber(60000, 'AI_TIMEOUT_MS', 'AI_IDLE_TIMEOUT_MS');
 const AI_MAX_OUTPUT_TOKENS = envNumber(16384, 'AI_MAX_TOKENS', 'AI_MAX_OUTPUT_TOKENS');
@@ -938,6 +937,20 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             return false;
         };
 
+        // P0-2 目录块剔除(mammoth 展开的纯文本目录;成稿目录由前端 TOC 承担)
+        contentForChunking = stripTocBlock(contentForChunking);
+        // P0-1 列表形态题注还原:紧邻图/表的单项 <ol><li> 是被 mammoth 丢了编号的题注
+        {
+            const caps0 = extractSourceCaptions(contentForChunking);
+            const maxNum = (list: { normPrefix: string }[]) => list.reduce((mx, c) => {
+                const n = parseInt((c.normPrefix || '').replace(/^[图表]/, '').split('-')[0], 10);
+                return Number.isFinite(n) ? Math.max(mx, n) : mx;
+            }, 0);
+            const lc = restoreListCaptions(contentForChunking, maxNum(caps0.figures), maxNum(caps0.tables));
+            contentForChunking = lc.text;
+            if (lc.figures + lc.tables > 0) console.log(`[LIST_CAPTIONS] restored fig=${lc.figures} tab=${lc.tables}`);
+        }
+
         // 表格冻结:表格不进 AI。发给 AI 的是 __TBL_N__ 占位符,生成后原样换回 ——
         // AI 只决定表格在版面里的位置,表格内容 100% 等于原文(动机见 restoreContent.ts)。
         // contentForChunking 保持含真表,继续作为补回/校验/统计的原文基准。
@@ -966,6 +979,14 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         console.log(`[ESTIMATED_CHUNKS] ${estimatedChunks}`);
 
         const integrityIssues: IntegrityIssue[] = [];
+        // P0-3 源文英文缺空格检测(常见于 PDF 转制的 Word:单词粘连,如实保留但要告知)
+        if (/[A-Za-z]{50,}/.test(contentForChunking.replace(/__(?:IMG|TBL)_\d+__/g, '').replace(/<[^>]+>/g, ''))) {
+            integrityIssues.push({
+                type: 'source_missing_spaces',
+                severity: 'warning',
+                detail: '检测到源文英文缺失单词间空格(常见于 PDF 转制的 Word 文档),排版已按原样保留;如需修复请用原始文档重新导出后再排版',
+            });
+        }
         let chunks: string[] = [];
         if (userTier === 'ULTRA') {
             // ULTRA ?闂???? chunk??x??????????濠?闂??????????闂????闂?
@@ -1235,6 +1256,10 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                         const maxTokens = modelCfg?.maxOutputTokens ?? (userTier === 'ULTRA' ? 32000 : 16000);
                         let finishReason: string | null = null;
                         let streamHallucinationDetected = false;
+                        // 单次尝试时间预算:慢模型一次尝试可以跑 11 分钟(真实文档实测),
+                        // 三轮重试直接把总时长推到 40 分钟级。超时按验证失败处理 → 走重试/换模型。
+                        const attemptStartTs = Date.now();
+                        let attemptTimedOut = false;
 
                         // ????????
                         for await (const result of callOpenAICompatible(useKey, useBase, currentSystemPrompt, userContent, currentModel, maxTokens, useProxy, includeUsage, modelCfg?.extraBody)) {
@@ -1278,10 +1303,19 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                                         console.log(`[STREAM_HALL] chunk ${i+1}: output ${chunkOutput.length} >> input floor ${inputLenFloor} (10??), breaking`);
                                         streamHallucinationDetected = true; break;
                                     }
+                                    // Guard 6: 尝试时间预算
+                                    if (Date.now() - attemptStartTs > ATTEMPT_TIME_BUDGET_MS) {
+                                        console.log(`[ATTEMPT_TIMEOUT] chunk ${i+1}: attempt exceeded ${Math.round(ATTEMPT_TIME_BUDGET_MS / 1000)}s, breaking`);
+                                        attemptTimedOut = true; break;
+                                    }
                                 }
                             }
                             if (result.finishReason) finishReason = result.finishReason;
                             if (result.usage) totalExactTokens += result.usage.total_tokens || 0;
+                        }
+                        if (attemptTimedOut) {
+                            // 超时按验证失败走重试/换模型;已生成的内容不足信,丢给重试重来
+                            throw new Error(`CHUNK_VALIDATION_FAILED: attempt exceeded time budget (${Math.round(ATTEMPT_TIME_BUDGET_MS / 1000)}s)`);
                         }
                         if (streamHallucinationDetected) {
                             finishReason = null; // skip continuation
