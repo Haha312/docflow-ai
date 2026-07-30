@@ -428,7 +428,9 @@ const restoreHtml = (block: SourceBlock): string => {
     return block.html;
 };
 
-const MAX_RESTORES = 200;
+// 上限只防病态洪泛,不能卡正常补回:真实文档实测 AI 截断一半时两轮补回各需 ~350 处,
+// 200 的上限让 55 张图被静默丢弃(93 → 38)。近空守卫 + 顺序锚定已防洪泛,放宽到 2000。
+const MAX_RESTORES = 2000;
 
 export interface RestoreResult {
     text: string;

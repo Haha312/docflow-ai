@@ -12,7 +12,7 @@ import { PricingModal } from './components/PricingModal';
 import { UserInfo } from './components/UserInfo';
 import { UserProfileModal } from './components/UserProfileModal';
 import { useConfirmDialog } from './components/ConfirmDialog';
-import { generateDocumentViaBackend } from './services/backendApiService';
+import { generateDocumentViaBackend, convertVectorImagesViaBackend } from './services/backendApiService';
 import { generateDocx } from './utils/docxGenerator';
 import { sanitizeDocxPreview } from './utils/sanitizeHtml';
 import { useAuth } from './contexts/AuthContext';
@@ -519,6 +519,20 @@ function Home() {
     if (localImgIndex > 0) {
       setImageMap(localImageMap);
       console.log(`[CLIENT_STRIP] Replaced ${localImgIndex} images; payload: ${(inputText.length / 1024).toFixed(0)}KB → ${(contentStripped.length / 1024).toFixed(0)}KB`);
+      // EMF/WMF 矢量图浏览器渲染不了(碎图标)→ 送服务端 ImageMagick 转 PNG。
+      // 与生成并行进行,转换结果合并进 imageMap,交付换图时用的就是能显示的版本。
+      const vectorEntries: Record<string, string> = {};
+      for (const [k, v] of Object.entries(localImageMap)) {
+        if (/data:image\/x-(emf|wmf)/i.test(v)) vectorEntries[k] = v;
+      }
+      if (Object.keys(vectorEntries).length > 0) {
+        void convertVectorImagesViaBackend(vectorEntries).then((converted) => {
+          if (Object.keys(converted).length > 0) {
+            setImageMap(prev => ({ ...prev, ...converted }));
+            console.log(`[VECTOR_IMG] ${Object.keys(converted).length} EMF/WMF converted to PNG`);
+          }
+        });
+      }
     }
 
     // 2. 清理 Word TOC 超链接行（<p><a href="#_Toc...">...</a></p>）

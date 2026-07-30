@@ -20,6 +20,27 @@ export interface GenerateDocumentRequest {
  * @param onProgress 进度回调 (接收生成的 HTML 片段)
  * @param abortSignal 中止信号
  */
+/**
+ * EMF/WMF 矢量图转 PNG:浏览器渲染不了这两种格式(用户看到碎图标),
+ * 送服务端 ImageMagick 转换。只传疑似矢量的条目,返回被转换的条目(key → 新 img 标签)。
+ */
+export async function convertVectorImagesViaBackend(images: Record<string, string>): Promise<Record<string, string>> {
+    const token = authService.getToken();
+    if (!token || Object.keys(images).length === 0) return {};
+    try {
+        const resp = await fetch(`${API_BASE_URL}/api/convert-images`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ images }),
+        });
+        if (!resp.ok) return {};
+        const data = await resp.json();
+        return (data?.images ?? {}) as Record<string, string>;
+    } catch {
+        return {}; // 转换失败不阻断主流程,保留原图(依旧碎图,但内容不丢)
+    }
+}
+
 export async function generateDocumentViaBackend(
     request: GenerateDocumentRequest,
     onProgress: (html: string, progress?: any, imageMap?: Record<string, string>) => void,
