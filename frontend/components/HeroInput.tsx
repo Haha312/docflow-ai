@@ -131,10 +131,10 @@ export const HeroInput: React.FC<Props> = ({ value, count, maxLength, userTier, 
         ) : null}
       </div>
 
-      {/* 拖拽悬停遮罩 */}
+      {/* 拖拽悬停遮罩(hero-overlay 随主题换色:暗色=深遮罩,亮色=白遮罩) */}
       {isDragOver && (
-        <div className="absolute inset-0 rounded-2xl bg-black/70 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
-          <div className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+        <div className="hero-overlay absolute inset-0 rounded-2xl backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
+          <div className="flex items-center gap-2 text-sm font-medium">
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 16V4M6 10l6-6 6 6" /><path d="M4 20h16" /></svg>
             {t('home.drop_to_upload', '松开以上传文件')}
           </div>
@@ -143,9 +143,9 @@ export const HeroInput: React.FC<Props> = ({ value, count, maxLength, userTier, 
 
       {/* 解析中遮罩 */}
       {isParsing && (
-        <div className="absolute inset-0 rounded-2xl bg-black/75 flex items-center justify-center">
-          <div className="flex items-center gap-2 text-sm text-zinc-300">
-            <svg className="animate-spin w-4 h-4 text-zinc-400" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+        <div className="hero-overlay absolute inset-0 rounded-2xl flex items-center justify-center">
+          <div className="flex items-center gap-2 text-sm">
+            <svg className="animate-spin w-4 h-4 opacity-70" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
             {t('home.parsing_file', '正在解析文件...')}
           </div>
         </div>

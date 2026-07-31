@@ -811,6 +811,19 @@ body {
   color: var(--df-text, #f4f4f5);
 }
 
+/* 输入区遮罩(拖拽悬停/解析中)随主题换色:此前写死 bg-black,亮色主题下是一块黑 */
+.hero-overlay {
+  background: rgba(0, 0, 0, 0.75);
+  color: #d4d4d8;
+}
+[data-doc-theme="light"] .hero-overlay,
+[data-doc-theme="blueviolet"] .hero-overlay,
+[data-doc-theme="green"] .hero-overlay,
+[data-doc-theme="coral"] .hero-overlay {
+  background: rgba(255, 255, 255, 0.85);
+  color: #52525b;
+}
+
 /* P0-3/P0-5 成稿排版兜底:
    1) 无空格超长字符串(PDF 转制 Word 的英文粘连)强制可断行,不许横向撑爆 A4;
    2) 图片高度封顶在一页可用高度内,单张大图不再把纸张顶成几倍高。 */
