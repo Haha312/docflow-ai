@@ -463,7 +463,11 @@ export const renumberStructure = (html: string, opts: PostProcessOptions, canoni
             // 事务性标题 → 保留为标题但【不编号、不计数】,否则会偷走"第1章"(如"1. 目录"把引言挤成第2章)。
             // 位置敏感(修复误判):前置类(目录/摘要/关键词…)仅在「正文第一章之前」才跳过 —— 这样正文里
             // 真有一节叫「关键词/序」(出现在某章之后)仍会正常编号;后置类(致谢…)在文末恒跳过。
-            if ((isLeadingFrontMatterHeading(hInner) && counters[1] === 0) || isTrailingFrontMatterHeading(hInner)) {
+            // 源文自带编号前缀的「前言」类标题(如「1前言」,编号来自标题样式的编号链)
+            // 说明源文把它算作正文第一章 —— 尊重源文照常编号,不按前置事务标题跳过
+            // (真实文档实测:跳过导致 前言/研究背景 整节无编号,正文从下一章才开始计数)。
+            const srcNumbered = /^\s*(?:\d|第\s*[一二三四五六七八九十0-9])/.test(stripHtmlToText(hInner));
+            if ((!srcNumbered && isLeadingFrontMatterHeading(hInner) && counters[1] === 0) || isTrailingFrontMatterHeading(hInner)) {
                 const s = stripHeadingPrefix(hInner);
                 return `<h${level}${hAttrs}>${s.replace(/^\s+/, '')}</h${level}>`;
             }

@@ -84,7 +84,13 @@ export const convertVectorImagesToPng = async (
             const tmpOut = join(tmpdir(), `docflow_${stamp}.png`);
             try {
                 await writeFile(tmpIn, job.buf);
-                await execFileAsync('magick', [tmpIn, tmpOut], { timeout: 25000 });
+                try {
+                    await execFileAsync('magick', [tmpIn, tmpOut], { timeout: 25000 });
+                } catch (e1: any) {
+                    // Ubuntu 服务器普遍只有 ImageMagick v6,二进制名是 convert(线上实测碎图根因)
+                    if (e1?.code !== 'ENOENT') throw e1;
+                    await execFileAsync('convert', [tmpIn, tmpOut], { timeout: 25000 });
+                }
                 const png = await readFile(tmpOut);
                 imageMap[job.key] = job.imgTag.replace(/src="data:image\/[^;]+;base64,[^"]+"/i, `src="data:image/png;base64,${png.toString('base64')}"`);
                 converted++;
@@ -92,7 +98,7 @@ export const convertVectorImagesToPng = async (
                 failed++;
                 if (e?.code === 'ENOENT') {
                     magickMissing = true;
-                    console.warn('[VECTOR_IMG] 未找到 ImageMagick(magick) —— EMF/WMF 矢量图无法转换,将无法在预览/导出中显示');
+                    console.warn('[VECTOR_IMG] 未找到 ImageMagick(magick/convert 均不可用)—— EMF/WMF 矢量图无法转换,将无法在预览/导出中显示');
                 } else {
                     console.warn(`[VECTOR_IMG] 转换 ${job.key} 失败: ${e?.message}`);
                 }
