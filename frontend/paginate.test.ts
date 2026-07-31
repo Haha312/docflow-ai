@@ -39,12 +39,16 @@ describe('paginateIntoSheets', () => {
   });
 
   it('分栏(2栏):journal-split 之后按栏数放大阈值,同样内容比单栏多装一倍才分页', () => {
-    // 篇首(author-info, top=0) + 分隔线(top=200) + 正文两块(top=200 / top=1400)
-    // 相对 pageStart(=0) 的差值 1400:单栏阈值 1000 会提前分页,双栏阈值 2000 不会。
+    // 篇首(author-info, top=0) + 分隔线(top=200) + 正文若干块,最末块 top=1400。
+    // 相对 pageStart(=0) 的差值 1400:单栏阈值(≈987)会提前分页,双栏阈值(≈1974)不会。
+    // 注:正文按 500/500/200 的块高铺开 —— 分页现在同时看块的终点,单块若比整页还高
+    // 只能独占一页,那种极端桩会掩盖此处要验证的"栏数放大阈值"行为。
     const html = [
       block(0, 'div', 'author-info'),
       `<hr class="journal-split" data-test-top="200">`,
       block(200),
+      block(700),
+      block(1200),
       block(1400),
     ].join('');
     expect(paginateIntoSheets(container, html, 1)).toBe(2); // 单栏:1400 > 1000 阈值,提前分页

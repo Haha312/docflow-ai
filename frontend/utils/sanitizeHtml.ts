@@ -14,6 +14,9 @@ import DOMPurify from 'dompurify';
 export function sanitizeDocxPreview(html: string): string {
   return DOMPurify.sanitize(html, {
     ADD_ATTR: ['id', 'style', 'target'],
+    // 自定义 ALLOWED_URI_REGEXP 会被用来校验所有非 URI 安全属性的值 → rowspan="12"
+    // 这类结构属性会被误剥(合并单元格表格错位)。列入 URI-safe 名单即可豁免。
+    ADD_URI_SAFE_ATTR: ['rowspan', 'colspan', 'scope', 'headers', 'start', 'width', 'height', 'align', 'valign', 'dir', 'lang', 'type'],
     ALLOWED_URI_REGEXP: /^(?:data:|https?:|mailto:|#)/i,
   });
 }

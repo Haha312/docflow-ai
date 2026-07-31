@@ -34,8 +34,40 @@ const A4_PADDING_PX = 160;
 
 // ── 真·分页:把一段干净 HTML 按高度切成多张 A4 纸 ──
 const A4_SHEET_W = 794;                 // 纸宽 px(96dpi 下 A4 宽)
-const A4_SHEET_PAD = '80px 90px 40px';  // 纸张内边距(上 右/左 下)
-export const PAGE_USABLE_H = 1000;      // 每页可用内容高度(纸高 1123 - 上80 - 下40 ≈ 1003,留点余量)
+const A4_SHEET_H = 1123;                // 纸高 px(96dpi 下 A4 高)
+/** 页边距回退值(预设未定义 pageMargins 时用,等于原先写死的观感) */
+const DEFAULT_MARGINS_PX = { top: 80, right: 90, bottom: 56, left: 90 };
+
+/** 默认页边距下的每页可用内容高度(供分页单测与旧调用点参照) */
+export const PAGE_USABLE_H = 1123 - DEFAULT_MARGINS_PX.top - DEFAULT_MARGINS_PX.bottom;
+
+/** CSS 长度(cm/mm/in/pt/px)→ px(96dpi)。预设页边距用 cm 表示。 */
+export const cssLenToPx = (v?: string): number | null => {
+  if (!v) return null;
+  const m = String(v).trim().match(/^([\d.]+)\s*(cm|mm|in|pt|px)?$/i);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n)) return null;
+  switch ((m[2] || 'px').toLowerCase()) {
+    case 'cm': return Math.round(n * 96 / 2.54);
+    case 'mm': return Math.round(n * 96 / 25.4);
+    case 'in': return Math.round(n * 96);
+    case 'pt': return Math.round(n * 96 / 72);
+    default: return Math.round(n);
+  }
+};
+
+/**
+ * 预设的页边距(px)。此前预览把边距写死(且测量用 40px、渲染用 56px 自相矛盾),
+ * 与导出 .docx 实际用的 styleConfig.pageMargins 对不上 —— 预览页比成品页能多塞
+ * 约 9% 内容,页数与版面都不准(真实文档实测)。现在两边同源。
+ */
+export const marginsPxOf = (m?: { top?: string; bottom?: string; left?: string; right?: string }) => ({
+  top: cssLenToPx(m?.top) ?? DEFAULT_MARGINS_PX.top,
+  right: cssLenToPx(m?.right) ?? DEFAULT_MARGINS_PX.right,
+  bottom: cssLenToPx(m?.bottom) ?? DEFAULT_MARGINS_PX.bottom,
+  left: cssLenToPx(m?.left) ?? DEFAULT_MARGINS_PX.left,
+});
 
 /**
  * 把 html 写入 el,按顶层块的真实高度贪心切成多张 `.a4-page` 纸张(.cover-page 独占一页),
@@ -46,11 +78,18 @@ export const PAGE_USABLE_H = 1000;      // 每页可用内容高度(纸高 1123 
  *   可用高度阈值,否则每页会因"按单栏高度算满、按多栏渲染变很短"而大量留白、多分出很多页。
  *   篇首信息(标题/作者/摘要等,column-span:all)不受影响,仍按单栏高度计。
  */
-export function paginateIntoSheets(el: HTMLElement, html: string, bodyColumns: number = 1): number {
+export function paginateIntoSheets(
+  el: HTMLElement,
+  html: string,
+  bodyColumns: number = 1,
+  margins: { top: number; right: number; bottom: number; left: number } = DEFAULT_MARGINS_PX,
+): number {
+  // 可用高度必须与渲染用的 .a4-page 内边距同源,否则"按 A 测量、按 B 渲染"必然溢出
+  const PAGE_USABLE_H = Math.max(200, A4_SHEET_H - margins.top - margins.bottom);
   el.innerHTML = html;
   const prevStyle = el.getAttribute('style') || '';
   el.style.width = A4_SHEET_W + 'px';
-  el.style.padding = A4_SHEET_PAD;
+  el.style.padding = `${margins.top}px ${margins.right}px ${margins.bottom}px ${margins.left}px`;
   el.style.boxSizing = 'border-box';
   el.style.margin = '0 auto';
 
@@ -73,7 +112,14 @@ export function paginateIntoSheets(el: HTMLElement, html: string, bodyColumns: n
       return;
     }
     const usableH = inColumnBody ? PAGE_USABLE_H * bodyColumns : PAGE_USABLE_H;
-    if (top - pageStart >= usableH && groups[gi].length) {
+    // 块高优先用「到下一块起点的距离」(含外边距,反映真实流高),末块退回 offsetHeight
+    const nextTop = children[idx + 1] ? children[idx + 1].offsetTop : null;
+    const blockH = nextTop != null && nextTop > top ? nextTop - top : (child.offsetHeight || 0);
+    // 只看起点会让「起点在页内、终点越界」的块整体留在本页 → 纸张被撑高
+    // (真实文档实测:A4 应 1123px 却渲染成 1183px,即用户看到的"预览页比 A4 长")。
+    // 故起点越界或终点越界都提前分页;单块本身高过整页时无法再拆,只能独占一页。
+    const overflows = (top - pageStart >= usableH) || (top - pageStart + blockH > usableH);
+    if (overflows && groups[gi].length) {
       groups.push([]); gi++;
       pageStart = top;
     }
@@ -939,8 +985,13 @@ function Home() {
     //     - ALLOWED_URI_REGEXP 放行 data:(base64 图片)否则图片被清空
     //     - ADD_ATTR 保留 id(TOC 锚点 724 行后注入,但已有 id 的标签要保住)+ style(预设/公式占位)
     //     - KaTeX 在净化之后渲染(743 行),本地可信不再净化
+    //     - ADD_URI_SAFE_ATTR 是关键:自定义 ALLOWED_URI_REGEXP 会被 DOMPurify 用来校验
+    //       【所有非 URI 安全属性】的值,rowspan="12" 的值不匹配该正则就被整个剥掉
+    //       (class/id/style 只因在内置 URI-safe 名单里才幸存)。真实文档实测:后端全程
+    //       保住 17 处 rowspan,净化后归零 → 合并单元格表格整体左移错位。
     processedText = DOMPurify.sanitize(processedText, {
       ADD_ATTR: ['id', 'style', 'target'],
+      ADD_URI_SAFE_ATTR: ['rowspan', 'colspan', 'scope', 'headers', 'start', 'width', 'height', 'align', 'valign', 'dir', 'lang', 'type'],
       ALLOWED_URI_REGEXP: /^(?:data:|https?:|mailto:|#)/i,
     });
 
@@ -1067,7 +1118,7 @@ function Home() {
         const container = previewContainerRef.current;
         const prevTop = container ? container.scrollTop : 0;
         const followBottom = !!container && aiState.isThinking && shouldAutoScroll;
-        setContentPageCount(paginateIntoSheets(node, displayHtmlRef.current || renderedContent, activeStyle.columns || 1));
+        setContentPageCount(paginateIntoSheets(node, displayHtmlRef.current || renderedContent, activeStyle.columns || 1, marginsPxOf(activeStyle.pageMargins)));
         lastPaginateAtRef.current = Date.now();
         if (container) {
           isProgrammaticScrollRef.current = true;
@@ -1135,7 +1186,7 @@ function Home() {
           const imgs = Array.from(el.querySelectorAll('img')) as HTMLImageElement[];
           await Promise.allSettled(imgs.map((im) => (typeof im.decode === 'function' ? im.decode().catch(() => { /* 解码失败按 0 高处理 */ }) : Promise.resolve())));
           if (cancelled || !previewContentRef.current) return;
-          const total = paginateIntoSheets(el, displayHtmlRef.current || renderedContent, activeStyle.columns || 1);
+          const total = paginateIntoSheets(el, displayHtmlRef.current || renderedContent, activeStyle.columns || 1, marginsPxOf(activeStyle.pageMargins));
           setContentPageCount(total);
           // 页高收敛校验:重排后若仍有明显超高页(测量时又有新图未解码),再来一轮
           const stillBad = Array.from(el.querySelectorAll('.a4-page'))
@@ -1171,6 +1222,8 @@ function Home() {
     // 非分页(编辑/对比态,内容是扁平 DOM、没有 .a4-page 包裹)时才需要加在 #preview-content 本身上。
     const paginated = viewMode === 'preview' && !editMode;
     const columnRule = s.columns && s.columns > 1 ? `column-count: ${s.columns}; column-gap: 2em;` : '';
+    // 纸张内边距 = 预设页边距(与 .docx 导出同源、与分页测量同源)
+    const mg = marginsPxOf(s.pageMargins);
     return `
       @keyframes fadeInUp {
         from { opacity: 0; transform: translateY(8px); }
@@ -1227,11 +1280,16 @@ function Home() {
       #preview-content .cover-page .doc-title { font-size: 30pt; margin-bottom: 1.4em; }
       #preview-content .cover-meta { text-indent: 0 !important; text-align: center; font-size: 15pt; line-height: 2; margin: 0.4em 0; color: #222; }
       /* 真·分页:只读视图下每页是一张独立 A4 白纸(在灰桌面上浮动,纸间留白) */
-      #preview-content .a4-page { position: relative; box-sizing: border-box; width: 794px; min-height: 1123px; margin: 0 auto 24px; padding: 80px 90px 56px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 8px rgba(0,0,0,0.10); ${paginated ? columnRule : ''} }
+      #preview-content .a4-page { position: relative; box-sizing: border-box; width: 794px; min-height: 1123px; margin: 0 auto 24px; padding: ${mg.top}px ${mg.right}px ${mg.bottom}px ${mg.left}px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 8px rgba(0,0,0,0.10); ${paginated ? columnRule : ''} }
       #preview-content .a4-page:last-child { margin-bottom: 8px; }
-      #preview-content .a4-page-footer { position: absolute; left: 90px; right: 90px; bottom: 22px; text-align: center; font-size: 10px; color: #c7c7c7; user-select: none; }
+      /* 分页排版惯例 + 高度自洽:页内首块的上外边距、末块的下外边距都归零。
+         平铺测量时这两处外边距会与相邻块折叠(只算一次),落到纸内却各自顶到纸边,
+         纸张因此被撑高(实测 A4 1123px 被顶到 1183px)。归零后测量与渲染一致。 */
+      #preview-content .a4-page > *:first-child { margin-top: 0 !important; }
+      #preview-content .a4-page > *:last-child:not(.a4-page-footer) { margin-bottom: 0 !important; }
+      #preview-content .a4-page-footer { position: absolute; left: ${mg.left}px; right: ${mg.right}px; bottom: ${Math.max(12, Math.round(mg.bottom / 2.5))}px; text-align: center; font-size: 10px; color: #c7c7c7; user-select: none; }
       /* 封面在所属纸张内填满整页、垂直居中 */
-      #preview-content .a4-page > .cover-page { min-height: 940px; padding: 0; }
+      #preview-content .a4-page > .cover-page { min-height: ${1123 - mg.top - mg.bottom - 24}px; padding: 0; }
       /* 学术期刊专用元素样式 */
       #preview-content .doc-title-en { text-indent: 0; font-size: ${s.englishTitleSize || '14pt'}; font-family: ${getPreviewFontStack(s.englishTitleFont || '"Times New Roman", serif')}; font-weight: bold; text-align: center; margin-top: 0.3em; margin-bottom: 0.5em; column-span: all; }
       #preview-content .author-info { text-indent: 0; font-size: ${s.authorSize || '10.5pt'}; font-family: ${getPreviewFontStack(s.authorFont || '"FangSong", serif')}; text-align: center; margin: 0.3em 0; column-span: all; }
