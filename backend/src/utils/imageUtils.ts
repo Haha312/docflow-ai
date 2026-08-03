@@ -13,7 +13,20 @@ const execFileAsync = promisify(execFile);
  * LibreOffice 的图形导入器支持 EMF,作为 magick/convert 都失败后的最后一级。
  * 未安装 soffice 时抛 ENOENT,由调用方按既有逻辑降级(保留原图 + 前端占位框)。
  */
-const convertWithSoffice = async (tmpIn: string, tmpOut: string, stamp: string): Promise<void> => {
+// soffice 单进程常驻 150~300MB,而转换队列是 3 路并发 —— 同时拉起三个会让小内存机器吃紧。
+// 用一条 Promise 链把 soffice 调用串行化:外层并发不变(magick/convert 仍并行),
+// 只有真正落到 LibreOffice 的那少数几张排队走,峰值锁定在一个进程。
+let sofficeQueue: Promise<unknown> = Promise.resolve();
+const runSerialized = <T>(task: () => Promise<T>): Promise<T> => {
+    const next = sofficeQueue.then(task, task);
+    sofficeQueue = next.catch(() => { /* 失败不阻断后续排队 */ });
+    return next;
+};
+
+const convertWithSoffice = (tmpIn: string, tmpOut: string, stamp: string): Promise<void> =>
+    runSerialized(() => sofficeConvert(tmpIn, tmpOut, stamp));
+
+const sofficeConvert = async (tmpIn: string, tmpOut: string, stamp: string): Promise<void> => {
     const outDir = dirname(tmpOut);
     // 每次用独立 profile:并发调用共用默认 profile 会互相加锁而失败
     const profile = join(tmpdir(), `docflow_lo_${stamp}`);

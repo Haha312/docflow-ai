@@ -5,12 +5,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // 这里锁的是「谁先谁后、失败了怎么办」这套逻辑本身。
 const calls: string[] = [];
 let behavior: Record<string, 'ok' | 'enoent' | 'fail'> = {};
+// soffice 并发度观测(验证串行化):进入 +1、回调前 -1,记录峰值
+const conc = { running: 0, peak: 0 };
 
 vi.mock('node:child_process', () => ({
     execFile: (cmd: string, _args: unknown, _opts: unknown, cb: (e: Error | null, r?: unknown) => void) => {
         calls.push(cmd);
         const mode = behavior[cmd] ?? 'enoent';
-        if (mode === 'ok') return cb(null, { stdout: '', stderr: '' });
+        if (mode === 'ok') {
+            if (cmd !== 'soffice') return cb(null, { stdout: '', stderr: '' });
+            conc.running += 1;
+            conc.peak = Math.max(conc.peak, conc.running);
+            setTimeout(() => { conc.running -= 1; cb(null, { stdout: '', stderr: '' }); }, 15);
+            return;
+        }
         const err: NodeJS.ErrnoException = new Error(mode === 'enoent' ? 'not found' : 'no decode delegate for EMF');
         if (mode === 'enoent') err.code = 'ENOENT';
         cb(err);
@@ -37,7 +45,7 @@ const emfDataUrl = (): string => {
 };
 
 describe('convertVectorImagesToPng — 转换链回退', () => {
-    beforeEach(() => { calls.length = 0; behavior = {}; });
+    beforeEach(() => { calls.length = 0; behavior = {}; conc.running = 0; conc.peak = 0; });
 
     it('magick 可用 → 只调 magick,不再往下回退', async () => {
         behavior = { magick: 'ok' };
@@ -69,6 +77,14 @@ describe('convertVectorImagesToPng — 转换链回退', () => {
         const r = await convertVectorImagesToPng(map);
         expect(r).toMatchObject({ converted: 0, failed: 1, total: 1 });
         expect(map.__IMG_0__).toBe(before); // 原图保留(Word 导出仍可正常显示)
+    });
+
+    it('多张 EMF 同时下沉到 soffice 时串行执行(单进程约 150~300MB,防小内存机器峰值叠加)', async () => {
+        behavior = { magick: 'fail', soffice: 'ok' };
+        const map = { __IMG_0__: emfDataUrl(), __IMG_1__: emfDataUrl(), __IMG_2__: emfDataUrl() };
+        const r = await convertVectorImagesToPng(map, { concurrency: 3 });
+        expect(r.converted).toBe(3);
+        expect(conc.peak).toBe(1); // 外层并发 3 路,但 soffice 同时最多 1 个进程
     });
 
     it('栅格图(PNG/JPEG)不进转换队列', async () => {
