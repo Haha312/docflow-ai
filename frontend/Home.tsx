@@ -1198,6 +1198,24 @@ function Home() {
     return () => { cancelled = true; clearTimeout(id); };
   }, [renderedContent, editMode, aiState.isThinking, viewMode]);
 
+  // 浏览器渲染不了的图(主要是 EMF——Linux 上 ImageMagick 常无法解码,Word 里却正常)
+  // 不能就这么留一个裂图图标:标记出来,由 CSS 换成说明性占位框。只影响预览显示,
+  // imageMap 与导出的 .docx 仍持有原图(Word 能正常渲染 EMF/WMF)。
+  useEffect(() => {
+    const el = previewContentRef.current;
+    if (!el || !renderedContent) return;
+    const mark = (img: HTMLImageElement) => {
+      if (img.complete && img.naturalWidth === 0) img.classList.add('img-unrenderable');
+    };
+    const imgs = Array.from(el.querySelectorAll('img')) as HTMLImageElement[];
+    imgs.forEach((img) => {
+      mark(img);
+      img.addEventListener('error', () => img.classList.add('img-unrenderable'), { once: true });
+    });
+    const id = setTimeout(() => imgs.forEach(mark), 800); // 迟到的解码失败再扫一次
+    return () => clearTimeout(id);
+  }, [renderedContent, contentPageCount, viewMode, editMode]);
+
   // 进入/退出编辑
   const enterEditMode = () => setEditMode(true);
   const exitEditMode = () => {

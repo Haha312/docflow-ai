@@ -811,6 +811,35 @@ body {
   color: var(--df-text, #f4f4f5);
 }
 
+/* 浏览器解码不了的图(EMF 等):裂图图标 → 说明性占位框。
+   仅预览如此,导出的 Word 里仍是原图(Word 能正常渲染 EMF/WMF)。 */
+#preview-content img.img-unrenderable {
+  display: block;
+  width: 60%;
+  min-height: 120px;
+  margin: 8px auto;
+  border: 1px dashed #d4d4d8;
+  border-radius: 6px;
+  background: #fafafa;
+  object-fit: contain;
+  position: relative;
+}
+#preview-content img.img-unrenderable::after {
+  content: "此图为矢量图(EMF/WMF),浏览器无法预览 · 导出的 Word 文件中可正常显示";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 18px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #9ca3af;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
 /* 输入区遮罩(拖拽悬停/解析中)随主题换色:此前写死 bg-black,亮色主题下是一块黑 */
 .hero-overlay {
   background: rgba(0, 0, 0, 0.75);
