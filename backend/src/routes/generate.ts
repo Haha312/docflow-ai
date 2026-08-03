@@ -1082,10 +1082,19 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             integrityIssues.push({ type: 'chunk_compressed', severity: 'info', detail: `压缩去重时跳过了 ${compressed.dropped} 个与相邻内容重叠的分块` });
         }
 
+        // 分块降级重试:某块连续三次失败 = 模型在这段内容上系统性打转(真实文档实测:
+        // 密集平行短句的安全需求节,deepseek 与换用的 doubao 都会 char-spam 跑飞),
+        // 换提示词、换模型都救不回来。此时把该块对半切开重新排队 —— 块小了模型更不容易
+        // 打转,也省掉整块反复重试的时间。splitCounts 限制切分次数,避免无限细分。
+        const CHUNK_SPLIT_MIN_CHARS = 3000;
+        const MAX_CHUNK_SPLITS = 2;
+        const splitCounts: number[] = new Array(structuredChunks.length).fill(0);
+
         // 3. 闂?????? Chunks
         for (let i = 0; i < structuredChunks.length; i++) {
             const chunkMeta = structuredChunks[i];
             const chunkContent = chunkMeta.content;
+            let pendingSplit: string[] | null = null; // 本块失败后待切分的两半
             const chunkFirstHeading = extractFirstHeading(chunkContent);
             const renderedTail = normalizeText(fullRestoredText).slice(-5000);
             const headingCovered = chunkFirstHeading.length > 0 && renderedTail.includes(chunkFirstHeading);
@@ -1475,15 +1484,23 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                                 try { res.write(`data: ${JSON.stringify({ ping: true, progress: { current: i, total: chunks.length, status: `RETRYING|${i + 1}|${chunkAttempt + 1}`, estimatedRemainingSeconds: null } })}\n\n`); } catch { /* client closed */ }
                                 continue;
                             }
-                            // info 而非 warning:这是生成过程的中间态诊断(重试没救回来的原因记录),
-                            // 不是最终成稿的结论 —— 确定性补回会在其后把内容补齐,最终状态由
-                            // verifyBeforeDelivery 的中文结论负责。挂 warning 会在前端红条里
-                            // 展示英文内部术语,吓用户且与最终结论重复(用户实测反馈)。
-                            integrityIssues.push({
-                                type: 'chunk_validation_failed',
-                                severity: 'info',
-                                detail: `Part ${i + 1} validation warning: ${validationRetryReason.slice(0, 500)}`,
-                            });
+                            // 重试与换模型都没救回来 → 若这块还够大,对半切开重新排队再试
+                            // (小块能显著降低模型打转概率);切到不能再切才如实记录问题。
+                            if (chunkContent.length >= CHUNK_SPLIT_MIN_CHARS && (splitCounts[i] ?? 0) < MAX_CHUNK_SPLITS) {
+                                const halves = splitContentBySemantics(chunkContent, Math.ceil(chunkContent.length / 2));
+                                if (halves.length >= 2) pendingSplit = halves;
+                            }
+                            if (!pendingSplit) {
+                                // info 而非 warning:这是生成过程的中间态诊断(重试没救回来的原因记录),
+                                // 不是最终成稿的结论 —— 确定性补回会在其后把内容补齐,最终状态由
+                                // verifyBeforeDelivery 的中文结论负责。挂 warning 会在前端红条里
+                                // 展示英文内部术语,吓用户且与最终结论重复(用户实测反馈)。
+                                integrityIssues.push({
+                                    type: 'chunk_validation_failed',
+                                    severity: 'info',
+                                    detail: `Part ${i + 1} validation warning: ${validationRetryReason.slice(0, 500)}`,
+                                });
+                            }
                             break;
                         }
                         if (chunkAttempt < MAX_CHUNK_ATTEMPTS) {
@@ -1495,6 +1512,26 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                   }
                 } finally {
                     clearInterval(pingInterval);
+                }
+
+                // 本块判定为「切开重来」:丢弃这次的失控输出,把两半插回队列,回到原位重新处理。
+                // 必须在使用 chunkOutput 之前拦截 —— 失控内容一旦并入全文,后面只能靠截断补救。
+                if (pendingSplit) {
+                    const nextDepth = (splitCounts[i] ?? 0) + 1;
+                    console.warn(`[CHUNK_SPLIT] part ${i + 1}/${structuredChunks.length} 连续失败 → 对半切成 ${pendingSplit.length} 块重试(第 ${nextDepth} 次切分)`);
+                    const metas: StructuredContentChunk[] = pendingSplit.map((content) => ({
+                        content, start: -1, end: -1, headings: [], headingPath: chunkMeta.headingPath, strategy: chunkMeta.strategy,
+                    }));
+                    structuredChunks.splice(i, 1, ...metas);
+                    chunks.splice(i, 1, ...pendingSplit);
+                    splitCounts.splice(i, 1, ...pendingSplit.map(() => nextDepth));
+                    integrityIssues.push({
+                        type: 'chunk_split_retry',
+                        severity: 'info',
+                        detail: `第 ${i + 1} 部分内容较难处理,已自动拆分为 ${pendingSplit.length} 段分别生成`,
+                    });
+                    i -= 1; // 回到本位:下一轮从切出来的第一半开始
+                    continue;
                 }
 
                 // Chunk ??闂????cleanOutput ??闂傚倷鐒﹂幃鍫曞磿鏉堛劍娅犻柤鎭掑劜濞??闂??闂?????闂???

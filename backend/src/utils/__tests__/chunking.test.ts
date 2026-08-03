@@ -6,6 +6,18 @@ describe('splitContentBySemantics', () => {
         expect(splitContentBySemantics('short', 4000)).toEqual(['short']);
     });
 
+    // 生成主循环的「失败即切分重试」依赖这条:某块连续三次跑飞时按 ceil(len/2) 再切,
+    // 必须真的切成 ≥2 块且无损,否则切分重试是空转(真实文档实测:安全需求节让两个模型都打转)。
+    it('按半长切分:确实切成多块且拼接无损(失败重试降级路径的前提)', () => {
+        const para = (n: number) => `<p>第${n}段内容,用于构造足够长的可切分文本。</p>\n`;
+        const content = Array.from({ length: 60 }, (_, i) => para(i + 1)).join('');
+        const halves = splitContentBySemantics(content, Math.ceil(content.length / 2));
+        expect(halves.length).toBeGreaterThanOrEqual(2);
+        expect(halves.join('')).toBe(content);
+        // 每一半都明显小于原块,才谈得上「降低模型打转概率」
+        expect(Math.max(...halves.map((h) => h.length))).toBeLessThan(content.length);
+    });
+
     it('无损:各块拼接 === 原文(无重叠/无丢失)', () => {
         const content = 'A'.repeat(5000) + '\n' + 'B'.repeat(5000) + '\n' + 'C'.repeat(5000);
         const chunks = splitContentBySemantics(content, 4000);
