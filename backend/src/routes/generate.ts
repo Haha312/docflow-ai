@@ -18,7 +18,7 @@ import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralA
 import { extractSourceCaptions, postProcess, type PostProcessOptions } from '../utils/postProcess';
 import { verifyBeforeDelivery, verifyTableStructure, verifySentenceCoverage, extractSentences } from '../utils/verifyDelivery';
 import { restoreMissingContent, freezeTables, unfreezeTables, restoreListCaptions, stripTocBlock } from '../utils/restoreContent';
-import { buildSkeleton, expectedChapterCount, type SkeletonNode } from '../utils/skeleton';
+import { buildSkeleton, expectedChapterCount, derivePseudoHeadings, type SkeletonNode } from '../utils/skeleton';
 import { normalizeHeadingText } from '../utils/headingText';
 import {
     calcTailHeadOverlap,
@@ -813,46 +813,15 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
         // 1c. ?闂????:????(?闂? LEVEL_NORM ??preComputedHeadings ????闂???缂?,
         //     ?闂?????????AI ?闂傚倷鑳堕、濠冦仈缁嬫５娲冀椤愶絽鍘瑰┑鐘诧工閻楀﹪鍩??????闂傚倷绀侀幉锛勭矙閹烘鍋嬮柣鎰閺?婵犵數鍋為崹鍫曞箰閹绢喖纾????缂傚倸鍊搁崐鐑芥嚄閸洖绐楃€广儱娲ㄩ崡?闂????缂????????h1=?闂????闂傚倷鑳剁划顖炴偡閿曗偓椤啴宕稿Δ鈧悿?=?闂?h3=????,
         //     ??????????闂??濠????H1=????缂傚倸鍊风欢锟犲垂闂堟稓鏆﹂柣銏ゆ涧閸??缂傚倸鍊风拋鏌ュ磻??"h1=????"????闂?闂??缂傚倷鑳堕崑鎾愁熆濮椻偓閹宕楅崗鍏肩彿闂佸湱铏庨崰鏍不閻愮儤鐓熼柕蹇曞У閸熺偞绻??/ ??闂???????
-        // 伪骨架:输入既无 STRUCTURE_DATA 也无任何 <h> 标签(纯文本粘贴/无样式且无
-        // 大纲级别的 Word)时,标题结构只能靠 AI 猜 —— 实测同一文档两次生成结构都不
-        // 一样(「第一章」被当大标题、「第二章」被当正文)。按行模式确定性识别章节:
-        // 行长 ≤40 才算标题候选(长段落即使带 1.1 前缀也是正文),以句号/分号结尾的
-        // 是列表项或整句(如「1. 完成数据标准体系建设,发布数据接入规范。」)不算标题。
-        if (preComputedHeadings.length === 0 && !/<h[1-6]\b/i.test(contentForChunking)) {
-            const lineTexts: string[] = [];
-            if (/<p\b/i.test(contentForChunking)) {
-                const pRe = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
-                let pm: RegExpExecArray | null;
-                while ((pm = pRe.exec(contentForChunking)) !== null) lineTexts.push(pm[1].replace(/<[^>]+>/g, '').trim());
-            } else {
-                lineTexts.push(...contentForChunking.split(/\r?\n/).map((s) => s.replace(/<[^>]+>/g, '').trim()));
-            }
-            const derived: PreComputedHeading[] = [];
-            for (const line of lineTexts) {
-                if (!line || line.length > 40) continue;
-                if (/[。;；,，]$/.test(line)) continue;
-                let level = 0;
-                if (/^第\s*[一二三四五六七八九十百0-9]+\s*[章篇部]/.test(line)) level = 1;
-                else if (/^[一二三四五六七八九十]+\s*、/.test(line)) level = 1;
-                else if (/^\d+\.\d+\.\d+(?:\s|[.、．])/.test(line)) level = 3;
-                else if (/^\d+\.\d+(?:\s|[.、．])/.test(line)) level = 2;
-                else if (/^\d+\s*[.、．]\s*\S/.test(line) && !/^\d+\s*[.、．]\s*\d/.test(line)) level = 1;
-                else if (/^[（(]\s*[一二三四五六七八九十]+\s*[）)]/.test(line)) level = 2;
-                if (level > 0) derived.push({ level, text: line, number: '' });
-            }
-            // 至少 2 个候选且含章级才启用,避免把零星短句误判成结构
-            if (derived.length >= 2 && derived.some((h) => h.level === 1)) {
-                const counters = [0, 0, 0, 0, 0, 0];
-                for (const h of derived) {
-                    counters[h.level - 1] += 1;
-                    for (let k = h.level; k < 6; k += 1) counters[k] = 0;
-                    h.number = counters.slice(0, h.level).join('.');
-                }
+        // 伪骨架:无 STRUCTURE_DATA 且无 <h> 标签时,按行模式确定性推断章节结构
+        // (详见 skeleton.ts derivePseudoHeadings)。抽成工具函数以便集成测试直接复用同一路径。
+        if (preComputedHeadings.length === 0) {
+            const derived = derivePseudoHeadings(contentForChunking);
+            if (derived.length > 0) {
                 preComputedHeadings = derived;
                 console.log(`[PSEUDO_SKELETON] derived ${derived.length} headings from text patterns`);
             }
         }
-
         const skeleton: SkeletonNode[] = buildSkeleton(preComputedHeadings);
         if (skeleton.length > 0) {
             console.log(`[SKELETON] Frozen ${skeleton.length} headings, ${expectedChapterCount(skeleton)} chapters`);

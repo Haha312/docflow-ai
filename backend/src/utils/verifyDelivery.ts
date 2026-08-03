@@ -292,10 +292,20 @@ export const extractSentences = (html: string): string[] => {
         .replace(/&nbsp;/gi, ' ')
         .replace(/&amp;/gi, '&');
 
+    // 标题不参与逐句核对:标题的完整性由骨架层(heading_missing / heading_promoted)负责,
+    // 而成稿里的标题会被统一重编号(源文「1.2.1. 三维数据管理功能需求」→ 成稿「1.2.1 …」,
+    // 尾点消失),逐字比对必然判它"丢失" —— 会凭空报出几十条并不存在的缺失(实测 24 条)。
+    // 判定:带编号前缀 + 短 + 不以句末标点结尾 = 标题行,而非正文句子。
+    const isHeadingLine = (s: string): boolean =>
+        s.length <= 40
+        && !/[。！？!?；;]$/.test(s)
+        && /^(?:\d+(?:\s*[.、．]\s*\d+)*\s*[.、．]?|第\s*[一二三四五六七八九十百]+\s*[章节篇部]|[一二三四五六七八九十]+\s*、|[（(]\s*[一二三四五六七八九十\d]+\s*[）)])\s*\S/.test(s);
+
     return plain
         .split(/(?<=[。！？!?；;])|\n+/)
         .map((s) => s.trim())
-        .filter((s) => normalizeForCompare(s).length >= 12); // 太短的片段(标题词、编号)不参与句子核对
+        .filter((s) => normalizeForCompare(s).length >= 12) // 太短的片段(标题词、编号)不参与句子核对
+        .filter((s) => !isHeadingLine(s));
 };
 
 /**

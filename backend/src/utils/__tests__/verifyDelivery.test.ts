@@ -176,6 +176,22 @@ describe('extractSentences', () => {
         expect(sentences).toHaveLength(2);
     });
 
+    it('标题行不参与逐句核对(成稿会统一重编号,逐字比必然误判丢失)', () => {
+        const html = [
+            '<p>1.2.1. 三维数据管理功能需求</p>',
+            '<p>第三章 系统总体设计</p>',
+            '<p>基于数据中台完成三维数据管理相关功能开发,包括质量检查与数据发布。</p>',
+        ].join('');
+        const sentences = extractSentences(html);
+        expect(sentences).toHaveLength(1);
+        expect(sentences[0]).toContain('基于数据中台');
+    });
+
+    it('以编号开头但是完整句子的列表项仍参与核对(豁免不过度)', () => {
+        const html = '<p>1. 完成数据标准体系建设,并发布配套的数据接入规范文件。</p>';
+        expect(extractSentences(html)).toHaveLength(1);
+    });
+
     it('表格与图注内容不参与句子核对', () => {
         const html = `<table><tr><td>这是一段足够长的表格单元格内容不应被当作正文句子</td></tr></table>`;
         expect(extractSentences(html)).toEqual([]);

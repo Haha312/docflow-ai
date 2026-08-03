@@ -21,6 +21,49 @@ export interface SkeletonNode {
 }
 
 /**
+ * 伪骨架推断:输入既无 STRUCTURE_DATA 也无任何 <h> 标签(纯文本粘贴 / 无样式且无
+ * 大纲级别的 Word)时,标题结构只能靠 AI 猜 —— 实测同一文档两次生成结构都不一样
+ * (「第一章」被当大标题、「第二章」被当正文)。这里按行模式确定性识别章节。
+ * 规则:行长 ≤40 才算标题候选(长段落即便带 1.1 前缀也是正文);以句号/分号结尾的
+ * 是列表项或整句(如「1. 完成数据标准体系建设,发布数据接入规范。」)不算标题;
+ * 至少 2 个候选且含章级才启用,避免把零星短句误判成结构。
+ * 返回空数组表示「推断不出可信结构」,调用方应保持原有行为。
+ */
+export const derivePseudoHeadings = (contentHtml: string): PreComputedHeading[] => {
+    const html = contentHtml || '';
+    if (/<h[1-6]\b/i.test(html)) return [];
+    const lineTexts: string[] = [];
+    if (/<p\b/i.test(html)) {
+        const pRe = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+        let pm: RegExpExecArray | null;
+        while ((pm = pRe.exec(html)) !== null) lineTexts.push(pm[1].replace(/<[^>]+>/g, '').trim());
+    } else {
+        lineTexts.push(...html.split(/\r?\n/).map((s) => s.replace(/<[^>]+>/g, '').trim()));
+    }
+    const derived: PreComputedHeading[] = [];
+    for (const line of lineTexts) {
+        if (!line || line.length > 40) continue;
+        if (/[。;；,，]$/.test(line)) continue;
+        let level = 0;
+        if (/^第\s*[一二三四五六七八九十百0-9]+\s*[章篇部]/.test(line)) level = 1;
+        else if (/^[一二三四五六七八九十]+\s*、/.test(line)) level = 1;
+        else if (/^\d+\.\d+\.\d+(?:\s|[.、．])/.test(line)) level = 3;
+        else if (/^\d+\.\d+(?:\s|[.、．])/.test(line)) level = 2;
+        else if (/^\d+\s*[.、．]\s*\S/.test(line) && !/^\d+\s*[.、．]\s*\d/.test(line)) level = 1;
+        else if (/^[（(]\s*[一二三四五六七八九十]+\s*[）)]/.test(line)) level = 2;
+        if (level > 0) derived.push({ level, text: line, number: '' });
+    }
+    if (derived.length < 2 || !derived.some((h) => h.level === 1)) return [];
+    const counters = [0, 0, 0, 0, 0, 0];
+    for (const h of derived) {
+        counters[h.level - 1] += 1;
+        for (let k = h.level; k < 6; k += 1) counters[k] = 0;
+        h.number = counters.slice(0, h.level).join('.');
+    }
+    return derived;
+};
+
+/**
  * 构建权威骨架。输入应为「已过 LEVEL_NORM」的 preComputedHeadings(最小层级=1)。
  * 过滤掉空文本/非法层级项;保持文档顺序;id 按顺序稳定分配。
  */
