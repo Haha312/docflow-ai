@@ -1,10 +1,35 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { writeFile, readFile, unlink } from 'node:fs/promises';
+import { writeFile, readFile, unlink, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * LibreOffice 兜底转换(EMF 专用)。
+ * Linux 版 ImageMagick 通常【没有 EMF 解码器】(线上实测 `convert -list format` 只列出 WMF),
+ * 而 EMF 恰是国内工程文档的常客(Visio/CAD 粘进 Word 默认就是增强型元文件)。
+ * LibreOffice 的图形导入器支持 EMF,作为 magick/convert 都失败后的最后一级。
+ * 未安装 soffice 时抛 ENOENT,由调用方按既有逻辑降级(保留原图 + 前端占位框)。
+ */
+const convertWithSoffice = async (tmpIn: string, tmpOut: string, stamp: string): Promise<void> => {
+    const outDir = dirname(tmpOut);
+    // 每次用独立 profile:并发调用共用默认 profile 会互相加锁而失败
+    const profile = join(tmpdir(), `docflow_lo_${stamp}`);
+    try {
+        await execFileAsync('soffice', [
+            `-env:UserInstallation=file:///${profile.replace(/\\/g, '/').replace(/^\/+/, '')}`,
+            '--headless', '--norestore', '--nolockcheck', '--nodefault',
+            '--convert-to', 'png', '--outdir', outDir, tmpIn,
+        ], { timeout: 60000 });
+        // soffice 的输出名固定为「输入基名.png」,与调用方期望的 tmpOut 不一定同名
+        const produced = join(outDir, basename(tmpIn).replace(/\.[^.]+$/, '') + '.png');
+        if (produced !== tmpOut) await rename(produced, tmpOut);
+    } finally {
+        rm(profile, { recursive: true, force: true }).catch(() => { /* 清理失败无所谓 */ });
+    }
+};
 
 export interface ImageMap {
     [placeholder: string]: string;
@@ -84,12 +109,19 @@ export const convertVectorImagesToPng = async (
             const tmpOut = join(tmpdir(), `docflow_${stamp}.png`);
             try {
                 await writeFile(tmpIn, job.buf);
+                // 转换链:magick(IM7) → convert(IM6,Ubuntu 常见) → soffice(EMF 唯一可靠解)
                 try {
                     await execFileAsync('magick', [tmpIn, tmpOut], { timeout: 25000 });
                 } catch (e1: any) {
-                    // Ubuntu 服务器普遍只有 ImageMagick v6,二进制名是 convert(线上实测碎图根因)
-                    if (e1?.code !== 'ENOENT') throw e1;
-                    await execFileAsync('convert', [tmpIn, tmpOut], { timeout: 25000 });
+                    try {
+                        // Ubuntu 服务器普遍只有 ImageMagick v6,二进制名是 convert(线上实测碎图根因)
+                        if (e1?.code !== 'ENOENT') throw e1;
+                        await execFileAsync('convert', [tmpIn, tmpOut], { timeout: 25000 });
+                    } catch (e2: any) {
+                        // ImageMagick 装了也可能没有 EMF 解码器(线上实测:-list format 只有 WMF)
+                        // → 这类失败不是 ENOENT 而是转换报错,同样交给 LibreOffice
+                        await convertWithSoffice(tmpIn, tmpOut, stamp);
+                    }
                 }
                 const png = await readFile(tmpOut);
                 imageMap[job.key] = job.imgTag.replace(/src="data:image\/[^;]+;base64,[^"]+"/i, `src="data:image/png;base64,${png.toString('base64')}"`);
@@ -98,7 +130,7 @@ export const convertVectorImagesToPng = async (
                 failed++;
                 if (e?.code === 'ENOENT') {
                     magickMissing = true;
-                    console.warn('[VECTOR_IMG] 未找到 ImageMagick(magick/convert 均不可用)—— EMF/WMF 矢量图无法转换,将无法在预览/导出中显示');
+                    console.warn('[VECTOR_IMG] 转换工具均不可用(magick / convert / soffice 都没找到)—— EMF/WMF 矢量图无法转成 PNG;预览显示占位框,导出的 Word 中仍是原图');
                 } else {
                     console.warn(`[VECTOR_IMG] 转换 ${job.key} 失败: ${e?.message}`);
                 }
