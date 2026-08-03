@@ -355,6 +355,38 @@ describe('restoreMissingContent — 大幅前跳旁证', () => {
     });
 });
 
+describe('restoreMissingContent — 段落形态标题不重复补回', () => {
+    it('源文标题是普通段落、成稿已重编号为真标题 → 不再补出第二份(真实文档回归)', () => {
+        // 无标题样式的 Word:标题就是普通段落「1.1. 项目背景」(带尾点);
+        // 成稿把它变成 <h3>1.1 项目背景</h3>(统一重编号,尾点没了)→ 逐字对不上,
+        // 此前被判"丢失"补回,再被晋升成标题,于是同一标题出现两遍(用户截图暴露)。
+        const source = [
+            '<p>1.1. 项目背景</p>',
+            '<p>三维数据是公司的重要战略数据资源,目前存在缺少维护和更新的问题。</p>',
+            '<p>1.2. 项目建设需求</p>',
+            '<p>基于数据中台完成三维数据管理相关功能开发,包括质量检查与发布。</p>',
+        ].join('');
+        const output = [
+            '<h3>1.1 项目背景</h3>',
+            '<p>三维数据是公司的重要战略数据资源,目前存在缺少维护和更新的问题。</p>',
+            '<h3>1.2 项目建设需求</h3>',
+            '<p>基于数据中台完成三维数据管理相关功能开发,包括质量检查与发布。</p>',
+        ].join('');
+        const r = restoreMissingContent(source, output);
+        expect(r.restoredCounts.paragraph).toBeUndefined();
+        expect((r.text.match(/项目背景/g) ?? []).length).toBe(1);
+        expect((r.text.match(/项目建设需求/g) ?? []).length).toBe(1);
+    });
+
+    it('真正丢失的短段落仍会被补回(不因上面的豁免而漏补)', () => {
+        const source = '<p>1.1. 项目背景</p><p>这一段正文在成稿里确实整段丢失了需要补回来。</p>';
+        const output = '<h3>1.1 项目背景</h3>';
+        const r = restoreMissingContent(source, output);
+        expect(r.restoredCounts.paragraph).toBe(1);
+        expect(r.text).toContain('这一段正文在成稿里确实整段丢失了需要补回来');
+    });
+});
+
 describe('restoreMissingContent — 图题元素级存在性', () => {
     it('图题文本仅出现在图目录(li)里 → 仍判缺失并补回为 caption div', () => {
         // 真实文档回归:被 reconcileCaptionsToSource 误删的图题,其文本还留在目录/

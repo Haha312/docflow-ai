@@ -608,6 +608,17 @@ export const restoreMissingContent = (sourceHtml: string, outputHtml: string): R
         // 完整 key 在游标之前出现过 → 内容被挪位而非丢失;不插(避免重复),也不动游标
         if (outNorm.indexOf(key) >= 0) continue;
 
+        // 段落形态的标题(无标题样式的 Word:「1.2.1. 三维数据管理功能需求」本就是普通段落)
+        // 在成稿里已成为真标题,且编号被统一重编(尾点没了 → 文本对不上)→ 逐字匹配判它"丢失",
+        // 补回后又被晋升成标题,于是每个标题出现两遍(真实文档实测,用户截图暴露)。
+        // 故短段落再按"去编号后的标题文本"与成稿标题比一次,命中即视为存在。
+        if (block.type === 'paragraph' && key.length <= 60) {
+            const asHeading = normalizeHeadingText(block.html);
+            if (asHeading.length >= 2 && outHeadingNorms.some((o) => o === asHeading || o.includes(asHeading) || asHeading.includes(o))) {
+                continue;
+            }
+        }
+
         // 长块:只补「完全消失」的,部分存在的不补。
         // 首尾都命中 → 轻度改写,视为存在(与 verifyDelivery 的句子容忍口径一致);
         // 只有开头命中 → 中段被改写:补回会与改写稿双份并存,比不补更糟 ——
