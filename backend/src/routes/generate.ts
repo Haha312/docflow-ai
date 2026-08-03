@@ -16,7 +16,7 @@ import { extractImagesAsPlaceholders, restoreImages, convertVectorImagesToPng } 
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
 import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies, validateFinalIntegrity } from '../utils/integrity';
 import { extractSourceCaptions, postProcess, type PostProcessOptions } from '../utils/postProcess';
-import { verifyBeforeDelivery, verifyTableStructure, verifySentenceCoverage } from '../utils/verifyDelivery';
+import { verifyBeforeDelivery, verifyTableStructure, verifySentenceCoverage, extractSentences } from '../utils/verifyDelivery';
 import { restoreMissingContent, freezeTables, unfreezeTables, restoreListCaptions, stripTocBlock } from '../utils/restoreContent';
 import { buildSkeleton, expectedChapterCount, type SkeletonNode } from '../utils/skeleton';
 import { normalizeHeadingText } from '../utils/headingText';
@@ -1666,6 +1666,31 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                 integrityIssues.push(...delivery.issues);
                 console.log(`[VERIFY] ${delivery.issues.length} issue(s): ${delivery.issues.map(i => i.type).join(', ')}`);
             }
+
+            // 结论以「交付的成稿」为准,而不是生成途中发生过什么。
+            // stream_hallucination / loop_truncated 是过程事件:模型某块跑飞被中断,
+            // 随后由重试 + 换模型 + 确定性补回把内容补齐。若最终校验显示成稿是完整的,
+            // 却还挂着红色 critical 并弹「生成可能不完整,建议重新生成」,就是在吓用户
+            // (真实文档实测:230 句只差 3 句、内容基本齐全,却顶着三条红色告警)。
+            // 判定门槛:字数保留率 ≥95% 且丢句率 ≤2% 且交付校验无 critical。
+            const srcSentenceCount = extractSentences(contentForChunking).length;
+            const missRatio = srcSentenceCount > 0 ? delivery.missingSentences.length / srcSentenceCount : 0;
+            const inCnt = countStructure(contentForChunking);
+            const outCnt = countStructure(finalText);
+            const retention = inCnt.charCount > 0 ? outCnt.charCount / inCnt.charCount : 1;
+            const deliveredIntact = retention >= 0.95 && missRatio <= 0.02
+                && !delivery.issues.some((x) => x.severity === 'critical');
+            if (deliveredIntact) {
+                let demoted = 0;
+                for (const it of integrityIssues) {
+                    if ((it.type === 'stream_hallucination' || it.type === 'loop_truncated') && it.severity === 'critical') {
+                        it.severity = 'info';
+                        it.detail = `${it.detail};该部分已重新生成并自动补回,成稿完整性校验通过`;
+                        demoted += 1;
+                    }
+                }
+                if (demoted > 0) console.log(`[VERIFY] delivered intact (retention=${Math.round(retention * 100)}%, miss=${delivery.missingSentences.length}/${srcSentenceCount}) → demoted ${demoted} process-level critical(s) to info`);
+            }
         } catch (e) {
             console.warn('[VERIFY] delivery verification failed (non-fatal):', e);
         }
@@ -1687,7 +1712,18 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
                     integrityIssues.push({ type: 'headings_reduced', severity: 'warning', detail: `Output heading count ${outputCounts.headings} is below source ${inputCounts.headings}; please review ${lost} possible missing section(s)` });
                 }
             }
-            integrityReport = buildIntegrityReport(inputCounts, outputCounts, integrityIssues);
+            // 同一块重试多次会push出多条一模一样的告警(实测同一句话在红条里出现三遍),
+            // 对用户是纯噪音 —— 按 (type, detail) 去重,重复次数并入文案。
+            const seenIssue = new Map<string, { issue: IntegrityIssue; count: number }>();
+            for (const it of integrityIssues) {
+                const key = `${it.type}|${it.detail}`;
+                const hit = seenIssue.get(key);
+                if (hit) hit.count += 1;
+                else seenIssue.set(key, { issue: it, count: 1 });
+            }
+            const dedupedIssues = [...seenIssue.values()].map(({ issue, count }) =>
+                count > 1 ? { ...issue, detail: `${issue.detail}(共 ${count} 次)` } : issue);
+            integrityReport = buildIntegrityReport(inputCounts, outputCounts, dedupedIssues);
         } catch (e) {
             console.warn('[INTEGRITY] report build failed (non-fatal):', e);
         }
