@@ -274,6 +274,28 @@ describe('结构先行:reconcileHeadingsToSkeleton 根治章节漂移(6→10)', 
         expect(text).toMatch(/<h3[^>]*>1\.1\.?\s*项目背景<\/h3>/);
     });
 
+    it('源文自带编号的「前言」按正文第一章编号,后续章号顺延(真实文档回归)', () => {
+        // 前端「Word 编号还原」后标题形如「1 前言」「1.1 研究背景」。此前前言被当作前置
+        // 事务标题无条件跳过编号且不计数 → 前言整节无号、下一章从 1 重起(实测踩过)。
+        const rows: [number, string][] = [
+            [1, '摘要'], [1, 'Abstract'], [1, '1 前言'], [2, '1.1 研究背景'],
+            [1, '2 特高压工程数据质量评估方法研究'], [2, '2.1 数据质量评估相关理论'],
+        ];
+        const html = '<h1 class="doc-title">研究报告</h1>' +
+            rows.map(([lv, t]) => `<h${lv}>${t}</h${lv}><p>正文占位。</p>`).join('');
+        const skeleton = buildSkeleton(rows.map(([level, text]) => ({ level, text, number: '' })));
+        const { text } = postProcess(html, opts({ scheme: 'decimal-nested', skeleton }));
+        const heads = [...text.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/g)]
+            .map((m) => m[2].replace(/<[^>]+>/g, '').trim());
+        expect(heads).toContain('1. 前言');            // 源文有号 → 尊重源文,作第 1 章
+        expect(heads).toContain('1.1 研究背景');
+        expect(heads).toContain('2. 特高压工程数据质量评估方法研究'); // 章号顺延而非重起
+        expect(heads).toContain('摘要');               // 无源编号的前置标题仍不编号
+        // 不得出现编号叠加(如「1. 1 前言」):两组编号中间隔空格。注意合法的层级号
+        // 「1.1 研究背景」只有一组编号,不应被误判。
+        expect(heads.some((h) => /^\d[\d.]*\s+\d[\d.]*\s/.test(h))).toBe(false);
+    });
+
     it('个别缺章(单章)→ heading_missing 仅 warning(不阻断计费)', () => {
         const skeleton = buildSkeleton([
             { level: 1, text: '甲章', number: '1' },
