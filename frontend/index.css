@@ -811,33 +811,34 @@ body {
   color: var(--df-text, #f4f4f5);
 }
 
-/* 浏览器解码不了的图(EMF 等):裂图图标 → 说明性占位框。
-   仅预览如此,导出的 Word 里仍是原图(Word 能正常渲染 EMF/WMF)。 */
-#preview-content img.img-unrenderable {
-  display: block;
-  width: 60%;
-  min-height: 120px;
-  margin: 8px auto;
-  border: 1px dashed #d4d4d8;
-  border-radius: 6px;
-  background: #fafafa;
-  object-fit: contain;
-  position: relative;
-}
-#preview-content img.img-unrenderable::after {
-  content: "此图为矢量图(EMF/WMF),浏览器无法预览 · 导出的 Word 文件中可正常显示";
-  position: absolute;
-  inset: 0;
+/* 浏览器解码不了的矢量图(EMF/WMF):裂图图标 → 说明性占位框。
+   说明文字挂在外层 <span> 上 —— ::after 在 <img> 这类替换元素上不渲染;
+   包装由 imageMap 数据层完成,分页重建 DOM 也不会丢。
+   仅影响预览:内部的原始 <img> 原封不动,导出的 Word 里仍是真图。 */
+#preview-content .vector-img-fallback {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 18px;
+  width: 60%;
+  min-height: 130px;
+  margin: 10px auto;
+  padding: 14px 20px;
+  box-sizing: border-box;
+  border: 1px dashed #d4d4d8;
+  border-radius: 6px;
+  background: #fafafa;
   text-align: center;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.7;
   color: #9ca3af;
-  background: #fafafa;
-  border-radius: 6px;
+}
+#preview-content .vector-img-fallback::after {
+  content: "此图为矢量图(EMF/WMF),浏览器无法预览\A导出的 Word 文件中可正常显示";
+  white-space: pre-line;
+}
+/* 原图仍留在 DOM 里(导出要用),但不占预览版面 */
+#preview-content .vector-img-fallback img {
+  display: none;
 }
 
 /* 输入区遮罩(拖拽悬停/解析中)随主题换色:此前写死 bg-black,亮色主题下是一块黑 */

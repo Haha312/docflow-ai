@@ -573,10 +573,24 @@ function Home() {
       }
       if (Object.keys(vectorEntries).length > 0) {
         void convertVectorImagesViaBackend(vectorEntries).then((converted) => {
-          if (Object.keys(converted).length > 0) {
-            setImageMap(prev => ({ ...prev, ...converted }));
-            console.log(`[VECTOR_IMG] ${Object.keys(converted).length} EMF/WMF converted to PNG`);
-          }
+          const failed = Object.keys(vectorEntries).filter(k => !converted[k]);
+          if (Object.keys(converted).length === 0 && failed.length === 0) return;
+          setImageMap(prev => {
+            const next = { ...prev, ...converted };
+            // 服务器转不了的(Linux 版 ImageMagick 无 EMF 解码器,且未装 LibreOffice):
+            // 用一层 <span> 包住原图 —— 浏览器画不出图时由这层给出说明,而原始 <img>
+            // 原封不动留在内容里,导出的 Word 仍是真图(Word 原生支持 EMF/WMF)。
+            // 必须做在数据层:分页会重建 DOM,靠 JS 打标记的做法会被抹掉(实测踩过);
+            // 且 ::after 在 <img> 这类替换元素上不渲染,说明文字只能挂在外层元素上。
+            for (const k of failed) {
+              const tag = prev[k] ?? vectorEntries[k];
+              if (tag && !tag.includes('vector-img-fallback')) {
+                next[k] = `<span class="vector-img-fallback">${tag}</span>`;
+              }
+            }
+            return next;
+          });
+          console.log(`[VECTOR_IMG] converted=${Object.keys(converted).length} unrenderable=${failed.length}`);
         });
       }
     }
@@ -1198,23 +1212,11 @@ function Home() {
     return () => { cancelled = true; clearTimeout(id); };
   }, [renderedContent, editMode, aiState.isThinking, viewMode]);
 
-  // 浏览器渲染不了的图(主要是 EMF——Linux 上 ImageMagick 常无法解码,Word 里却正常)
-  // 不能就这么留一个裂图图标:标记出来,由 CSS 换成说明性占位框。只影响预览显示,
-  // imageMap 与导出的 .docx 仍持有原图(Word 能正常渲染 EMF/WMF)。
-  useEffect(() => {
-    const el = previewContentRef.current;
-    if (!el || !renderedContent) return;
-    const mark = (img: HTMLImageElement) => {
-      if (img.complete && img.naturalWidth === 0) img.classList.add('img-unrenderable');
-    };
-    const imgs = Array.from(el.querySelectorAll('img')) as HTMLImageElement[];
-    imgs.forEach((img) => {
-      mark(img);
-      img.addEventListener('error', () => img.classList.add('img-unrenderable'), { once: true });
-    });
-    const id = setTimeout(() => imgs.forEach(mark), 800); // 迟到的解码失败再扫一次
-    return () => clearTimeout(id);
-  }, [renderedContent, contentPageCount, viewMode, editMode]);
+  // 注:此处原有一个「扫描 DOM 给裂图打标记类」的副作用,已删除 ——
+  // 分页会 el.innerHTML=… 重建整棵 DOM,标记类随即被抹掉(实测:线上仍是裂图图标);
+  // 且 ::after 在 <img> 这类替换元素上不渲染,说明文字根本出不来。
+  // 改为数据层方案:转换失败的矢量图在 imageMap 里就包上 .vector-img-fallback 外层
+  // (见上方 convertVectorImagesViaBackend 回调),不受重建影响,也不动导出用的原图。
 
   // 进入/退出编辑
   const enterEditMode = () => setEditMode(true);
