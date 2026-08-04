@@ -24,21 +24,49 @@ export interface GenerateDocumentRequest {
  * EMF/WMF 矢量图转 PNG:浏览器渲染不了这两种格式(用户看到碎图标),
  * 送服务端 ImageMagick 转换。只传疑似矢量的条目,返回被转换的条目(key → 新 img 标签)。
  */
+/** 单张矢量图体积上限:超过就不发了(反代通常也不会放行这么大的请求体) */
+const VECTOR_IMG_MAX_BYTES = 20 * 1024 * 1024;
+
 export async function convertVectorImagesViaBackend(images: Record<string, string>): Promise<Record<string, string>> {
     const token = authService.getToken();
-    if (!token || Object.keys(images).length === 0) return {};
-    try {
-        const resp = await fetch(`${API_BASE_URL}/api/convert-images`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ images }),
-        });
-        if (!resp.ok) return {};
-        const data = await resp.json();
-        return (data?.images ?? {}) as Record<string, string>;
-    } catch {
-        return {}; // 转换失败不阻断主流程,保留原图(依旧碎图,但内容不丢)
+    const entries = Object.entries(images);
+    // 失败一律出声:此前是静默 return {},结果线上「请求被 nginx 以 413 拒掉、根本没到后端」
+    // 这种问题在浏览器里毫无痕迹,只能靠翻服务器日志才发现(实测排查了很久)。
+    if (entries.length === 0) return {};
+    if (!token) { console.warn('[VECTOR_IMG] 未登录,跳过矢量图转换'); return {}; }
+
+    const out: Record<string, string> = {};
+    let ok = 0, failed = 0, skipped = 0;
+    // 逐张发送:一张十几 MB 的 EMF 会把整批请求顶爆(反代 413),
+    // 拆开后小图仍能转换成功,只有超限的那张降级 —— 部分成功远好过全军覆没。
+    for (const [key, tag] of entries) {
+        if (tag.length > VECTOR_IMG_MAX_BYTES) {
+            skipped += 1;
+            console.warn(`[VECTOR_IMG] ${key} 体积 ${(tag.length / 1024 / 1024).toFixed(1)}MB 超限,跳过转换`);
+            continue;
+        }
+        try {
+            const resp = await fetch(`${API_BASE_URL}/api/convert-images`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ images: { [key]: tag } }),
+            });
+            if (!resp.ok) {
+                failed += 1;
+                console.warn(`[VECTOR_IMG] ${key} 转换接口返回 ${resp.status}` +
+                    (resp.status === 413 ? '(请求体超过反代 client_max_body_size 限制)' : '(404=路径未放行,401=登录态失效)'));
+                continue;
+            }
+            const data = await resp.json();
+            const got = (data?.images ?? {}) as Record<string, string>;
+            if (got[key]) { out[key] = got[key]; ok += 1; } else { failed += 1; }
+        } catch (e) {
+            failed += 1;
+            console.warn(`[VECTOR_IMG] ${key} 转换请求异常`, e);
+        }
     }
+    console.log(`[VECTOR_IMG] 矢量图转换:成功 ${ok} / 失败 ${failed} / 超限跳过 ${skipped}(共 ${entries.length} 张)`);
+    return out;
 }
 
 export async function generateDocumentViaBackend(
