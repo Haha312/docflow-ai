@@ -181,6 +181,8 @@ export interface StyleConfig {
 
   // 三线表:内线/外框线宽(pt 数值,如 0.5 / 0.75)
   tableInnerBorderPt?: number; tableOuterBorderPt?: number;
+  /** 表格线型:'grid' 全网格(默认) | 'three-line' 三线表(期刊规范:无竖线、行间无横线) */
+  tableStyle?: 'grid' | 'three-line';
 
   // 行×字网格(w:docGrid):每页行数 / 每行字数(对齐网格的单倍行距基础)
   linesPerPage?: number; charsPerLine?: number;

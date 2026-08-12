@@ -19,6 +19,8 @@ import { useAuth } from './contexts/AuthContext';
 // useTypewriter removed: SSE stream is already incremental, no need for secondary typing animation
 import { PRESETS, VISIBLE_PRESETS } from './constants';
 import { DocPreset, AIState, StyleConfig } from './types';
+import { A4_SHEET_W, A4_SHEET_H, DEFAULT_MARGINS_PX, cssLenToPx, marginsPxOf } from './utils/pageMetrics';
+import { generatePreviewStyles } from './utils/previewStyles';
 import katex from 'katex';
 import DOMPurify from 'dompurify';
 import 'katex/dist/katex.min.css';
@@ -33,41 +35,11 @@ const A4_HEIGHT_PX = 1122;
 const A4_PADDING_PX = 160;
 
 // ── 真·分页:把一段干净 HTML 按高度切成多张 A4 纸 ──
-const A4_SHEET_W = 794;                 // 纸宽 px(96dpi 下 A4 宽)
-const A4_SHEET_H = 1123;                // 纸高 px(96dpi 下 A4 高)
-/** 页边距回退值(预设未定义 pageMargins 时用,等于原先写死的观感) */
-const DEFAULT_MARGINS_PX = { top: 80, right: 90, bottom: 56, left: 90 };
+// 度量常量与页边距换算已移到 utils/pageMetrics.ts(previewStyles.ts 也要用,放这里会成环),
+// 这里 re-export 以保持既有 import 路径不变。
+export { PAGE_USABLE_H, cssLenToPx, marginsPxOf } from './utils/pageMetrics';
 
-/** 默认页边距下的每页可用内容高度(供分页单测与旧调用点参照) */
-export const PAGE_USABLE_H = 1123 - DEFAULT_MARGINS_PX.top - DEFAULT_MARGINS_PX.bottom;
 
-/** CSS 长度(cm/mm/in/pt/px)→ px(96dpi)。预设页边距用 cm 表示。 */
-export const cssLenToPx = (v?: string): number | null => {
-  if (!v) return null;
-  const m = String(v).trim().match(/^([\d.]+)\s*(cm|mm|in|pt|px)?$/i);
-  if (!m) return null;
-  const n = parseFloat(m[1]);
-  if (!Number.isFinite(n)) return null;
-  switch ((m[2] || 'px').toLowerCase()) {
-    case 'cm': return Math.round(n * 96 / 2.54);
-    case 'mm': return Math.round(n * 96 / 25.4);
-    case 'in': return Math.round(n * 96);
-    case 'pt': return Math.round(n * 96 / 72);
-    default: return Math.round(n);
-  }
-};
-
-/**
- * 预设的页边距(px)。此前预览把边距写死(且测量用 40px、渲染用 56px 自相矛盾),
- * 与导出 .docx 实际用的 styleConfig.pageMargins 对不上 —— 预览页比成品页能多塞
- * 约 9% 内容,页数与版面都不准(真实文档实测)。现在两边同源。
- */
-export const marginsPxOf = (m?: { top?: string; bottom?: string; left?: string; right?: string }) => ({
-  top: cssLenToPx(m?.top) ?? DEFAULT_MARGINS_PX.top,
-  right: cssLenToPx(m?.right) ?? DEFAULT_MARGINS_PX.right,
-  bottom: cssLenToPx(m?.bottom) ?? DEFAULT_MARGINS_PX.bottom,
-  left: cssLenToPx(m?.left) ?? DEFAULT_MARGINS_PX.left,
-});
 
 /**
  * 把 html 写入 el,按顶层块的真实高度贪心切成多张 `.a4-page` 纸张(.cover-page 独占一页),
@@ -1234,140 +1206,6 @@ function Home() {
   // Detect if the current output contains math formulas (for streaming hint)
   const hasFormulas = useMemo(() => /\$[\s\S]+?\$/.test(outputText), [outputText]);
 
-  const generatePreviewStyles = () => {
-    const s = activeStyle;
-    // 真分页(预览态、非编辑)时,#preview-content 的直接子元素是一张张 .a4-page 纸,
-    // 双栏 CSS 必须作用在「纸张内部」——否则加在 #preview-content 上会把「纸张本身」劈成两栏
-    // (纸1 在左栏、纸2 在右栏,内容不够时右栏还会空出一块,长得像多出一页空白)。
-    // 非分页(编辑/对比态,内容是扁平 DOM、没有 .a4-page 包裹)时才需要加在 #preview-content 本身上。
-    const paginated = viewMode === 'preview' && !editMode;
-    const columnRule = s.columns && s.columns > 1 ? `column-count: ${s.columns}; column-gap: 2em;` : '';
-    // 纸张内边距 = 预设页边距(与 .docx 导出同源、与分页测量同源)
-    const mg = marginsPxOf(s.pageMargins);
-    return `
-      @keyframes fadeInUp {
-        from { opacity: 0; transform: translateY(8px); }
-        to   { opacity: 1; transform: translateY(0); }
-      }
-      @keyframes shimmer {
-        0%   { transform: translateX(-100%); }
-        100% { transform: translateX(200%); }
-      }
-      #preview-content {
-        animation: fadeInUp 0.35s ease;
-        font-family: ${getPreviewFontStack(s.fontFamily)};
-        font-size: ${s.baseSize};
-        line-height: ${s.lineHeight};
-        color: #1a1a1a;
-        text-align: ${s.bodyAlign};
-        ${paginated ? '' : columnRule}
-      }
-      #preview-content p, #preview-content div:not(.katex-display):not(.math-display):not(.figure-caption):not(.table-caption):not(.doc-title):not(.doc-title-en):not(.author-info):not(.affiliation):not(.abstract-cn):not(.abstract-en):not(.cover-page):not(.doc-issuer):not(.doc-attachment) { margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; text-indent: ${s.textIndent}; }
-      /* 公文要素：强制无缩进 */
-      #preview-content .doc-classification, #preview-content .doc-urgency, #preview-content .doc-ref-number, #preview-content .doc-addressee, #preview-content .doc-signature, #preview-content .doc-date, #preview-content .doc-seal, #preview-content .doc-note, #preview-content .doc-intro { text-indent: 0 !important; }
-      /* 表格内部的 div/p 不要缩进 */
-      #preview-content td div, #preview-content th div, #preview-content td p, #preview-content th p { text-indent: 0 !important; margin: 0; }
-      /* 会议纪要:期次居中;基本信息块(会议主题/时间/地点/主持人/参会人员等)左对齐无缩进、行距收紧,
-         跟正文段落区分开,不然预览里看着跟普通段落一样、没有"信息栏"的规范感(与 docx 导出保持一致)。 */
-      #preview-content .meeting-issue { text-indent: 0 !important; text-align: center; margin: 0.3em 0 0.6em; color: #444; }
-      #preview-content .meeting-meta { margin: 0.6em 0 1em; }
-      #preview-content .meeting-meta p { text-indent: 0 !important; margin: 0.15em 0 !important; }
-
-      /* Format Defenses: Protect alignments and lists from global text-indent / margin logic */
-      #preview-content [style*="text-align: center"], #preview-content [style*="text-align: right"], #preview-content [align="center"], #preview-content [align="right"], #preview-content center { text-indent: 0 !important; }
-      #preview-content [style*="text-align: justify"], #preview-content [align="justify"] { text-align: justify !important; }
-      #preview-content ul { list-style-type: disc; list-style-position: inside; padding-left: 2em; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; }
-      #preview-content ol { list-style-type: decimal; list-style-position: inside; padding-left: 2em; margin-top: ${toCssVal(s.spacingBefore)}; margin-bottom: ${toCssVal(s.spacingAfter)}; }
-      #preview-content li { margin-bottom: 0.5em; text-indent: 0; }
-      #preview-content li p, #preview-content li div { margin: 0; text-indent: 0 !important; }
-      #preview-content b, #preview-content strong { font-weight: bold; }
-      #preview-content i, #preview-content em { font-style: italic; }
-      #preview-content h1 { font-family: ${getPreviewFontStack(s.h1Font || s.headingFont)}; font-size: ${s.h1Size}; font-weight: ${s.h1Bold ? 'bold' : 'normal'}; text-align: ${s.h1Align}; margin-top: 1em; margin-bottom: 0.5em; text-indent: ${s.h1Indent}; column-span: all; }
-      /* Safety: if AI incorrectly uses <h1> for chapter headings instead of <h2>, render them as h2 style */
-      #preview-content h1:not(.doc-title) { font-family: ${getPreviewFontStack(s.h2Font || s.headingFont)}; font-size: ${s.h2Size}; font-weight: ${s.h2Bold ? 'bold' : 'normal'}; text-align: ${s.h2Align}; margin-top: 0.85em; margin-bottom: 0.4em; text-indent: ${s.h2Indent}; column-span: unset; }
-      #preview-content h2 { font-family: ${getPreviewFontStack(s.h2Font || s.headingFont)}; font-size: ${s.h2Size}; font-weight: ${s.h2Bold ? 'bold' : 'normal'}; text-align: ${s.h2Align}; margin-top: 0.85em; margin-bottom: 0.4em; text-indent: ${s.h2Indent}; }
-      #preview-content h3 { font-family: ${getPreviewFontStack(s.h3Font || s.headingFont)}; font-size: ${s.h3Size}; font-weight: ${s.h3Bold ? 'bold' : 'normal'}; margin-top: 0.7em; margin-bottom: 0.3em; text-indent: ${s.h3Indent}; }
-      #preview-content h4 { font-family: ${getPreviewFontStack(s.h4Font || s.headingFont)}; font-size: ${s.h4Size}; font-weight: ${s.h4Bold ? 'bold' : 'normal'}; margin-top: 0.5em; margin-bottom: 0.25em; text-indent: ${s.h4Indent}; }
-      ${s.headingNumbering === 'chinese-hierarchical' ? `
-      /* GB/T 9704-2012: 一级条目（一、）段前1行(28pt)，段后0；二三级无额外间距 */
-      #preview-content h2 { margin-top: 28pt !important; margin-bottom: 0 !important; }
-      #preview-content h3 { margin-top: 0 !important; margin-bottom: 0 !important; }
-      #preview-content h4, #preview-content h5, #preview-content h6 { margin-top: 0 !important; margin-bottom: 0 !important; }
-      ` : ''}
-      #preview-content .doc-title { text-indent: 0; font-size: 26pt; text-align: center; margin-bottom: 1em; column-span: all; }
-      /* 封面页(报告/论文、出版物):整页居中 */
-      #preview-content .cover-page { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 900px; padding: 120px 24px; page-break-after: always; column-span: all; }
-      #preview-content .cover-page .doc-title { font-size: 30pt; margin-bottom: 1.4em; }
-      #preview-content .cover-meta { text-indent: 0 !important; text-align: center; font-size: 15pt; line-height: 2; margin: 0.4em 0; color: #222; }
-      /* 真·分页:只读视图下每页是一张独立 A4 白纸(在灰桌面上浮动,纸间留白) */
-      #preview-content .a4-page { position: relative; box-sizing: border-box; width: 794px; min-height: 1123px; margin: 0 auto 24px; padding: ${mg.top}px ${mg.right}px ${mg.bottom}px ${mg.left}px; background: #fff; border: 1px solid #e5e7eb; box-shadow: 0 1px 8px rgba(0,0,0,0.10); ${paginated ? columnRule : ''} }
-      #preview-content .a4-page:last-child { margin-bottom: 8px; }
-      /* 分页排版惯例 + 高度自洽:页内首块的上外边距、末块的下外边距都归零。
-         平铺测量时这两处外边距会与相邻块折叠(只算一次),落到纸内却各自顶到纸边,
-         纸张因此被撑高(实测 A4 1123px 被顶到 1183px)。归零后测量与渲染一致。 */
-      #preview-content .a4-page > *:first-child { margin-top: 0 !important; }
-      #preview-content .a4-page > *:last-child:not(.a4-page-footer) { margin-bottom: 0 !important; }
-      #preview-content .a4-page-footer { position: absolute; left: ${mg.left}px; right: ${mg.right}px; bottom: ${Math.max(12, Math.round(mg.bottom / 2.5))}px; text-align: center; font-size: 10px; color: #c7c7c7; user-select: none; }
-      /* 封面在所属纸张内填满整页、垂直居中 */
-      #preview-content .a4-page > .cover-page { min-height: ${1123 - mg.top - mg.bottom - 24}px; padding: 0; }
-      /* 学术期刊专用元素样式 */
-      #preview-content .doc-title-en { text-indent: 0; font-size: ${s.englishTitleSize || '14pt'}; font-family: ${getPreviewFontStack(s.englishTitleFont || '"Times New Roman", serif')}; font-weight: bold; text-align: center; margin-top: 0.3em; margin-bottom: 0.5em; column-span: all; }
-      #preview-content .author-info { text-indent: 0; font-size: ${s.authorSize || '10.5pt'}; font-family: ${getPreviewFontStack(s.authorFont || '"FangSong", serif')}; text-align: center; margin: 0.3em 0; column-span: all; }
-      #preview-content .affiliation { text-indent: 0; font-size: ${s.affiliationSize || '9pt'}; font-family: ${getPreviewFontStack(s.affiliationFont || '"SimSun", serif')}; text-align: center; color: #444; margin: 0.2em 0 0.6em; column-span: all; }
-      #preview-content .abstract-cn { text-indent: 0; font-size: ${s.abstractSize || '9pt'}; font-family: ${getPreviewFontStack(s.abstractFont || '"SimSun", serif')}; margin: 0.5em 0; padding: 0 1em; column-span: all; }
-      #preview-content .abstract-en { text-indent: 0; font-size: ${s.englishAbstractSize || s.abstractSize || '10.5pt'}; font-family: ${getPreviewFontStack(s.englishAbstractFont || '"Times New Roman", serif')}; margin: 0.5em 0; padding: 0 1em; column-span: all; }
-      #preview-content .abstract-cn p, #preview-content .abstract-en p { text-indent: 2em; margin: 0; }
-      #preview-content .keywords { text-indent: 0; font-size: ${s.abstractSize || '9pt'}; font-family: ${getPreviewFontStack(s.abstractFont || '"SimSun", serif')}; margin-bottom: 1em; padding: 0 1em; column-span: all; }
-      #preview-content .doc-doi { text-indent: 0; font-size: ${s.abstractSize || '9pt'}; font-family: ${getPreviewFontStack(s.abstractFont || '"SimSun", serif')}; color: #444; margin-bottom: 1em; padding: 0 1em; column-span: all; }
-      ${s.columns && s.columns > 1 ? `
-      /* 期刊 doc-title 使用标准二号 (22pt)，而非公文的 26pt */
-      #preview-content .doc-title { font-size: 22pt !important; font-family: ${getPreviewFontStack(s.h1Font || s.headingFont)}; }
-      ` : ''}
-      /* 商务公文专用要素样式 */
-      #preview-content .doc-issuer { text-align: center; font-family: "SimHei", sans-serif; font-size: 22pt; font-weight: bold; color: #cc0000; letter-spacing: 0.2em; margin: 0.5em 0 0.3em; text-indent: 0; }
-      #preview-content .doc-issuer-name { display: block; }
-      #preview-content .doc-ref-number { text-align: center; font-size: 14pt; color: #555; margin: 0.2em 0 0.5em; text-indent: 0; }
-      #preview-content .doc-classification { text-align: left; font-size: 14pt; font-weight: bold; color: #cc0000; text-indent: 0; }
-      #preview-content .doc-urgency { text-align: left; font-size: 14pt; font-weight: bold; color: #cc0000; text-indent: 0; }
-      #preview-content .doc-addressee { font-size: ${s.baseSize}; font-weight: bold; text-indent: 0; margin-top: 1em; margin-bottom: 0.5em; }
-      #preview-content .doc-intro { text-indent: 2em; }
-      #preview-content .doc-attachment { margin-top: 1.5em; border-left: 3px solid #ccc; padding-left: 1em; font-size: ${s.baseSize}; }
-      #preview-content .doc-attachment p { text-indent: 0; }
-      #preview-content .doc-signature { text-align: right; font-size: ${s.baseSize}; font-weight: bold; margin-top: 2em; text-indent: 0; }
-      #preview-content .doc-date { text-align: right; font-size: ${s.baseSize}; margin-top: 0.3em; text-indent: 0; }
-      #preview-content .doc-seal { text-align: right; font-size: ${s.baseSize}; color: #cc0000; text-indent: 0; }
-      #preview-content .doc-note { font-size: 12pt; color: #666; margin-top: 1em; text-indent: 0; }
-      #preview-content hr.doc-divider { border: none; border-bottom: 3px solid #cc0000; margin: 0.4em 0 0.6em; }
-      /* 工作方案/工作汇报:副标题/单位·汇报人·日期等篇首信息,跟导出 docx 的居中效果对齐 */
-      #preview-content .doc-subtitle { text-indent: 0 !important; text-align: center; font-weight: bold; font-size: 16pt; margin: 0.3em 0; }
-      #preview-content .doc-meta { text-indent: 0 !important; text-align: center; font-size: 16pt; margin: 0.15em 0; }
-      /* 学术期刊:篇首信息与正文之间的分隔线 */
-      #preview-content hr.journal-split { border: none; border-top: 1px solid #ccc; margin: 1em 0; }
-      #preview-content table { width: 100%; border-collapse: collapse; margin: 1em 0; font-family: ${getPreviewFontStack(s.tableFont)}; font-size: ${s.tableSize}; }
-      #preview-content th, #preview-content td { border: 1px solid #e5e5e5; padding: 8px 12px; text-align: left; text-indent: 0; }
-      #preview-content td p, #preview-content th p { text-indent: 0; margin: 0; }
-      #preview-content td li, #preview-content th li { text-indent: 0; }
-      #preview-content th { background-color: #f9fafb; font-weight: 600; }
-      #preview-content .table-caption, #preview-content caption { text-align: ${s.tableCaptionAlign}; font-family: ${getPreviewFontStack(s.tableCaptionFont)}; font-size: ${s.tableCaptionSize}; font-weight: 600; margin-bottom: 8px; display: block; }
-      #preview-content .figure-caption { text-align: ${s.figureAlign || 'center'}; font-family: ${getPreviewFontStack(s.figureFont || s.fontFamily)}; font-size: ${s.figureSize || '9pt'}; font-weight: 600; margin-top: 12px; margin-bottom: 24px; }
-      #preview-content img { max-width: 100%; height: auto; display: block; margin: 8px auto; text-indent: 0; }
-      /* 公文内超链接不显示为蓝色，继承父元素颜色 */
-      #preview-content .doc-issuer a, #preview-content .doc-ref-number a, #preview-content .doc-classification a, #preview-content .doc-urgency a, #preview-content .doc-addressee a, #preview-content .doc-signature a, #preview-content .doc-date a, #preview-content .doc-seal a, #preview-content .doc-note a { color: inherit !important; text-decoration: none !important; }
-      
-      /* Formula & Pre Overflow handling */
-      #preview-content .katex-display, #preview-content .math-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; text-indent: 0; }
-      #preview-content pre { max-width: 100%; overflow-x: auto; }
-      
-      /* Hide scrollbar visually but keep scrollable to maintain the cleanest A4 look */
-      #preview-content .katex-display::-webkit-scrollbar, #preview-content .math-display::-webkit-scrollbar, #preview-content pre::-webkit-scrollbar { display: none; }
-      
-      .katex { font-size: 1.1em; }
-      @keyframes tocFadeIn {
-        from { opacity: 0; transform: translateX(-6px); }
-        to   { opacity: 1; transform: translateX(0); }
-      }
-    `;
-  };
 
   return (
     <div className="min-h-screen bg-white">
@@ -2072,7 +1910,7 @@ function Home() {
                   </div>
                 </div>
 
-                <style>{generatePreviewStyles()}</style>
+                <style>{generatePreviewStyles(activeStyle, viewMode === 'preview' && !editMode)}</style>
 
                 {/* TOC sidebar + preview content wrapper */}
                 <div className="flex flex-1 min-h-0 overflow-hidden">

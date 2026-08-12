@@ -47,8 +47,9 @@ class CustomMathEqArr extends XmlComponent {
 
 // --- Helpers ---
 
-const getPtSize = (str: string): number => {
-    const match = str.match(/(\d+(\.\d+)?)/);
+const getPtSize = (str?: string): number => {
+    // 防 undefined:本函数在导出路径上处处被调,某个预设没配某字段就会整份导出崩溃
+    const match = (str || '').match(/(\d+(\.\d+)?)/);
     return match ? parseFloat(match[0]) : 12;
 }
 
@@ -551,16 +552,32 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
     const spacingBeforeBody = getSpacingTwips(styleConfig.spacingBefore, baseSizePt);
     const spacingAfterBody = getSpacingTwips(styleConfig.spacingAfter, baseSizePt);
     const { line: lineValue, rule: lineRule } = getLineHeightConfig(styleConfig.lineHeight);
+    // 篇首(英文题名/作者/单位)整体行距;参考文献与 DOI 的字体字号 —— 这些此前都是死配置
+    const frontMatterSpacing = styleConfig.frontMatterLineHeight
+        ? getLineHeightConfig(styleConfig.frontMatterLineHeight) : null;
+
     const bodyIndent = getIndentConfig(styleConfig.textIndent, baseSizePt);
+
+    // 中英混排:Word 的 run 可以把西文(ascii/hAnsi)与中文(eastAsia)分设不同字体。
+    // 中文字体缺省把西文面回落到 Times New Roman;若预设指定了 bodyFontEn / headingFontEn,
+    // 以它为准 —— 这两个字段此前无人消费,期刊配了西文字体却完全不生效。
+    const cleanEn = (v?: string) => (v ? v.split(',')[0].replace(/['"]/g, '').trim() : '');
+    const bodyEn = cleanEn(styleConfig.bodyFontEn);
+    const headingEn = cleanEn(styleConfig.headingFontEn);
+    const headingFonts = [styleConfig.headingFont, styleConfig.h1Font, styleConfig.h2Font, styleConfig.h3Font, styleConfig.h4Font]
+        .filter(Boolean).map((f) => (f as string).replace(/['"]/g, ''));
 
     const makeFont = (name: string) => {
         const chineseFonts = ['SimSun', 'FangSong', 'SimHei', 'KaiTi', 'Microsoft YaHei', 'PingFang SC', 'Heiti SC', 'Songti SC', 'DengXian', '等线', '宋体', '黑体', '楷体', '仿宋', '微软雅黑'];
         const cleanName = name.replace(/['"]/g, '');
         const isChineseFont = chineseFonts.some(f => cleanName.toLowerCase().includes(f.toLowerCase()));
+        // 标题用的中文字体走 headingFontEn,其余走 bodyFontEn;都没配才回落 Times New Roman
+        const isHeading = headingFonts.some((f) => f === cleanName);
+        const enFace = (isHeading ? headingEn : bodyEn) || "Times New Roman";
         return {
             name: name,
-            ascii: isChineseFont ? "Times New Roman" : name,
-            hAnsi: isChineseFont ? "Times New Roman" : name,
+            ascii: isChineseFont ? enFace : name,
+            hAnsi: isChineseFont ? enFace : name,
             eastAsia: name,
             cs: name
         };
@@ -894,8 +911,12 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 const innerBorder = isNoBorder ? { style: BorderStyle.NONE, size: 0, color: "auto" } : { style: BorderStyle.SINGLE, size: innerSz, color: "auto" };
                 const outerBorder = isNoBorder ? { style: BorderStyle.NONE, size: 0, color: "auto" } : { style: BorderStyle.SINGLE, size: outerSz, color: "auto" };
                 const margins = isNoBorder ? { top: 20, bottom: 20, left: 0, right: 0 } : { top: 100, bottom: 100, left: 100, right: 100 };
+                // 三线表(期刊规范):只有顶线、表头下线、底线 —— 没有竖线,数据行之间也没有横线。
+                // 之前只按 tableInner/OuterBorderPt 调线宽,竖线照画,期刊那份出来是网格表(投稿会被退)。
+                const isThreeLine = styleConfig.tableStyle === 'three-line' && !isNoBorder;
+                const noBorder = { style: BorderStyle.NONE, size: 0, color: "auto" } as const;
 
-                trs.forEach(tr => {
+                trs.forEach((tr, rowIdx) => {
                     const cells: TableCell[] = [];
                     tr.querySelectorAll('td, th').forEach(td => {
                         const cellChildren = processNodes(td.childNodes, undefined, { inTable: true, inHeader: td.tagName === 'TH' }, currentAlign) as (Paragraph | Table)[];
@@ -903,11 +924,18 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                         const rowspan = parseInt(td.getAttribute('rowspan') || '1');
                         const colspan = parseInt(td.getAttribute('colspan') || '1');
                         // 单元格边框用内线宽;外框由 Table 级 top/bottom/left/right 提供
-                        cells.push(new TableCell({ children: cellChildren, columnSpan: colspan, rowSpan: rowspan, borders: { top: innerBorder, bottom: innerBorder, left: innerBorder, right: innerBorder }, margins: margins }));
+                        // 三线表:单元格四边都不画;表头行(第一行)补一条下线
+                        const cellBorders = isThreeLine
+                            ? { top: noBorder, bottom: rowIdx === 0 ? innerBorder : noBorder, left: noBorder, right: noBorder }
+                            : { top: innerBorder, bottom: innerBorder, left: innerBorder, right: innerBorder };
+                        cells.push(new TableCell({ children: cellChildren, columnSpan: colspan, rowSpan: rowspan, borders: cellBorders, margins: margins }));
                     });
                     rowsArr.push(new TableRow({ children: cells }));
                 });
-                elements.push(new Table({ rows: rowsArr, width: { size: 100, type: WidthType.PERCENTAGE }, borders: { top: outerBorder, bottom: outerBorder, left: outerBorder, right: outerBorder, insideHorizontal: innerBorder, insideVertical: innerBorder } }));
+                const tableBorders = isThreeLine
+                    ? { top: outerBorder, bottom: outerBorder, left: noBorder, right: noBorder, insideHorizontal: noBorder, insideVertical: noBorder }
+                    : { top: outerBorder, bottom: outerBorder, left: outerBorder, right: outerBorder, insideHorizontal: innerBorder, insideVertical: innerBorder };
+                elements.push(new Table({ rows: rowsArr, width: { size: 100, type: WidthType.PERCENTAGE }, borders: tableBorders }));
                 return;
             }
 
@@ -1086,10 +1114,10 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 });
                 return;
             }
-            if (hasElementClass(el, 'doc-title-en')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 120 }, children: [new TextRun({ text: text, font: makeFont(englishTitleFont), color: primaryColor, bold: !!styleConfig.englishTitleBold, size: getHalfPtSize(styleConfig.englishTitleSize || '12pt') })] })); return; }
-            if (hasElementClass(el, 'doc-title')) { elements.push(new Paragraph({ heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER, spacing: { before: 240, after: 120 }, children: [new TextRun({ text: text, font: makeFont(h1Font), color: primaryColor, bold: styleConfig.h1Bold, size: getHalfPtSize(styleConfig.h1Size || '22pt') })] })); return; }
-            if (hasElementClass(el, 'author-info')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120, after: 80 }, children: [new TextRun({ text: text, font: makeFont(authorFont), size: getHalfPtSize(styleConfig.authorSize || '14pt'), color: "000000" })] })); return; }
-            if (hasElementClass(el, 'affiliation')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 40, after: 160 }, children: [new TextRun({ text: text, font: makeFont(affiliationFont), size: getHalfPtSize(styleConfig.affiliationSize || '10.5pt'), color: "000000" })] })); return; }
+            if (hasElementClass(el, 'doc-title-en')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 120, ...(frontMatterSpacing ? { line: frontMatterSpacing.line, lineRule: frontMatterSpacing.rule } : {}) }, children: [new TextRun({ text: text, font: makeFont(englishTitleFont), color: primaryColor, bold: !!styleConfig.englishTitleBold, size: getHalfPtSize(styleConfig.englishTitleSize || '12pt') })] })); return; }
+            if (hasElementClass(el, 'doc-title')) { elements.push(new Paragraph({ heading: HeadingLevel.TITLE, alignment: mapAlignment(styleConfig.h1Align || 'center'), spacing: { before: styleConfig.h1SpacingBefore ? getSpacingTwips(styleConfig.h1SpacingBefore, getPtSize(styleConfig.h1Size)) : 240, after: 120 }, children: [new TextRun({ text: text, font: makeFont(h1Font), color: primaryColor, bold: styleConfig.h1Bold, size: getHalfPtSize(styleConfig.h1Size || '22pt'), italics: !!styleConfig.h1Italic })] })); return; }
+            if (hasElementClass(el, 'author-info')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120, after: 80, ...(frontMatterSpacing ? { line: frontMatterSpacing.line, lineRule: frontMatterSpacing.rule } : {}) }, children: [new TextRun({ text: text, font: makeFont(authorFont), size: getHalfPtSize(styleConfig.authorSize || '14pt'), color: "000000" })] })); return; }
+            if (hasElementClass(el, 'affiliation')) { elements.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 40, after: 160, ...(frontMatterSpacing ? { line: frontMatterSpacing.line, lineRule: frontMatterSpacing.rule } : {}) }, children: [new TextRun({ text: text, font: makeFont(affiliationFont), size: getHalfPtSize(styleConfig.affiliationSize || '10.5pt'), color: "000000" })] })); return; }
             if (hasElementClass(el, 'abstract-cn') || hasElementClass(el, 'abstract-en')) {
                 const isEnAbs = hasElementClass(el, 'abstract-en');
                 const absFont = isEnAbs ? abstractEnFont : abstractCnFont;
@@ -1100,6 +1128,10 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 const absSpacing = absLineM
                     ? { before: 0, after: 60, line: Math.round(parseFloat(absLineM[1]) * 20), lineRule: LineRuleType.EXACT }
                     : { before: 0, after: 60 };
+                // 摘要首行缩进字符数(缺省 2 字符);此前写死,abstractIndentChars 是死配置
+                const absIndentChars = styleConfig.abstractIndentChars ?? 2;
+                const absIndentSize = (isEnAbs ? styleConfig.englishAbstractSize : undefined) || styleConfig.abstractSize || styleConfig.baseSize;
+                const absIndent = { firstLine: Math.round(absIndentChars * getPtSize(absIndentSize) * 20) };
                 Array.from(el.childNodes).forEach(child => {
                     if (child.nodeType === Node.ELEMENT_NODE) {
                         const p = child as HTMLElement;
@@ -1116,10 +1148,10 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                             runs.push(new TextRun({ text: p.textContent, font: makeFont(absFont), size: absSz }));
                         }
                         if (runs.length > 0) {
-                            elements.push(new Paragraph({ alignment: currentAlign as any, indent: { firstLine: 0 }, spacing: absSpacing, children: runs }));
+                            elements.push(new Paragraph({ alignment: currentAlign as any, indent: absIndent, spacing: absSpacing, children: runs }));
                         }
                     } else if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').trim()) {
-                        elements.push(new Paragraph({ alignment: currentAlign as any, indent: { firstLine: 0 }, spacing: absSpacing, children: [new TextRun({ text: child.textContent || '', font: makeFont(absFont), size: absSz })] }));
+                        elements.push(new Paragraph({ alignment: currentAlign as any, indent: absIndent, spacing: absSpacing, children: [new TextRun({ text: child.textContent || '', font: makeFont(absFont), size: absSz })] }));
                     }
                 });
                 return;
@@ -1141,7 +1173,7 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 120 }, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(keywordsFont), size: getHalfPtSize(styleConfig.keywordsSize || styleConfig.abstractSize || styleConfig.baseSize), color: "000000" })] }));
                 return;
             }
-            if (className.includes('table-caption') || tagName === 'CAPTION') { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: true, color: "000000" })] })); return; }
+            if (className.includes('table-caption') || tagName === 'CAPTION') { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: styleConfig.tableCaptionBold !== false, color: "000000" })] })); return; }
 
             if (tagName === 'H1') elements.push(createHeading(text, 1));
             else if (tagName === 'H2') elements.push(createHeading(text, 2));

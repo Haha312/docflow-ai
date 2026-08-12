@@ -241,7 +241,8 @@ export const PRESETS: PresetConfig[] = [
       figureWidthHalf: '6.5cm', figureWidthFull: '14cm',
       referencesFont: '"SimSun", serif', referencesSize: '7.5pt', // 参考文献六号宋体
       referencesLineHeight: '12pt', referencesHangingIndent: '0.63cm',
-      tableInnerBorderPt: 0.5, tableOuterBorderPt: 0.75, // 三线表内0.5/外0.75pt
+      tableInnerBorderPt: 0.5, tableOuterBorderPt: 0.75, // 三线表:表头下线0.5/顶底线0.75pt
+      tableStyle: 'three-line', // 期刊规范:只有顶线、表头下线、底线;无竖线、行间无横线
       linesPerPage: 45, charsPerLine: 45 // 行×字网格
     }
   },
