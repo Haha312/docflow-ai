@@ -1,5 +1,21 @@
 export const cleanOutput = (text: string): string => {
     let result = text.replace(/```html/g, '').replace(/```/g, '').trim();
+    // 模型偶发把"自言自语"和整段原始标记塞进 HTML 注释(实测:被要求不要自己写 <table> 后,
+    // 它把整张表连同一段解释包进 <!-- ... -->)。注释在页面上不显示,却会被按标签计数 ——
+    // 于是既触发「未闭合表格」误报,又让"内容还在"的判断失真。成稿里不需要任何注释,一律去掉。
+    result = result.replace(/<!--[\s\S]*?-->/g, '');
+    // 模型偶发不按「只输出内容片段」来,而是回一整份 HTML 文档(<!DOCTYPE><html><head><style>…)。
+    // 前端净化时会把这些外壳丢掉,但后端的结构校验与逐句核对在此之前跑 —— 整段 CSS 会被
+    // 当成正文参与计数(实测:公文那份因此拍出一张白纸)。这里先把外壳与样式/脚本剥掉。
+    const bodyMatch = result.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
+    if (bodyMatch) result = bodyMatch[1];
+    result = result
+        .replace(/<!DOCTYPE[^>]*>/gi, '')
+        .replace(/<\/?(?:html|head|body)\b[^>]*>/gi, '')
+        .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+        .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+        .replace(/<(?:meta|link|title)\b[^>]*>[\s\S]*?<\/title>|<(?:meta|link)\b[^>]*\/?>/gi, '')
+        .trim();
     result = result.replace(/(<(?:p|div)[^>]*>\s*(\$[^$\n]{1,60}\$|\$\$[\s\S]{1,200}?\$\$)\s*<\/(?:p|div)>)\s*\1/g, '$1');
     return result;
 };

@@ -64,6 +64,19 @@ describe('verifyTableStructure', () => {
         expect(unclosed!.severity).toBe('critical');
     });
 
+    // 回归:被注释掉的表格标记不在页面上,不能算进开闭标签数,否则整份成稿被判 critical
+    it('HTML 注释里的表格标记不参与计数,不误报未闭合', () => {
+        const html = `<p>正文</p><!-- 占位:<table><tr><td>a</td></tr></table> 原文保留 --><p>结尾</p>`;
+        const issues = verifyTableStructure(html);
+        expect(issues.map((i) => i.type)).not.toContain('table_unclosed');
+    });
+
+    it('真的未闭合(不在注释里)仍然报', () => {
+        const html = `<!-- 说明 --><table><tr><td>a</td></tr>`;
+        const issues = verifyTableStructure(html);
+        expect(issues.map((i) => i.type)).toContain('table_unclosed');
+    });
+
     it('空表 → table_empty', () => {
         const html = `<table><tbody></tbody></table>`;
         const issues = verifyTableStructure(html);
@@ -252,5 +265,64 @@ describe('verifyBeforeDelivery', () => {
         const result = verifyBeforeDelivery(source, output);
         expect(result.issues.map((i) => i.type)).toContain('figure_numbering_broken');
         expect(result.repairable).toBe(false);
+    });
+});
+
+// 回归:归一化必须把弯引号折成直引号。这条规则曾被一次编码往返压平成两个 ASCII 引号,
+// 等于没生效 —— 模型把 "xx" 排成 “xx” 就会整句比对失败,报出并不存在的缺失句子。
+describe('normalizeForCompare 引号折叠', () => {
+    it('弯引号与直引号归一后一致', () => {
+        expect(normalizeForCompare('提出的“四层架构”方案'))
+            .toBe(normalizeForCompare('提出的"四层架构"方案'));
+    });
+
+    it('单引号、直角引号同样折叠', () => {
+        const base = normalizeForCompare('称为"数据孤岛"');
+        expect(normalizeForCompare('称为‘数据孤岛’')).toBe(base);
+        expect(normalizeForCompare('称为「数据孤岛」')).toBe(base);
+    });
+
+    it('源文用直引号、成稿用弯引号时不判缺句', () => {
+        const src = '<p>原则同意报告提出的"采集层—应用层"四层架构技术路线。</p>';
+        const out = '<h3>（一） 原则同意报告提出的“采集层—应用层”四层架构技术路线。</h3>';
+        expect(verifySentenceCoverage(src, out).missingSentences).toHaveLength(0);
+    });
+});
+
+// 回归:句子被排版提升成标题时,句末标点会被去掉。只差一个句号就判「丢失」,
+// 在公文/方案类文档上会批量误报,而且是 critical 级 —— 用户看到的就是那条吓人的红条。
+describe('句末标点不参与逐句核对', () => {
+    it('源文带句号、成稿作为标题不带句号 → 不算缺失', () => {
+        const src = '<p>（一）准备阶段（2026年4月至6月）。完成可研评审、资金安排与招标采购。</p>';
+        const out = '<h4>（一）准备阶段（2026年4月至6月）</h4><p>完成可研评审、资金安排与招标采购。</p>';
+        expect(verifySentenceCoverage(src, out).missingSentences).toHaveLength(0);
+    });
+
+    it('内容真的没了,仍然照报', () => {
+        const src = '<p>（一）准备阶段（2026年4月至6月）。完成可研评审、资金安排与招标采购。</p>';
+        const out = '<p>完成可研评审、资金安排与招标采购。</p>';
+        expect(verifySentenceCoverage(src, out).missingSentences.length).toBeGreaterThan(0);
+    });
+});
+
+// 回归:排版会在句中把一段切成「标题 + 正文」,切分点上的逗号随之消失。字一个没少却报
+// critical 红条,公文/方案类文档批量踩。判定只放宽标点 —— 词句真缺失仍然照报。
+describe('只差标点不算丢失', () => {
+    it('句中被切成标题+正文,切分处的逗号消失 → 不算缺失', () => {
+        const src = '<p>（一）计量装置台账与实物是否一致，含表号、量程、精度等级、安装位置、投运日期。</p>';
+        const out = '<h4>（一）计量装置台账与实物是否一致</h4><p>含表号、量程、精度等级、安装位置、投运日期。</p>';
+        expect(verifySentenceCoverage(src, out).missingSentences).toHaveLength(0);
+    });
+
+    it('后半句真的没了 → 照常报缺失', () => {
+        const src = '<p>（一）计量装置台账与实物是否一致，含表号、量程、精度等级、安装位置、投运日期。</p>';
+        const out = '<h4>（一）计量装置台账与实物是否一致</h4>';
+        expect(verifySentenceCoverage(src, out).missingSentences.length).toBeGreaterThan(0);
+    });
+
+    it('句中被改词 → 照常报缺失(放宽的只有标点)', () => {
+        const src = '<p>全园区共有各类计量点位1860个，其中具备远程采集能力的仅720个。</p>';
+        const out = '<p>全园区共有各类计量点位1860个，其中具备远程采集能力的仅520个。</p>';
+        expect(verifySentenceCoverage(src, out).missingSentences.length).toBeGreaterThan(0);
     });
 });

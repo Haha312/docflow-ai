@@ -139,8 +139,65 @@ export const sourceNumbersCoherent = (list: SourceCaption[]): boolean => {
     return true;
 };
 
+/**
+ * 源文标题编号「本身连续可信、但不从 1 开始」→ 应当沿用,不能重编。
+ *
+ * 背景:标题编号一律按层级重编(counters 从 0 数起),对编号乱掉的源文是产品价值;
+ * 但源文若是一本书的第 3~5 章、或某分册从第 4 章起,重编会把作者写的章号悄悄改掉
+ * (实测:源文「第三章/第四章/第五章」→ 成稿「第一章/第二章/第三章」)。
+ *
+ * 判定刻意保守 —— 只在两个条件同时成立时才沿用:
+ *   1. 编号自洽:每个标题都有编号,顶层逐 1 递增,子层在父号下从 1 开始逐 1 递增;
+ *   2. 顶层起始号 ≠ 1 —— 也只有这种情况重编才会真的改动内容。
+ * 起始号为 1 的文档(绝大多数)沿用与重编结果完全一致,故不改变其行为,风险为零。
+ */
+export const headingNumbersShouldBePreserved = (skeleton?: SkeletonNode[]): boolean => {
+    const nodes = (skeleton ?? []).filter((n) => (n.text ?? '').trim().length > 0);
+    if (nodes.length < 2) return false;
+
+    const seqs: number[][] = [];
+    for (const n of nodes) {
+        const raw = (n.number ?? '').trim();
+        if (!raw) return false;                                  // 有标题没编号 → 不可信
+        const parts = raw.split('.').map((p) => parseInt(p, 10));
+        if (parts.some((p) => !Number.isFinite(p) || p <= 0)) return false;
+        seqs.push(parts);
+    }
+
+    const firstTop = seqs.find((p) => p.length === 1)?.[0];
+    if (firstTop === undefined || firstTop === 1) return false;  // 从 1 开始 → 重编等价,不必特殊处理
+
+    // 逐级检查:同一父号下的序号必须从 1 开始逐 1 递增;顶层从 firstTop 起逐 1 递增
+    const lastSeq = new Map<string, number>();
+    for (const parts of seqs) {
+        const parent = parts.slice(0, -1).join('.');
+        const seq = parts[parts.length - 1];
+        const prev = lastSeq.get(parent);
+        const expected = prev === undefined ? (parent === '' ? firstTop : 1) : prev + 1;
+        if (seq !== expected) return false;
+        lastSeq.set(parent, seq);
+        // 出现 L 级标题后,所有服务于更深层级的计数作废(下一个子层要从 1 重新开始)
+        const depthOf = (k: string) => (k === '' ? 0 : k.split('.').length);
+        for (const key of [...lastSeq.keys()]) {
+            if (depthOf(key) >= parts.length) lastSeq.delete(key);
+        }
+        lastSeq.set(parent, seq);   // 本级自身的计数要留着
+    }
+    return true;
+};
+
+/** 题注长度上限:题注是个标签,不是句子。超过这个长度的基本都是正文 */
+const CAPTION_MAX_LEN = 60;
+
 const parseCaption = (textOrHtml: string): SourceCaption | null => {
     const text = stripHtmlToText(textOrHtml).replace(/^(?:__IMG_\d+__\s*)+/, '').trim();
+    // 正文里引用图表极常见:「图2 给出了不同方法的对比结果。可以看出……」。
+    // 只按开头「图N/表N」就认题注,会把整段正文转成居中的题注 div —— 内容形态被改;
+    // 这些假题注还会混进源文题注清单,连带把编号判成不连续(学术类文档最容易踩)。
+    // 题注的形态是:短、单句、不以句末标点收尾。三条都按结构判,不猜语义。
+    if (text.length > CAPTION_MAX_LEN) return null;
+    if (/[。！？!?；;]$/.test(text)) return null;   // 以句末标点收尾 → 完整句子
+    if (/[。！？]/.test(text)) return null;          // 中间就断句 → 多句正文
     const m = text.match(/^(图|表)\s*(\d+(?:[-.\u2010-\u2015\uFF0D]\d+)*)[\s\u3000、.：:：]*(.*)$/);
     if (!m) return null;
     const kind = m[1] as '图' | '表';
@@ -443,6 +500,10 @@ export const renumberStructure = (html: string, opts: PostProcessOptions, canoni
     const numberedScheme = opts.scheme === 'decimal' || opts.scheme === 'decimal-nested'
         || opts.scheme === 'chinese-hierarchical' || opts.scheme === 'chapter';
 
+    // 源文编号自洽且不从 1 起(书的第 3~5 章、分册等)→ 沿用源号,否则按层级重编
+    const preserveNums = !!opts.preserveSourceHeadingNumbers
+        || headingNumbersShouldBePreserved(opts.skeleton);
+
     const counters = [0, 0, 0, 0, 0, 0]; // index 1..5 -> content level 1..5 (h2..h6)
     let figGlobal = 0, tabGlobal = 0;       // sequential 模式全局序号
     let figInChapter = 0, tabInChapter = 0; // chapter-relative 模式章内序号
@@ -484,7 +545,7 @@ export const renumberStructure = (html: string, opts: PostProcessOptions, canoni
             }
             const skId = (hAttrs || '').match(/\bdata-sk="([^"]+)"/i)?.[1] ?? '';
             const skNode = skId ? opts.skeleton?.find(n => n.id === skId) : undefined;
-            const num = opts.preserveSourceHeadingNumbers && skNode?.number
+            const num = preserveNums && skNode?.number
                 ? formatSkeletonHeadingNumber(opts.scheme, skNode.number)
                 : formatHeadingNumber(opts.scheme, cl, counters);
             const stripped = stripHeadingPrefix(hInner);

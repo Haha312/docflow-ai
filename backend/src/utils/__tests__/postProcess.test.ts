@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { postProcess, enforceSingleTitleAndDemote, extractSourceCaptions, reconcileCaptionsToSource, PostProcessOptions } from '../postProcess';
+import { postProcess, enforceSingleTitleAndDemote, extractSourceCaptions, reconcileCaptionsToSource, headingNumbersShouldBePreserved, PostProcessOptions } from '../postProcess';
 import { buildSkeleton } from '../skeleton';
 
 const opts = (over: Partial<PostProcessOptions> = {}): PostProcessOptions => ({
@@ -541,5 +541,87 @@ describe('reconcileCaptionsToSource — 分类裁剪与源编号自洽性(真实
         const { text } = reconcileCaptionsToSource(html, src);
         expect(text).toContain('表1 数据安全设计清单');
         expect(text).not.toContain('凭空编造');
+    });
+});
+
+// 标题编号一律按层级重编,对编号乱掉的源文是产品价值;但源文若是一本书的第 3~5 章、
+// 或某分册从第 4 章起,重编就把作者写的章号悄悄改了(实测:第三/四/五章 → 第一/二/三章)。
+// 规则刻意保守:只在「编号自洽 且 不从 1 起」时沿用 —— 从 1 起的文档沿用与重编等价,行为不变。
+describe('源文标题编号的沿用判定', () => {
+    const node = (number: string, text: string, sourceLevel: number, i: number) => ({
+        id: `sk${i}`, sourceLevel, outputLevel: Math.min(sourceLevel + 1, 6), number, text, norm: text,
+    });
+    const sk = (rows: [string, string, number][]) => rows.map((r, i) => node(r[0], r[1], r[2], i));
+    const body = (nodes: ReturnType<typeof sk>) =>
+        '<h1 class="doc-title">城市的呼吸</h1>' + nodes.map((n) =>
+            `<h${n.outputLevel} data-sk="${n.id}">${n.number} ${n.text}</h${n.outputLevel}>` +
+            `<p>${n.text}这一节的正文内容,写得足够长以免被当成标题行。</p>`).join('');
+    const headsOf = (html: string) =>
+        (html.match(/<h[2-6][^>]*>([\s\S]*?)<\/h[2-6]>/g) ?? []).map((h) => h.replace(/<[^>]+>/g, '').trim());
+
+    it('不从 1 起且自洽 → 判为应沿用', () => {
+        expect(headingNumbersShouldBePreserved(sk([['3', '甲', 1], ['4', '乙', 1], ['5', '丙', 1]]))).toBe(true);
+    });
+
+    it('从 1 起 → 不特殊处理(沿用与重编等价)', () => {
+        expect(headingNumbersShouldBePreserved(sk([['1', '甲', 1], ['2', '乙', 1]]))).toBe(false);
+    });
+
+    it('跳号 / 缺编号 → 不可信,照常重编', () => {
+        expect(headingNumbersShouldBePreserved(sk([['3', '甲', 1], ['5', '乙', 1]]))).toBe(false);
+        expect(headingNumbersShouldBePreserved(sk([['3', '甲', 1], ['', '乙', 1]]))).toBe(false);
+    });
+
+    it('书的第 3~5 章:章号原样保留,不被重编成第一章', () => {
+        const nodes = sk([['3', '甲', 1], ['4', '乙', 1], ['5', '丙', 1]]);
+        const out = postProcess(body(nodes), opts({ scheme: 'chapter', skeleton: nodes })).text;
+        expect(headsOf(out)).toEqual(['第三章 甲', '第四章 乙', '第五章 丙']);
+    });
+
+    it('分册从第 4 章起,子节编号跟着源文走', () => {
+        const nodes = sk([['4', '甲', 1], ['4.1', '甲一', 2], ['4.2', '甲二', 2], ['5', '乙', 1]]);
+        const out = postProcess(body(nodes), opts({ scheme: 'decimal-nested', skeleton: nodes })).text;
+        expect(headsOf(out)).toEqual(['4. 甲', '4.1 甲一', '4.2 甲二', '5. 乙']);
+    });
+
+    it('源文编号乱掉时仍然重编(产品价值不能丢)', () => {
+        const nodes = sk([['3', '甲', 1], ['5', '乙', 1], ['6', '丙', 1]]);
+        const out = postProcess(body(nodes), opts({ scheme: 'chapter', skeleton: nodes })).text;
+        expect(headsOf(out)).toEqual(['第一章 甲', '第二章 乙', '第三章 丙']);
+    });
+});
+
+// 回归:中文论文里「图2 给出了…」这种引用句极常见。只按开头「图N」就认题注,
+// 会把整段正文转成居中的题注 div(内容形态被改),还会污染源文题注清单、连带把编号判成不连续。
+describe('正文里引用图表的句子不能当成题注', () => {
+    const caps = (html: string) => extractSourceCaptions(html);
+
+    it.each([
+        '<p>图2 给出了不同方法的对比结果。</p>',
+        '<p>表1 列出了各类计量设备的接入方式。可以看出网关直连占多数。</p>',
+        '<p>图3 中的曲线表明，热负荷对室外温度的响应存在滞后；这一现象在冬季尤为明显。</p>',
+        '<p>图4 显示了聚类结果，其中横轴为时间。</p>',
+        // 这条没有句末标点、中间也不断句,只能靠长度拦下
+        '<p>图2 中给出的三条曲线分别对应基准方法、按日期类型分组的改进方法以及本文提出的时序聚类方法在整个测试集上的逐日预测表现与误差分布情况对比</p>',
+    ])('引用句不登记为源文题注: %s', (html) => {
+        const c = caps(html);
+        expect(c.figures.length + c.tables.length).toBe(0);
+    });
+
+    it.each([
+        ['<p>图1 平台总体架构示意图</p>', 1, 0],
+        ['<p>表1 计量设备接入方式对照表</p>', 0, 1],
+        ['<p>图 3-2 数据处理流程</p>', 1, 0],
+    ])('真题注仍然照常识别: %s', (html, figs, tabs) => {
+        const c = caps(html);
+        expect(c.figures.length).toBe(figs);
+        expect(c.tables.length).toBe(tabs);
+    });
+
+    it('引用句不会被提升成题注 div(正文形态不被改)', () => {
+        const src = '<p>图1 平台总体架构示意图</p><p>图1 给出了平台的四层结构。</p>';
+        const out = postProcess(src, opts({ scheme: 'decimal', sourceCaptions: extractSourceCaptions(src) })).text;
+        expect((out.match(/figure-caption/g) ?? []).length).toBe(1);
+        expect(out).toMatch(/<p[^>]*>图1 给出了平台的四层结构。<\/p>/);
     });
 });

@@ -36,7 +36,10 @@ export const normalizeForCompare = (html: string): string =>
         .replace(/[？]/g, '?')
         .replace(/[！]/g, '!')
         .replace(/[（）]/g, (c) => (c === '（' ? '(' : ')'))
-        .replace(/[""'']/g, '"')
+        // 引号一律折成 ASCII 双引号。必须写成显式转义:这行原本是直接贴的弯引号,
+        // 某次编码往返把它压成了两个 ASCII 引号(U+22 U+22 U+27 U+27),规则等于没生效 ——
+        // 于是模型把 "xx" 排成 “xx” 时,整句比对失败,报出并不存在的「缺失句子」(七题材跑批实测)。
+        .replace(/[“”‘’「」『』«»'"]/g, '"')
         .replace(/\s+/g, '')
         .toLowerCase();
 
@@ -87,7 +90,9 @@ export const parseTableRows = (tableHtml: string): TableRowShape[] => {
  */
 export const verifyTableStructure = (html: string): IntegrityIssue[] => {
     const issues: IntegrityIssue[] = [];
-    const safe = html || '';
+    // 注释里的标签不是页面上的表格,不能参与计数(否则被注释掉的 <table> 会误报未闭合)。
+    // cleanOutput 已经会剔除注释,这里再挡一道 —— 本函数也被别处直接调用。
+    const safe = (html || '').replace(/<!--[\s\S]*?-->/g, '');
 
     // 1) 未闭合表格
     const openCount = (safe.match(/<table\b/gi) ?? []).length;
@@ -308,6 +313,9 @@ export const extractSentences = (html: string): string[] => {
         .filter((s) => !isHeadingLine(s));
 };
 
+/** 去掉全部标点,只留字词 —— 供「只差标点不算丢失」的兜底比对使用 */
+const dropPunctuation = (t: string): string => t.replace(/[.,;:!?()[\]{}"'`~\-—–…·、·]/g, '');
+
 /**
  * 逐句核对:原文的每个句子是否能在成稿里找到。
  * 容忍标点/空白/全半角差异;为容忍 AI 合并短句,采用"归一化后子串包含"判定。
@@ -320,17 +328,34 @@ export const verifySentenceCoverage = (
     if (sourceSentences.length === 0) return { issues: [], missingSentences: [] };
 
     const outputNorm = normalizeForCompare(outputHtml);
+    const outputBare = dropPunctuation(outputNorm);   // 只比字、不比标点的兜底口径
     const missing: string[] = [];
 
     for (const s of sourceSentences) {
         const key = normalizeForCompare(s);
         if (key.length < 12) continue;
         if (outputNorm.includes(key)) continue;
+        let matched = false;
         // 枚举编号被排版吸收:「1. 完成数据标准体系建设…」转成 <li> 后编号由列表结构
         // 表达,正文里只剩句体 —— 剥掉头部枚举标记再找一次(真实实测误报重试+吓人红条)
         // 注意 key 已过 normalizeForCompare:顿号折成逗号、全角括号折半角、空白已删
         const stripped = key.replace(/^(?:(?:\d+|[一二三四五六七八九十]+)[.,、]|\(\d+\))/, '');
         if (stripped !== key && stripped.length >= 10 && outputNorm.includes(stripped)) continue;
+        // 句子被提升成标题:排版会把句末标点去掉(源文「（一）准备阶段（2026年4月至6月）。」
+        // → 成稿 <h4>（一）准备阶段（2026年4月至6月）</h4>)。只差一个句号就判丢失,
+        // 会在公文/方案类文档上批量误报,还是 critical 级红条(七题材跑批实测 4 处)。
+        // 故末尾标点不参与匹配 —— 首尾两种剥法组合再找一次。
+        const trimTail = (t: string) => t.replace(/[.,;:!?]+$/, '');
+        for (const cand of [trimTail(key), trimTail(stripped)]) {
+            if (cand !== key && cand.length >= 10 && outputNorm.includes(cand)) { matched = true; break; }
+        }
+        if (matched) continue;
+        // 只差标点 → 不算丢失。排版会在句中把一段切成「标题 + 正文」,切分点上的那个逗号
+        // 随之消失(源文「（一）台账与实物是否一致,含表号、量程…」→ 成稿 <h4>（一）台账与实物是否一致</h4>
+        // + <p>含表号、量程…</p>)。字一个没少却报 critical 红条,公文/方案类批量踩(实测 3 处)。
+        // 判定只放宽标点:词句缺失仍然照报。
+        const bare = dropPunctuation(key);
+        if (bare.length >= 12 && outputBare.includes(bare)) continue;
         // 长句允许 AI 轻微改写:取首尾片段双侧命中即认为保留
         if (key.length >= 40) {
             const head = key.slice(0, 20);

@@ -40,3 +40,7 @@ backend/smtp_log.txt
 backend/alipay_result.json
 backend/test_alipay*
 backend/*.bak
+
+# 本地临时试跑脚本(t_ 前缀),只在开发机上用,不入库
+backend/t_*.ts
+backend/t_*.js

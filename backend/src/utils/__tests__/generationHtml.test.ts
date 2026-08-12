@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    cleanOutput,
     countNumberedItems,
     detectCorporateElementClasses,
     ensureFigureCaptions,
@@ -125,5 +126,61 @@ describe('generationHtml helpers', () => {
             expect(map.outline).not.toContain('English Title');
             expect(map.levelMap.has('english title')).toBe(false);
         });
+    });
+});
+
+// 回归:模型被要求"不要自己写 <table>"后,可能改成把整张表连同一段自言自语包进 HTML 注释。
+// 注释在页面上不显示,却会被按标签计数 —— 表格既没还原,还误报「未闭合表格」(真实跑批实测)。
+describe('cleanOutput 剔除模型输出里的 HTML 注释', () => {
+    it('注释连同其中的标记一起去掉', () => {
+        const out = cleanOutput('<p>正文</p><!-- 占位说明 <table><tr><td>1</td></tr></table> 见原文 --><p>结尾</p>');
+        expect(out).not.toContain('<!--');
+        expect(out).not.toContain('<table');
+        expect(out).toContain('<p>正文</p>');
+        expect(out).toContain('<p>结尾</p>');
+    });
+
+    it('多段注释与跨行注释都清掉', () => {
+        const out = cleanOutput('<p>a</p><!--\n多行\n说明\n--><p>b</p><!-- 又一段 --><p>c</p>');
+        expect(out.match(/<!--/g)).toBeNull();
+        expect(out).toContain('<p>a</p>');
+        expect(out).toContain('<p>c</p>');
+    });
+
+    it('正文里的普通尖括号文本不受影响', () => {
+        const out = cleanOutput('<p>取值区间 a &lt; b 时成立</p>');
+        expect(out).toContain('a &lt; b');
+    });
+});
+
+// 回归:模型偶发回一整份 HTML 文档而不是内容片段。前端净化会丢掉外壳,但后端的
+// 结构校验与逐句核对跑在那之前 —— 整段 CSS 会被当成正文参与计数(公文那份实测拍出白纸)。
+describe('cleanOutput 剥掉整份 HTML 文档的外壳', () => {
+    const full = [
+        '<!DOCTYPE html>', '<html lang="zh-CN">', '<head>',
+        '<meta charset="UTF-8">', '<title>通知</title>',
+        '<style>body{font-family:"FangSong";} .document{width:210mm}</style>',
+        '</head>', '<body>',
+        '<h1 class="doc-title">关于开展核查工作的通知</h1><p>各入园企业：</p>',
+        '</body>', '</html>',
+    ].join('\n');
+
+    it('只留下正文,外壳与样式全部去掉', () => {
+        const out = cleanOutput(full);
+        expect(out).toContain('<h1 class="doc-title">关于开展核查工作的通知</h1>');
+        expect(out).toContain('<p>各入园企业：</p>');
+        for (const junk of ['DOCTYPE', '<html', '<head', '<body', '<style', '<meta', '<title', 'FangSong', '210mm']) {
+            expect(out, junk).not.toContain(junk);
+        }
+    });
+
+    it('正常的内容片段原样通过', () => {
+        const frag = '<h2>一、核查范围</h2><p>园区范围内所有独立计量的用能户。</p>';
+        expect(cleanOutput(frag)).toBe(frag);
+    });
+
+    it('没有 body 包裹但带 style 的输出也能清干净', () => {
+        const out = cleanOutput('<style>p{color:red}</style><p>正文</p>');
+        expect(out).toBe('<p>正文</p>');
     });
 });

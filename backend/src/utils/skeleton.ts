@@ -20,6 +20,43 @@ export interface SkeletonNode {
     norm: string;        // 归一化文本,用于匹配/去重(口径与 postProcess/integrity 一致)
 }
 
+/** 中文数字 → 阿拉伯数字(一~九十九,够章节用);认不出返回 null */
+const cnToNumber = (cn: string): number | null => {
+    const digits: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+    const s = (cn || '').trim();
+    if (!s) return null;
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    if (digits[s]) return digits[s];
+    const m = s.match(/^(.?)十(.?)$/);
+    if (m) {
+        const tens = m[1] === '' ? 1 : digits[m[1]];
+        const ones = m[2] === '' ? 0 : digits[m[2]];
+        if (tens === undefined || ones === undefined) return null;
+        return tens * 10 + ones;
+    }
+    return null;
+};
+
+/**
+ * 取标题行自带的「本级序号」。源文写第三章就是第三章 —— 拿不到就返回 null,由计数器接手。
+ * 注意只取本级:「1.2 负荷构成」的本级序号是 2,父级 1 由上一条章标题的计数提供。
+ */
+const visibleOwnNumber = (line: string): number | null => {
+    let m = line.match(/^第\s*([一二三四五六七八九十0-9]+)\s*[章篇部]/);
+    if (m) return cnToNumber(m[1]);
+    m = line.match(/^([一二三四五六七八九十]+)\s*、/);
+    if (m) return cnToNumber(m[1]);
+    m = line.match(/^[（(]\s*([一二三四五六七八九十\d]+)\s*[）)]/);
+    if (m) return cnToNumber(m[1]);
+    m = line.match(/^(\d+(?:\.\d+)*)(?:\s|[.、．])/);
+    if (m) {
+        const parts = m[1].split('.');
+        const n = parseInt(parts[parts.length - 1], 10);
+        return Number.isFinite(n) && n > 0 ? n : null;
+    }
+    return null;
+};
+
 /**
  * 伪骨架推断:输入既无 STRUCTURE_DATA 也无任何 <h> 标签(纯文本粘贴 / 无样式且无
  * 大纲级别的 Word)时,标题结构只能靠 AI 猜 —— 实测同一文档两次生成结构都不一样
@@ -54,9 +91,12 @@ export const derivePseudoHeadings = (contentHtml: string): PreComputedHeading[] 
         if (level > 0) derived.push({ level, text: line, number: '' });
     }
     if (derived.length < 2 || !derived.some((h) => h.level === 1)) return [];
+    // 计数器只在标题行没写序号时兜底。之前无条件自增,等于把源文写的序号丢掉 ——
+    // 一本书的第 3 章粘进来会被算成第 1 章,后处理再也无从知道原本是几(实测)。
     const counters = [0, 0, 0, 0, 0, 0];
     for (const h of derived) {
-        counters[h.level - 1] += 1;
+        const own = visibleOwnNumber(h.text);
+        counters[h.level - 1] = own ?? counters[h.level - 1] + 1;
         for (let k = h.level; k < 6; k += 1) counters[k] = 0;
         h.number = counters.slice(0, h.level).join('.');
     }

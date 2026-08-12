@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSkeleton, expectedChapterCount, createSkeletonMatcher } from '../skeleton';
+import { buildSkeleton, expectedChapterCount, createSkeletonMatcher, derivePseudoHeadings } from '../skeleton';
 
 describe('buildSkeleton — 源文层级 → 输出层级(章=h2)', () => {
     it('sourceLevel 1(章)→ outputLevel 2(h2);2→3;3→4', () => {
@@ -77,5 +77,31 @@ describe('createSkeletonMatcher — 顺序对齐 + 重名处理', () => {
         m.match('丙');
         const unused = m.unusedNodes();
         expect(unused.map((n) => n.text)).toEqual(['乙']);
+    });
+});
+
+// 计数器只该在标题行没写序号时兜底。之前无条件自增,把源文写的序号丢掉 ——
+// 一本书的第 3 章粘进来会被算成第 1 章,后处理再也无从知道原本是几。
+describe('derivePseudoHeadings 沿用标题行自带的序号', () => {
+    const p = (...lines: string[]) => lines.map((l) => `<p>${l}</p>`).join('');
+
+    it('中文章号原样带出(第三章 → 3)', () => {
+        const hs = derivePseudoHeadings(p('第三章 看不见的那张网', '正文足够长的一段内容用于占位。', '第四章 一千八百块表'));
+        expect(hs.map((h) => h.number)).toEqual(['3', '4']);
+    });
+
+    it('阿拉伯层级号沿用,父号取自上一条章标题', () => {
+        const hs = derivePseudoHeadings(p('4. 技术方案', '正文足够长的一段内容用于占位。', '4.2 采集层设计', '4.3 平台层设计'));
+        expect(hs.map((h) => h.number)).toEqual(['4', '4.2', '4.3']);
+    });
+
+    it('十位中文数字也认(第十二章 → 12)', () => {
+        const hs = derivePseudoHeadings(p('第十二章 甲', '正文足够长的一段内容用于占位。', '第十三章 乙'));
+        expect(hs.map((h) => h.number)).toEqual(['12', '13']);
+    });
+
+    it('中文顿号序号同样沿用(一、二、)', () => {
+        const hs = derivePseudoHeadings(p('一、总体要求', '正文足够长的一段内容用于占位。', '二、主要任务'));
+        expect(hs.map((h) => h.number)).toEqual(['1', '2']);
     });
 });
