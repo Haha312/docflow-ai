@@ -4,6 +4,8 @@ import { authService, User, UserInfoResponse } from '../services/authService';
 interface AuthContextType {
     user: User | null;
     remainingQuota: number;
+    /** 总额度 = 档位额度 + 邀请奖励(后端算好,前端只显示总数,不做拆分) */
+    quotaTotal: number;
     isLoading: boolean;
     isAuthenticated: boolean;
     login: (phone: string, code: string) => Promise<void>;
@@ -16,6 +18,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [remainingQuota, setRemainingQuota] = useState<number>(0);
+    const [quotaTotal, setQuotaTotal] = useState<number>(0);
     const [isLoading, setIsLoading] = useState<boolean>(true);
 
     // 加载用户信息
@@ -29,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const userInfo = await authService.getCurrentUser();
             setUser(userInfo.user);
             setRemainingQuota(userInfo.remainingQuota);
+            setQuotaTotal(userInfo.quotaTotal ?? 0);
         } catch (error) {
             console.error('加载用户信息失败:', error);
             // Token 无效,清除登录状态
@@ -66,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const value: AuthContextType = {
         user,
         remainingQuota,
+        quotaTotal,
         isLoading,
         isAuthenticated: !!user,
         login,

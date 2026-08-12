@@ -10,6 +10,7 @@ import { StyleEditor } from './components/StyleEditor';
 import { AuthModal } from './components/AuthModal';
 import { PricingModal } from './components/PricingModal';
 import { UserInfo } from './components/UserInfo';
+import { InviteModal } from './components/InviteModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { useConfirmDialog } from './components/ConfirmDialog';
 import { generateDocumentViaBackend, convertVectorImagesViaBackend } from './services/backendApiService';
@@ -211,6 +212,7 @@ function Home() {
   // P0-4: 完整性提示(后端报告显示截断/保留率低/有非 info 问题时给用户一个可关闭的轻提示)
   const [integrityNotice, setIntegrityNotice] = useState<{ level: 'critical' | 'warning'; text: string; details: string[] } | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [pricingReason, setPricingReason] = useState<'quota' | undefined>(undefined);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -1230,6 +1232,19 @@ function Home() {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* 邀请入口:放在顶栏最显眼处,用主色实心底,与旁边的次要按钮拉开层级 */}
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-full transition-colors shadow-sm"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <line x1="19" y1="8" x2="19" y2="14"></line>
+                <line x1="22" y1="11" x2="16" y2="11"></line>
+              </svg>
+              邀请好友得次数
+            </button>
             <button
               onClick={() => setShowPRD(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900 transition-colors bg-gray-50 hover:bg-gray-100 rounded-full border border-gray-200"
@@ -2184,6 +2199,12 @@ function Home() {
       />
       <ProductRequirements isOpen={showPRD} onClose={() => setShowPRD(false)} />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      <InviteModal
+        open={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        isAuthenticated={isAuthenticated}
+        onRequireLogin={() => { setShowInviteModal(false); setShowAuthModal(true); }}
+      />
       <PricingModal
         isOpen={showPricingModal}
         onClose={() => {

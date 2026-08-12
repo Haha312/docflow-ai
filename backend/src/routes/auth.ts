@@ -10,6 +10,7 @@ import redis from '../utils/redis';
 import { sendSmsCode, isSmsConfigured } from '../services/smsService';
 import { TIER_LIMITS } from '../config/tierConfig';
 import { getUsageCount, getPeriodStart } from '../utils/usageCount';
+import { bindReferral } from '../utils/referral';
 import { isAdmin } from '../utils/admin';
 
 const svgCaptcha = require('svg-captcha');
@@ -153,7 +154,7 @@ router.post('/send-sms-code', smsCodeRateLimit, async (req: Request, res: Respon
  */
 router.post('/login', loginRateLimit, async (req: Request, res: Response): Promise<void> => {
     try {
-        const { phone, code } = req.body as { phone?: string; code?: string };
+        const { phone, code, ref } = req.body as { phone?: string; code?: string; ref?: string };
         if (!phone || !isValidPhone(phone) || !code) {
             res.status(400).json(errorResponse('AUTH_MISSING_CREDENTIALS', 400));
             return;
@@ -173,10 +174,16 @@ router.post('/login', loginRateLimit, async (req: Request, res: Response): Promi
 
         // find-or-create by phone(无密码,首次登录即注册)
         let user = await prisma.user.findUnique({ where: { phone } });
+        const isNewUser = !user;
         if (!user) {
             user = await prisma.user.create({
                 data: { phone, subscriptionStatus: 'FREE' },
             });
+        }
+        // 仅新用户绑定邀请关系;此处只登记不发奖,等他真正用起来再发
+        if (isNewUser && ref) {
+            const ip = (req.headers['x-forwarded-for'] as string || '').split(',')[0].trim() || req.ip;
+            await bindReferral(user.id, ref, ip);
         }
 
         const token = signToken(user);
@@ -211,7 +218,11 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
         const userTier = (user.subscriptionStatus as keyof typeof TIER_LIMITS) || 'FREE';
         const periodStart = userTier === 'FREE' ? null : getPeriodStart(user.quotaPeriodStart);
         const usageCount = adminUser ? 0 : await getUsageCount(user.id, periodStart);
-        const limit = TIER_LIMITS[userTier] || 10;
+        // 邀请奖励的次数直接并进总额度 —— 前端只显示一个总数,不做「3 + 5」的拆分展示
+        const { bonusQuota } = (await prisma.user.findUnique({
+            where: { id: user.id }, select: { bonusQuota: true },
+        })) ?? { bonusQuota: 0 };
+        const limit = (TIER_LIMITS[userTier] || 10) + bonusQuota;
         const remainingQuota = adminUser ? Number.MAX_SAFE_INTEGER : Math.max(0, limit - usageCount);
 
         res.json(successResponse({
@@ -224,6 +235,8 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
                 subscriptionEndDate: user.subscriptionEndDate,
             },
             remainingQuota,
+            quotaTotal: limit,
+            bonusQuota,
         }, '获取用户信息成功'));
     } catch (error) {
         console.error('Get user info error:', error);

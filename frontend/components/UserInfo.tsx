@@ -13,7 +13,7 @@ interface UserInfoProps {
 }
 
 export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin, themeMode, onThemeChange }: UserInfoProps) {
-  const { user, isAuthenticated, isLoading, remainingQuota, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, remainingQuota, quotaTotal, logout } = useAuth();
   const { t, i18n } = useTranslation();
   const [showMenu, setShowMenu] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
@@ -53,9 +53,10 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin
 
   const isAdmin = Boolean(user.isAdmin);
   const isPro = user.subscriptionStatus !== 'FREE';
-  const tierQuotaTotal = user.subscriptionStatus === 'ULTRA' ? 1000 :
+  // 总额度以后端为准(已含邀请奖励)。写死档位数会在拿到奖励后显示错误的分母。
+  const tierQuotaTotal = quotaTotal || (user.subscriptionStatus === 'ULTRA' ? 1000 :
     user.subscriptionStatus === 'PRO' ? 200 :
-      user.subscriptionStatus === 'PLUS' ? 50 : 3;
+      user.subscriptionStatus === 'PLUS' ? 50 : 3);
   const tierLabel = isAdmin ? 'Admin' :
     user.subscriptionStatus === 'ULTRA' ? 'Ultra' :
     user.subscriptionStatus === 'PRO' ? 'Pro' :

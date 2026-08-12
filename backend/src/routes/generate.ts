@@ -16,6 +16,7 @@ import { extractImagesAsPlaceholders, restoreImages, convertVectorImagesToPng } 
 import { BASE_SYSTEM_PROMPTS, SYSTEM_PROMPT_SUFFIX, getNumberingInstruction } from '../config/prompts';
 import { IntegrityIssue, countStructure, buildIntegrityReport, detectStructuralAnomalies, validateFinalIntegrity } from '../utils/integrity';
 import { extractSourceCaptions, postProcess, type PostProcessOptions } from '../utils/postProcess';
+import { rewardOnFirstRealUse } from '../utils/referral';
 import { verifyBeforeDelivery, verifyTableStructure, verifySentenceCoverage, extractSentences } from '../utils/verifyDelivery';
 import { restoreMissingContent, freezeTables, unfreezeTables, restoreListCaptions, stripTocBlock } from '../utils/restoreContent';
 import { buildSkeleton, expectedChapterCount, derivePseudoHeadings, type SkeletonNode } from '../utils/skeleton';
@@ -1776,6 +1777,14 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
             }
         });
         await invalidateUsageCount(user.id);
+
+        // 邀请奖励:被邀请人完成一次「够长的」真实生成后才发奖。
+        // 低质量结果不计额度,自然也不算真实使用,不发奖。整段静默失败 —— 发奖出问题
+        // 绝不能影响用户拿到成稿(它跑在文档已经写出去之后)。
+        if (!lowQuality) {
+            void rewardOnFirstRealUse(user.id, (content || '').length);
+        }
+
         if (lowQuality) {
             console.log(`[INTEGRITY] low-quality result (critical=${hasCritical}, retention=${integrityReport?.charRetentionPct}%), logged as generate_document_lowquality (未计入额度) for user ${user.id}`);
         }

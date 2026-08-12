@@ -18,9 +18,44 @@ model User {
   quotaPeriodStart    DateTime?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
+  /** 邀请奖励累计获得的次数(与档位额度相加)。上限见 referralConfig.maxBonusPerUser */
+  bonusQuota          Int                @default(0)
+  /** 本人的邀请码,首次访问邀请页时生成 */
+  referralCode        String?            @unique
   documents           Document[]
   orders              Order[]
   usageLogs           UsageLog[]
+  referralsMade       Referral[]         @relation("Referrer")
+  referralReceived    Referral?          @relation("Invitee")
+}
+
+/**
+ * 邀请记录。一个被邀请人只能被邀请一次(inviteeId 唯一)。
+ * 奖励不在绑定时发放 —— 必须等被邀请人完成一次「够长的」真实生成后才发,
+ * 否则注册即薅:开个小号传一句话就能刷。
+ */
+model Referral {
+  id          String         @id @default(uuid())
+  referrerId  String
+  inviteeId   String         @unique
+  code        String
+  status      ReferralStatus @default(PENDING)
+  /** 绑定时的来源 IP,用于识别自邀(同 IP 短时间内反复邀请) */
+  signupIp    String?
+  rejectReason String?
+  rewardedAt  DateTime?
+  createdAt   DateTime       @default(now())
+  referrer    User           @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  invitee     User           @relation("Invitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  @@index([referrerId, status])
+  @@index([createdAt])
+}
+
+enum ReferralStatus {
+  PENDING
+  REWARDED
+  REJECTED
 }
 
 model UsageLog {

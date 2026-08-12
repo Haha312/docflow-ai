@@ -3,6 +3,7 @@ import { AuthRequest } from '../types';
 import { errorResponse } from '../utils/response';
 import { isAdmin } from '../utils/admin';
 import { getUsageCount, getPeriodStart } from '../utils/usageCount';
+import prisma from '../config/database';
 
 const TIER_LIMITS = {
     FREE: 3,      // 终身 3 次
@@ -36,12 +37,16 @@ export const checkRateLimit = async (
         }
 
         const tier = user.subscriptionStatus || 'FREE';
+        // 邀请奖励的次数直接加到档位额度上(FREE 3 次 + 奖励),付费档同理
+        const { bonusQuota } = (await prisma.user.findUnique({
+            where: { id: user.id }, select: { bonusQuota: true },
+        })) ?? { bonusQuota: 0 };
 
         if (tier === 'FREE') {
             // FREE 终身计数(periodStart=null → 不加时间过滤),带 60s Redis 缓存
             const usageCount = await getUsageCount(user.id, null);
 
-            const limit = TIER_LIMITS.FREE;
+            const limit = TIER_LIMITS.FREE + bonusQuota;
             if (usageCount >= limit) {
                 res.status(403).json(
                     errorResponse(
@@ -58,7 +63,7 @@ export const checkRateLimit = async (
             const periodStart = getPeriodStart(user.quotaPeriodStart);
             const usageCount = await getUsageCount(user.id, periodStart);
 
-            const limit = TIER_LIMITS[tier as keyof typeof TIER_LIMITS] || 50;
+            const limit = (TIER_LIMITS[tier as keyof typeof TIER_LIMITS] || 50) + bonusQuota;
             if (usageCount >= limit) {
                 res.status(403).json(
                     errorResponse(

@@ -31,6 +31,10 @@ export interface AuthResponse {
 export interface UserInfoResponse {
     user: User;
     remainingQuota: number;
+    /** 总额度 = 档位额度 + 邀请奖励(后端合并好,前端只显示总数) */
+    quotaTotal?: number;
+    /** 通过邀请累计获得的次数,仅邀请页展示用 */
+    bonusQuota?: number;
 }
 
 class AuthService {
@@ -80,18 +84,49 @@ class AuthService {
         return data.data || {};
     }
 
+    /**
+     * 取邀请码。来源优先级:当前 URL 的 ?ref= > 之前存下的。
+     * 存一份是因为用户点开邀请链接后往往先浏览、后登录,登录时 URL 上的参数可能已经没了。
+     */
+    private takeReferralCode(): string | undefined {
+        try {
+            const fromUrl = new URLSearchParams(window.location.search).get('ref');
+            if (fromUrl) localStorage.setItem('docflow_ref', fromUrl);
+            return (fromUrl || localStorage.getItem('docflow_ref') || undefined) ?? undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
     // 手机号 + 短信验证码登录(无密码,新用户自动注册)
     async loginWithSms(phone: string, code: string): Promise<AuthResponse> {
+        const ref = this.takeReferralCode();
         const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone, code }),
+            body: JSON.stringify({ phone, code, ref }),
         });
         const data = await response.json();
         if (!response.ok) {
             throw new Error(data.message || i18n.t('errors.login_failed', '登录失败'));
         }
         this.setToken(data.data.token);
+        // 绑定只在首次注册时生效,用过就清掉,免得以后换号登录又被算一次
+        try { localStorage.removeItem('docflow_ref'); } catch { /* 隐私模式下不可用,忽略 */ }
+        return data.data;
+    }
+
+    /** 当前用户的邀请数据(码、链接、进度、规则) */
+    async getReferral(): Promise<{
+        code: string; link: string; bonusQuota: number; invited: number;
+        rewarded: number; pending: number; remainingBonus: number;
+        rules: { bonus: number; maxBonusPerUser: number; minChars: number };
+    }> {
+        const response = await fetch(`${API_BASE_URL}/api/referral`, {
+            headers: { Authorization: `Bearer ${this.getToken()}` },
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || '读取邀请数据失败');
         return data.data;
     }
 
