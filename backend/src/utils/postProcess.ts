@@ -679,6 +679,16 @@ export const reconcileHeadingsToSkeleton = (
             return '';
         }
         lastHeadingNorm = norm;
+        // 骨架里没有、又长得像整句话的(超过 40 字且以冒号/句号收尾)= 正文引导句被误升成标题。
+        // 真实文档实测:「3.2.1 供方提供的三维设计校核软件及技术成果资料和安装、应用与响应服务
+        // 要求如下:」成了一个 h3,还把它后面的小节号整体顶后一位。降回段落 —— 文字一个不丢。
+        // 判据分两支:标题不会以句号/分号收尾(那是整句话);冒号收尾则要够长才算 ——
+        // 「说明:」「注意事项:」这类短标签是正经标题,不能碰。
+        const plain = stripHtmlToText(inner).trim();
+        if (/[\u3002;\uFF1B]$/.test(plain) || (/[:\uFF1A]$/.test(plain) && plain.length > 20)) {
+            demoted += 1;
+            return `<p>${inner}</p>`;
+        }
         // 不在骨架中的标题:只把【章级 h2】降为子节(h3)——它们才会让章数膨胀(6→10);
         // 更深的 h3~h6 不动(不影响章数,且避免重复运行时反复下沉,保证幂等)。
         const cur = parseInt(lvlStr, 10);

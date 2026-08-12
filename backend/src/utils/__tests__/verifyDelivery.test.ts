@@ -326,3 +326,19 @@ describe('只差标点不算丢失', () => {
         expect(verifySentenceCoverage(src, out).missingSentences.length).toBeGreaterThan(0);
     });
 });
+
+// 真实文档实测:源文标题写「★ 3.2 实施范围及运行要求」,排版把装饰符连同旧编号一并剥掉,
+// 字一个没少,却被判成两处整句丢失,交付前弹红条。
+describe('装饰符不算内容', () => {
+    it('只差一个装饰符不算句子丢失', () => {
+        const src = '<p>★ 3.2 实施范围及运行要求</p><p>★ 3.3 三维数字化设计成果质检测试装置需具备的专业软件</p>';
+        const out = '<h3>3.2 实施范围及运行要求</h3><h3>3.3 三维数字化设计成果质检测试装置需具备的专业软件</h3>';
+        expect(verifyBeforeDelivery(src, out).issues).toHaveLength(0);
+    });
+
+    it('真丢了句子照样报', () => {
+        const src = '<p>★ 3.2 实施范围及运行要求</p><p>供方应在合同签订后三十日内完成全部部署工作</p>';
+        const out = '<h3>3.2 实施范围及运行要求</h3>';
+        expect(verifyBeforeDelivery(src, out).issues.some((i) => i.type === 'sentences_missing')).toBe(true);
+    });
+});

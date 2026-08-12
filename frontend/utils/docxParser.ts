@@ -221,6 +221,72 @@ export interface HeadingEntry {
     number: string;  // pre-computed hierarchical number, e.g. "2.2.6"
 }
 
+export interface RawHeading {
+    level: number;
+    text: string;
+    number: string;
+    /** 该标题之前一个正文段都没有(即位于文档最开头) */
+    leading: boolean;
+}
+
+const CN_DIGITS: Record<string, number> = {
+    一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+};
+const cnToNumber = (cn: string): number => {
+    if (/^\d+$/.test(cn)) return parseInt(cn, 10);
+    if (!cn.includes('十')) return CN_DIGITS[cn] ?? 0;
+    const [a, b] = cn.split('十');
+    return (a ? (CN_DIGITS[a] ?? 0) : 1) * 10 + (b ? (CN_DIGITS[b] ?? 0) : 0);
+};
+
+/**
+ * 读出标题自带的可见编号,统一成点分形式(「3.2」「二、」→ "3.2" / "2")。
+ * 编号前可能挂装饰符(★ 3.2),要一并跨过。
+ */
+export const visibleHeadingNumber = (text: string): string => {
+    const t = (text || '').replace(/^[\s　]*[★☆●○◆◇■□▲△▽▼※◎♦•·][\s　]*/, '').trim();
+    const dec = t.match(/^(\d+(?:[.‐-―－-]\d+)*)(?:[、.　\s]|$)/);
+    if (dec) return dec[1].replace(/[‐-―－-]/g, '.');
+    const cn = t.match(/^([一二三四五六七八九十]+)[、.]/);
+    if (cn) { const n = cnToNumber(cn[1]); return n ? String(n) : ''; }
+    const ch = t.match(/^第\s*([一二三四五六七八九十]+|\d+)\s*[章节]/);
+    if (ch) { const n = cnToNumber(ch[1]); return n ? String(n) : ''; }
+    return '';
+};
+
+// 这些是真章节,不是题名 —— 即使出现在文档最开头也要留在骨架里
+const FRONT_MATTER = /^(摘\s*要|前\s*言|引\s*言|序\s*言?|概\s*述|绪\s*论|目\s*录|abstract|introduction|preface|foreword)\s*[::]?$/i;
+
+/**
+ * 定编号 + 剔题名。
+ *
+ * 两处真实文档踩过的坑:
+ * 1) 原先无条件从 1 自己数,把源文的「3.2」重写成「2.1」,成稿里章号跟正文里的
+ *    交叉引用(「详见 3.2」)对不上。源文自己写了号就沿用源文的。
+ * 2) 题名在 Word 里也带大纲级别(题名两行 = 两个 level-1 段落),于是题名被当成
+ *    第 1、2 章,真正的「1、总则」被挤成了小节。
+ */
+export const finalizeStructure = (raw: RawHeading[]): HeadingEntry[] => {
+    // 文档最开头、自身没有编号、且排在第一个带号标题之前的行 → 题名,不是章
+    const firstNumbered = raw.findIndex((h) => visibleHeadingNumber(h.text) !== '');
+    const kept = raw.filter((h, i) => {
+        if (firstNumbered < 0 || i >= firstNumbered) return true;
+        if (!h.leading || h.level !== 1) return true;
+        if (visibleHeadingNumber(h.text) !== '') return true;
+        return FRONT_MATTER.test(h.text.trim());
+    });
+
+    const counters = [0, 0, 0, 0, 0, 0];
+    return kept.map((h) => {
+        const idx = h.level - 1;
+        counters[idx]++;
+        for (let j = idx + 1; j < 6; j++) counters[j] = 0;
+        // 源文写了号就用源文的;没写才用层级计数兜底(后端还会再判一次这批号是否自洽)
+        const src = visibleHeadingNumber(h.text);
+        return { level: h.level, text: h.text, number: src || counters.slice(0, h.level).join('.') };
+    });
+};
+
 /**
  * Extract the heading structure from a .docx ArrayBuffer.
  * Returns every heading in document order with its pre-computed number.
@@ -297,7 +363,10 @@ export const extractDocumentStructure = async (arrayBuffer: ArrayBuffer): Promis
         const docDoc = new DOMParser().parseFromString(docXml, 'application/xml');
         const paragraphs = Array.from(docDoc.getElementsByTagName('w:p'));
 
-        const raw: Array<{ level: number; text: string; number: string }> = [];
+        const raw: RawHeading[] = [];
+        // 文档最开头的那几行(前面一个正文段都没有)才可能是题名。用它区分「题名」和
+        // 真正的第一章 —— 见 finalizeStructure。
+        let seenBodyText = false;
 
         for (const para of paragraphs) {
             // Skip paragraphs inside table cells (<w:tc>), footnotes, endnotes, etc.
@@ -310,9 +379,11 @@ export const extractDocumentStructure = async (arrayBuffer: ArrayBuffer): Promis
             }
             if (inTable) continue;
 
+            const hasText = para.getElementsByTagName('w:t').length > 0;
+
             // Use getChild() to get DIRECT child <w:pPr> only — not nested ones
             const pPr = getChild(para, 'pPr');
-            if (!pPr) continue;
+            if (!pPr) { if (hasText) seenBodyText = true; continue; }
 
             let level = 0;
 
@@ -332,7 +403,7 @@ export const extractDocumentStructure = async (arrayBuffer: ArrayBuffer): Promis
                 }
             }
 
-            if (!level) continue; // Not a heading
+            if (!level) { if (hasText) seenBodyText = true; continue; } // Not a heading
 
             // Extract text: collect all <w:t> inside <w:r> runs
             // (skip <w:instrText> field instructions, <w:delText>, etc.)
@@ -355,20 +426,13 @@ export const extractDocumentStructure = async (arrayBuffer: ArrayBuffer): Promis
             text = text.trim();
             if (!text) continue;
 
-            raw.push({ level, text, number: '' });
+            raw.push({ level, text, number: '', leading: !seenBodyText });
         }
 
-        // ── Step 3: compute hierarchical numbers ──────────────────────────────
-        const counters = [0, 0, 0, 0, 0, 0];
-        for (const h of raw) {
-            const idx = h.level - 1;
-            counters[idx]++;
-            for (let j = idx + 1; j < 6; j++) counters[j] = 0;
-            h.number = counters.slice(0, h.level).join('.');
-        }
-
-        console.log(`[STRUCTURE] Extracted ${raw.length} headings`);
-        return raw as HeadingEntry[];
+        // ── Step 3: 定编号 + 剔掉标题行 ───────────────────────────────────────
+        const structured = finalizeStructure(raw);
+        console.log(`[STRUCTURE] Extracted ${structured.length} headings (raw ${raw.length})`);
+        return structured;
 
     } catch (e) {
         console.error('[STRUCTURE] extractDocumentStructure failed:', e);

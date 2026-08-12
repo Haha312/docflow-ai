@@ -19,7 +19,7 @@ import { extractSourceCaptions, postProcess, type PostProcessOptions } from '../
 import { rewardOnFirstRealUse } from '../utils/referral';
 import { verifyBeforeDelivery, verifyTableStructure, verifySentenceCoverage, extractSentences } from '../utils/verifyDelivery';
 import { restoreMissingContent, freezeTables, unfreezeTables, restoreListCaptions, stripTocBlock } from '../utils/restoreContent';
-import { buildSkeleton, expectedChapterCount, derivePseudoHeadings, type SkeletonNode } from '../utils/skeleton';
+import { buildSkeleton, expectedChapterCount, derivePseudoHeadings, isSkeletonUntrustworthy, type SkeletonNode } from '../utils/skeleton';
 import { normalizeHeadingText } from '../utils/headingText';
 import {
     calcTailHeadOverlap,
@@ -439,15 +439,21 @@ const AI_MAX_OUTPUT_TOKENS = envNumber(16384, 'AI_MAX_TOKENS', 'AI_MAX_OUTPUT_TO
 interface ModelConfig { apiKey: string; baseUrl: string; modelId: string; needsProxy?: boolean; maxOutputTokens?: number; extraBody?: Record<string, unknown>; }
 
 function getModelConfig(modelKey: string, dbConfig: Record<string, string>): ModelConfig | null {
-    const geminiKey  = dbConfig['GOOGLE_API_KEY']        || process.env.GOOGLE_API_KEY        || '';
-    const geminiBase = dbConfig['GEMINI_OPENAI_BASE_URL'] || process.env.GEMINI_OPENAI_BASE_URL || '';
+    // 后台配置优先、环境变量兜底。此前只有 Gemini 走这个口径,DeepSeek 与豆包只认环境变量 ——
+    // 管理员在后台改完 DeepSeek 的 key,页面提示保存成功,排版却仍在用 .env 里的旧 key,
+    // 而 DeepSeek 恰好是默认主力模型。换 key 只能登服务器改 .env,这不合理。
+    const cfg = (key: string, ...envNames: string[]): string =>
+        dbConfig[key] || env(key, ...envNames) || '';
+
+    const geminiKey  = cfg('GOOGLE_API_KEY');
+    const geminiBase = cfg('GEMINI_OPENAI_BASE_URL');
     const registry: Record<string, ModelConfig> = {
         'gemini-flash': { apiKey: geminiKey,  baseUrl: geminiBase, modelId: 'gemini-2.5-flash',                                  needsProxy: true,  maxOutputTokens: 16000 },
         'gemini-pro':   { apiKey: geminiKey,  baseUrl: geminiBase, modelId: env('GEMINI_MODEL') || 'gemini-3-pro-preview', needsProxy: true,  maxOutputTokens: 32000 },
-        'doubao':       { apiKey: env('DOUBAO_API_KEY', 'VISION_API_KEY') || '', baseUrl: env('DOUBAO_BASE_URL', 'VISION_BASE_URL') || 'https://ark.cn-beijing.volces.com/api/v3', modelId: env('DOUBAO_ENDPOINT_ID') || '', needsProxy: false, maxOutputTokens: AI_MAX_OUTPUT_TOKENS },
+        'doubao':       { apiKey: cfg('DOUBAO_API_KEY', 'VISION_API_KEY'), baseUrl: cfg('DOUBAO_BASE_URL', 'VISION_BASE_URL') || 'https://ark.cn-beijing.volces.com/api/v3', modelId: cfg('DOUBAO_ENDPOINT_ID'), needsProxy: false, maxOutputTokens: AI_MAX_OUTPUT_TOKENS },
         // thinking 婵?闂傚倷鐒﹀鍧楀礈濞嗘垼濮抽柤娴嬫櫇娑?(???闂???闂傚倸鍊峰ù鍥晸閵夆晛纾块梺顒€绉甸崑????????濠???闂?????闂??婵犵數鍋為崹鍫曞蓟閵娿儍娲煛娴??? token 1514ms??99ms)??
         // ??闂????闂??DEEPSEEK_THINKING=enabled??
-        'deepseek':     { apiKey: env('DEEPSEEK_API_KEY') || '', baseUrl: env('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com/v1', modelId: env('DEEPSEEK_MODEL') || 'deepseek-v4-flash', needsProxy: false, maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
+        'deepseek':     { apiKey: cfg('DEEPSEEK_API_KEY'), baseUrl: cfg('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com/v1', modelId: cfg('DEEPSEEK_MODEL') || 'deepseek-v4-flash', needsProxy: false, maxOutputTokens: AI_MAX_OUTPUT_TOKENS,
                           extraBody: process.env.DEEPSEEK_THINKING === 'enabled' ? undefined : { thinking: { type: 'disabled' } } },
     };
     return registry[modelKey] ?? null;
@@ -821,6 +827,17 @@ router.post('/', authenticate, checkRateLimit, async (req: AuthRequest, res: Res
             if (derived.length > 0) {
                 preComputedHeadings = derived;
                 console.log(`[PSEUDO_SKELETON] derived ${derived.length} headings from text patterns`);
+            }
+        } else {
+            // 骨架非空 ≠ 骨架可信。章标题若在 Word 里只是「加粗段落」而非标题样式,
+            // 结构提取只能抓到零星带大纲级别的段落(实测抓到的 5 条里 2 条其实是文档标题),
+            // 而正文里的真章一条都没有 —— 全盘采信会把所有章压成小节。
+            // 故与文本推断对照一次:骨架覆盖不到一半的顶层章,就改用文本推断。
+            const derived = derivePseudoHeadings(contentForChunking);
+            if (derived.length > 0 && isSkeletonUntrustworthy(preComputedHeadings, derived)) {
+                console.log(`[SKELETON_DISTRUST] STRUCTURE_DATA(${preComputedHeadings.length} 条)漏掉了正文里的主干章,` +
+                    `改用文本推断的 ${derived.length} 条`);
+                preComputedHeadings = derived;
             }
         }
         const skeleton: SkeletonNode[] = buildSkeleton(preComputedHeadings);

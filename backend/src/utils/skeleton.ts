@@ -58,6 +58,43 @@ const visibleOwnNumber = (line: string): number | null => {
 };
 
 /**
+ * 通读全文之后的一致性检查 —— 逐行看模式只能认出「像标题的行」,认不出「这行属不属于
+ * 这份文档的编号体系」。人工排版时判的正是后者:先看出源文用的是哪套号,再拿章号连不
+ * 连得上去判断某一行到底是标题还是正文里的编号条款。
+ *
+ * 两条规则(都只在该行自己写了号时才生效,没写号的交给计数器,不动):
+ *  1. 子节号的父号必须等于当前章号 —— 第 3 章里的「4.1 …」不是小节,是引用/条款。
+ *  2. 章号必须往前走 —— 已经到第 3 章,又冒出「1、…」的,是正文里的列表项。
+ *
+ * 真实文档实测:一份技术规范书正文里满是「1.1 本规范书适用于…」这类编号条款,
+ * 逐行规则挡不住它们(短、无句号),一致性一比就露馅。
+ */
+export const dropIncoherentHeadings = (derived: PreComputedHeading[]): PreComputedHeading[] => {
+    const parts = (line: string): number[] => {
+        const m = line.match(/^(\d+(?:\.\d+)*)(?:\s|[.、．]|$)/);
+        return m ? m[1].split('.').map((x) => parseInt(x, 10)) : [];
+    };
+    const out: PreComputedHeading[] = [];
+    let chapter = 0;      // 当前章号(只认写了号的章)
+    let section = 0;      // 当前小节号
+    for (const h of derived) {
+        const p = parts(h.text);
+        if (h.level === 1) {
+            const own = visibleOwnNumber(h.text);
+            if (own !== null && chapter > 0 && own <= chapter) continue;  // 章号倒退 → 正文列表项
+            if (own !== null) chapter = own;
+            section = 0;
+        } else if (p.length >= 2 && chapter > 0) {
+            if (p[0] !== chapter) continue;                               // 父号对不上当前章
+            if (h.level === 2) section = p[1];
+            else if (p.length >= 3 && section > 0 && p[1] !== section) continue;
+        }
+        out.push(h);
+    }
+    return out;
+};
+
+/**
  * 伪骨架推断:输入既无 STRUCTURE_DATA 也无任何 <h> 标签(纯文本粘贴 / 无样式且无
  * 大纲级别的 Word)时,标题结构只能靠 AI 猜 —— 实测同一文档两次生成结构都不一样
  * (「第一章」被当大标题、「第二章」被当正文)。这里按行模式确定性识别章节。
@@ -78,19 +115,29 @@ export const derivePseudoHeadings = (contentHtml: string): PreComputedHeading[] 
         lineTexts.push(...html.split(/\r?\n/).map((s) => s.replace(/<[^>]+>/g, '').trim()));
     }
     const derived: PreComputedHeading[] = [];
-    for (const line of lineTexts) {
-        if (!line || line.length > 40) continue;
-        if (/[。;；,，]$/.test(line)) continue;
+    for (const raw of lineTexts) {
+        if (!raw || raw.length > 40) continue;
+        // 冒号收尾的是正文引导句(「…要求如下:」),不是标题 —— 实测它混进骨架后
+        // 占掉一个小节号,把它后面每一节都顶后一位。
+        if (/[\u3002;\uFF1B,\uFF0C:\uFF1A]$/.test(raw)) continue;
+        // 编号前常挂装饰符(★ 3.2 …)。不跨过它,这一节整个认不出来 ——
+        // 实测某技术规范书的 3.2/3.3 两节因此从骨架里消失。
+        const line = raw.replace(/^[★☆●○◆◇■□▲△▽▼※◎♦•·][\s　]*/, '');
         let level = 0;
         if (/^第\s*[一二三四五六七八九十百0-9]+\s*[章篇部]/.test(line)) level = 1;
         else if (/^[一二三四五六七八九十]+\s*、/.test(line)) level = 1;
-        else if (/^\d+\.\d+\.\d+(?:\s|[.、．])/.test(line)) level = 3;
-        else if (/^\d+\.\d+(?:\s|[.、．])/.test(line)) level = 2;
+        // 层级看编号本身有几段,不能要求末尾必须有分隔符 —— 源文里「3.2.1供方提供…」
+        // 紧贴正文没有空格,会被前一支当成两级号 3.2,凭空多出一个小节。
+        else if (/^\d+\.\d+\.\d+/.test(line)) level = 3;
+        else if (/^\d+\.\d+(?:\s|[.、．]|$)/.test(line)) level = 2;
         else if (/^\d+\s*[.、．]\s*\S/.test(line) && !/^\d+\s*[.、．]\s*\d/.test(line)) level = 1;
         else if (/^[（(]\s*[一二三四五六七八九十]+\s*[）)]/.test(line)) level = 2;
         if (level > 0) derived.push({ level, text: line, number: '' });
     }
-    if (derived.length < 2 || !derived.some((h) => h.level === 1)) return [];
+    const coherent = dropIncoherentHeadings(derived);
+    if (coherent.length < 2 || !coherent.some((h) => h.level === 1)) return [];
+    derived.length = 0;
+    derived.push(...coherent);
     // 计数器只在标题行没写序号时兜底。之前无条件自增,等于把源文写的序号丢掉 ——
     // 一本书的第 3 章粘进来会被算成第 1 章,后处理再也无从知道原本是几(实测)。
     const counters = [0, 0, 0, 0, 0, 0];
@@ -101,6 +148,36 @@ export const derivePseudoHeadings = (contentHtml: string): PreComputedHeading[] 
         h.number = counters.slice(0, h.level).join('.');
     }
     return derived;
+};
+
+/**
+ * 前端送来的骨架(STRUCTURE_DATA)是否可信 —— 不可信就该回落文本推断。
+ *
+ * 起因(真实文档实测):有些文档的章标题在 Word 里只是「加粗的普通段落」,不是标题样式。
+ * 这类文档 mammoth 转不出任何 <h>,结构提取只能抓到零星带大纲级别的段落 ——
+ * 实测某技术规范书提取出 5 条,其中 2 条其实是文档标题的两行,真正的 4 个章一条都没有。
+ * 而后端原本只在骨架「为空」时才回落文本推断,于是这份错骨架被全盘采信:
+ * 4 个章全被压成小节、标题的下半行成了第 1 章。
+ *
+ * 判据只看一件事:正文里按文本模式能认出的顶层章,骨架覆盖了多少。
+ * 覆盖不到一半 → 骨架漏掉了文档的主干,不可信。
+ * 刻意保守:文本推断本身找不出 2 个以上顶层章时不做判断(样本太少,宁可信骨架)。
+ */
+export const isSkeletonUntrustworthy = (
+    skeleton: { text: string }[],
+    derived: PreComputedHeading[],
+): boolean => {
+    const norm = (t: string) => (t || '').replace(/\s+/g, '').replace(/[、.。:：]/g, '');
+    const derivedTops = derived.filter((d) => d.level === 1);
+    if (derivedTops.length < 2) return false;
+
+    const skelNorms = skeleton.map((n) => norm(n.text)).filter((t) => t.length >= 2);
+    const covered = derivedTops.filter((d) => {
+        const t = norm(d.text);
+        if (t.length < 2) return false;
+        return skelNorms.some((sk) => sk.includes(t) || t.includes(sk));
+    });
+    return covered.length / derivedTops.length < 0.5;
 };
 
 /**

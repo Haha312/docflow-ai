@@ -531,6 +531,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         { key: 'GEMINI_OPENAI_BASE_URL', label: 'Gemini API Base URL' },
         { key: 'GOOGLE_API_KEY',         label: 'Google / Gemini API Key' },
         { key: 'DEEPSEEK_API_KEY',       label: 'DeepSeek API Key' },
+        { key: 'DEEPSEEK_BASE_URL',      label: 'DeepSeek Base URL(留空用官方地址)' },
+        { key: 'DEEPSEEK_MODEL',         label: 'DeepSeek 模型名(留空用 deepseek-v4-flash)' },
+        { key: 'DOUBAO_API_KEY',         label: '豆包 API Key(升级模型时使用)' },
+        { key: 'DOUBAO_ENDPOINT_ID',     label: '豆包 Endpoint ID' },
     ];
 
     const periodTotalTokens = stats?.dailyHistory.reduce((a, b) => a + b.tokens, 0) || 0;

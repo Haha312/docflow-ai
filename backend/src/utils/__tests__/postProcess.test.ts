@@ -625,3 +625,51 @@ describe('正文里引用图表的句子不能当成题注', () => {
         expect(out).toMatch(/<p[^>]*>图1 给出了平台的四层结构。<\/p>/);
     });
 });
+
+// 真实文档实测:章标题写成「★ 3.2 实施范围及运行要求」,装饰符挡住了编号剥离,
+// 重编号后变成「3.2 ★ 3.2 实施范围及运行要求」——同一行挂了两个号。
+describe('带装饰符的旧编号剥离', () => {
+    const num = (html: string) => postProcess(html, opts()).text;
+
+    it('★ 打头的旧编号会被剥掉,不留双号', () => {
+        const out = num('<h2>技术要求</h2><h3>★ 3.2 实施范围及运行要求</h3>');
+        expect(out).toContain('<h3>1.1 实施范围及运行要求</h3>');
+        expect(out).not.toContain('★');
+    });
+
+    it('装饰符后面没有编号的标题原样保留', () => {
+        const out = num('<h2>★ 重要提示</h2>');
+        expect(out).toContain('<h2>1. ★ 重要提示</h2>');
+    });
+
+    it('● ※ 等其他装饰符同样处理', () => {
+        expect(num('<h2>● 二、供方职责</h2>')).toContain('<h2>1. 供方职责</h2>');
+        expect(num('<h2>※ 3.1 总体要求</h2>')).toContain('<h2>1. 总体要求</h2>');
+    });
+});
+
+// 真实文档实测:正文里的引导句「3.2.1 供方提供的…要求如下:」被 AI 升成了 h3,
+// 骨架里根本没有它,却把后面的小节号整体顶后一位(3.3 变 3.4)。
+describe('误升成标题的正文引导句', () => {
+    const skel = buildSkeleton([
+        { level: 1, text: '技术要求', number: '3' },
+        { level: 2, text: '实施范围及运行要求', number: '3.2' },
+        { level: 2, text: '专业功能及技术特点', number: '3.3' },
+    ]);
+    const run = (html: string) => postProcess(html, opts({ skeleton: skel })).text;
+
+    it('超长且以冒号收尾的非骨架标题降回段落,文字不丢', () => {
+        const lead = '供方提供的三维设计校核软件及技术成果资料和安装、应用与响应服务要求如下:';
+        const out = run(`<h2>技术要求</h2><h3>实施范围及运行要求</h3><h3>${lead}</h3><h3>专业功能及技术特点</h3>`);
+        expect(out).toContain(`<p>${lead}</p>`);
+        expect(out).not.toContain(`<h3>${lead}`);
+        // 引导句让位之后,后一节回到自己该有的号
+        expect(out).toMatch(/<h3[^>]*>1\.2 专业功能及技术特点<\/h3>/);
+    });
+
+    it('短标题即使带冒号也照常当标题', () => {
+        const out = run('<h2>技术要求</h2><h3>实施范围及运行要求</h3><h3>说明:</h3>');
+        expect(out).toContain('说明');
+        expect(out).not.toContain('<p>说明:</p>');
+    });
+});

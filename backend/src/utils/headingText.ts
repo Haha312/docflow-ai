@@ -11,8 +11,13 @@
 export const HEADING_PREFIX =
     '(?:第[一二三四五六七八九十百零\\d]+[章节篇部回]|[一二三四五六七八九十百零]+[、.]|[（(]\\s*[一二三四五六七八九十百零\\d]+\\s*[）)]|\\d+(?:\\.\\d+)*(?:[.、]|(?=[\\s\\u3000])))';
 
+// 编号前面常挂一个装饰符(★ 3.2 / ● 二、 / ※ 3.1)。真实文档实测:不剥掉它,
+// 整个「★ 3.2」都被当成正文,重编号后成了「3.2 ★ 3.2 实施范围」—— 一行两个号。
+// 只在「装饰符后面确实跟着编号」时才剥,所以「★ 重要提示」这种不带号的标题不受影响。
+const DECOR_MARK = '[★☆●○◆◇■□▲△▽▼※◎♦•·]?[\\s\\u3000]*';
+
 export const stripHeadingPrefix = (inner: string): string => {
-    const re = new RegExp('^(\\s*(?:<(?:strong|b|span|em)\\b[^>]*>\\s*)?)' + HEADING_PREFIX + '[\\s\\u3000]*', 'i');
+    const re = new RegExp('^(\\s*(?:<(?:strong|b|span|em)\\b[^>]*>\\s*)?)' + DECOR_MARK + HEADING_PREFIX + '[\\s\\u3000]*', 'i');
     let out = inner;
     for (let i = 0; i < 4; i += 1) {
         const next = out.replace(re, '$1');
