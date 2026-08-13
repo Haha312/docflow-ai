@@ -12,6 +12,10 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [phone, setPhone] = useState('');
+  // 预填已有的邀请码(?ref= 链接进来时 authService 已存过);手动输入的走同一个键
+  const [inviteCode, setInviteCode] = useState<string>(() => {
+    try { return localStorage.getItem('docflow_ref') || ''; } catch { return ''; }
+  });
   const [smsCode, setSmsCode] = useState('');
   const [captchaInput, setCaptchaInput] = useState('');
   const [captchaImage, setCaptchaImage] = useState('');
@@ -145,17 +149,21 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             </svg>
           </button>
 
-          <div className="flex items-center gap-3 mb-2">
-            <div className="auth-icon w-10 h-10 rounded-xl flex items-center justify-center">
-              <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-              </svg>
-            </div>
+          <div className="flex items-center gap-3 mb-3">
+            <img src="/icon.svg" alt="DocFlow" className="w-10 h-10 rounded-xl" />
             <div>
               <h2 className="text-xl font-semibold text-gray-900">{t('auth.login_title', '登录 / 注册')}</h2>
               <p className="text-sm text-gray-500">{t('auth.sms_subtitle', '手机号未注册将自动创建账号')}</p>
             </div>
+          </div>
+          {/* 注册钩子:登录框是转化的第一触点,只有黑白灰会显得冷。
+              绿色是品牌色(邀请弹窗/宣传物料同色),点到为止,不抢内容。 */}
+          <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-100 px-3.5 py-2.5">
+            <svg className="w-4 h-4 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 12v10H4V12" /><path d="M2 7h20v5H2z" /><path d="M12 22V7" />
+              <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+            </svg>
+            <p className="text-sm text-emerald-800">{t('auth.signup_gift', '新用户注册即送 3 次免费排版,无需绑卡')}</p>
           </div>
         </div>
 
@@ -229,6 +237,30 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               </div>
             </div>
 
+            {/* 邀请码(选填)。链接邀请(?ref=)会自动带上;这个输入口给「只拿到一串码」的
+                场景 —— 抖音等平台不让挂外链,好友只能口头/评论区传码,没有入口码就废了。
+                写入 docflow_ref 后 authService.login 会自动带给后端,与链接邀请同一条路。 */}
+            <div>
+              <label htmlFor="invite-code" className="block text-sm font-medium text-gray-700 mb-1.5">
+                {t('auth.invite_code', '邀请码')}
+                <span className="ml-1.5 text-xs font-normal text-gray-400">{t('auth.invite_code_optional', '选填,双方各得次数')}</span>
+              </label>
+              <input
+                id="invite-code"
+                value={inviteCode}
+                onChange={(e) => {
+                  const v = e.target.value.trim().toUpperCase().slice(0, 12);
+                  setInviteCode(v);
+                  try {
+                    if (v) localStorage.setItem('docflow_ref', v);
+                    else localStorage.removeItem('docflow_ref');
+                  } catch { /* 隐私模式下不可用,忽略 */ }
+                }}
+                placeholder={t('auth.invite_code_placeholder', '好友给你的邀请码')}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm tracking-[0.2em] focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+              />
+            </div>
+
             {devHint && (
               <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{devHint}</p>
             )}
@@ -260,7 +292,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             <button
               type="submit"
               disabled={isLoading || !agreedTerms}
-              className="prism-primary w-full py-3 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             >
               {isLoading ? (
                 <span className="flex items-center justify-center gap-2">

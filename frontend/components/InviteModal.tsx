@@ -110,7 +110,8 @@ export const InviteModal: React.FC<Props> = ({ open, onClose, onRequireLogin, is
 
                         <div className="rounded-xl bg-white/[0.03] px-4 py-3 text-xs leading-relaxed text-zinc-500">
                             <p className="text-zinc-400 mb-1.5">规则</p>
-                            <p>· 好友通过你的链接注册,并完成一次排版后,双方各得 {data.rules.bonus} 次。</p>
+                            <p>· 好友通过你的链接注册,或登录时填你的邀请码,完成一次排版后双方各得 {data.rules.bonus} 次。</p>
+                            <p>· 发不了链接的地方(如抖音评论区)发邀请码就行,好友登录时有填码的入口。</p>
                             <p>· 奖励在对方<span className="text-zinc-400">真正用起来之后</span>到账,不是注册就给。</p>
                             <p>· 每人最多通过邀请获得 {data.rules.maxBonusPerUser} 次。</p>
                             {data.pending > 0 && (

@@ -881,6 +881,14 @@ function Home() {
 
   const handleContentEdit = useCallback(() => {
     if (!isContentEdited) setIsContentEdited(true);
+    // 每次输入都把可编辑面的内容捕获进 displayHtmlRef(分页与导出的数据源)。
+    // 只靠「退出编辑时捕获」盖不住对比模式:那个视图直接可编辑、没有退出动作,
+    // 切回预览时 React 把它整个卸载,改动无声丢失(实测)。
+    // 同步捕获而非防抖:防抖窗口内切走视图照样丢,而序列化一份典型文档 <1ms。
+    const surface = previewContentRef.current;
+    if (surface && surface.getAttribute('contenteditable') === 'true') {
+      displayHtmlRef.current = surface.innerHTML;
+    }
     updateTocFromDom();
   }, [isContentEdited, updateTocFromDom]);
 

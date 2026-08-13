@@ -7,6 +7,7 @@ import generateRoutes from './routes/generate';
 import paymentRoutes from './routes/payment';
 import userRoutes from './routes/user';
 import referralRoutes from './routes/referral';
+import clientLogRoutes from './routes/clientLog';
 import convertImagesRoutes from './routes/convertImages';
 import adminRoutes from './routes/admin';
 import { errorResponse } from './utils/response';
@@ -189,6 +190,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/convert-images', convertImagesRoutes);
 app.use('/api/referral', referralRoutes);
+app.use('/api/client-log', clientLogRoutes);
 
 app.use((_req: Request, res: Response) => {
     res.status(404).json(errorResponse('接口不存在', 404));
