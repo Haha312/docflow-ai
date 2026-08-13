@@ -81,6 +81,116 @@ describe('导出 .docx:端到端真正生成一次', () => {
         expect(xml, `西文字体 ${en} 没有写进 ascii 面`).toContain(`w:ascii="${en}"`);
     }, 30000);
 
+    // 参考文献的字体/行距/悬挂缩进配了很久却一直是死配置:预览和导出都读,
+    // 生成层从不产出 .references 元素。现在由后端确定性打标,这里守住导出这一端。
+    it('参考文献的悬挂缩进真的写进了 docx', async () => {
+        const journal = styleOf(DocPreset.ACADEMIC_JOURNAL);
+        const html = `${SAMPLE}<h2>参考文献</h2><ol class="references"><li>[1] 张三. 题名[J]. 刊名, 2024, 40(3): 1-8.</li><li>[2] 李四. 题名[M]. 北京: 某出版社, 2023.</li></ol>`;
+        const blob = await generateDocx(html, journal);
+        const zip = await JSZip.loadAsync(Buffer.from(await blob.arrayBuffer()));
+        const xml = await zip.file('word/document.xml')!.async('string');
+        // 0.63cm → twip ≈ 357
+        const expected = Math.round(parseFloat(journal.referencesHangingIndent!) * 566.93);
+        // 按文献那一段定位:文档里别处(表格单元格)也有 w:ind,取全文第一个会取错
+        const at = xml.indexOf('题名[J]');
+        expect(at, '文献没进导出').toBeGreaterThan(0);
+        const para = xml.slice(xml.lastIndexOf('<w:p>', at), at);
+        const m = /<w:ind[^>]*w:hanging="(\d+)"/.exec(para);
+        expect(m, '文献段落上没有悬挂缩进').not.toBeNull();
+        expect(Math.abs(Number(m![1]) - expected), `悬挂缩进 ${m![1]} 与预设 ${expected} 不符`).toBeLessThan(10);
+        // 两条文献各自成段,没有被并成一段
+        expect(xml).toContain('题名[J]');
+        expect(xml).toContain('题名[M]');
+    }, 30000);
+
+    it('DOI 用自己的字体字号,不再借关键词的', async () => {
+        const journal = styleOf(DocPreset.ACADEMIC_JOURNAL);
+        const blob = await generateDocx(`${SAMPLE}<p class="doc-doi">DOI: 10.13335/j.1000.2024.03.001</p>`, journal);
+        const zip = await JSZip.loadAsync(Buffer.from(await blob.arrayBuffer()));
+        const xml = await zip.file('word/document.xml')!.async('string');
+        const i = xml.indexOf('10.13335');
+        expect(i, 'DOI 没进导出').toBeGreaterThan(0);
+        const para = xml.slice(xml.lastIndexOf('<w:p ', i) === -1 ? xml.lastIndexOf('<w:p>', i) : xml.lastIndexOf('<w:p ', i), i);
+        const en = journal.doiFont!.split(',')[0].replace(/['"]/g, '').trim();
+        expect(para, `DOI 字体 ${en} 没写进去`).toContain(en);
+        // 期刊预设 doiBold: true
+        expect(para).toContain('<w:b/>');
+    }, 30000);
+
+    // 富文本编辑器里改某一段的字体/字号,产出的是行内样式。导出侧此前只认粗体/斜体/下划线,
+    // 行内字体一律丢弃 —— 用户在编辑器里改完,预览是对的,下载下来又变回原样。
+    it('编辑器里改的行内字体字号进得了 docx', async () => {
+        const html = `${SAMPLE}<p>正文里<span style="font-family: &quot;KaiTi&quot;, serif; font-size: 18pt">这几个字改成了楷体小二</span>其余不变。</p>`;
+        const blob = await generateDocx(html, styleOf(DocPreset.ACADEMIC));
+        const zip = await JSZip.loadAsync(Buffer.from(await blob.arrayBuffer()));
+        const xml = await zip.file('word/document.xml')!.async('string');
+        const i = xml.indexOf('楷体小二');
+        expect(i, '这段文字没进导出').toBeGreaterThan(0);
+        const run = xml.slice(xml.lastIndexOf('<w:r>', i), i);
+        expect(run, '行内字体没写进去').toContain('KaiTi');
+        expect(run, '行内字号没写进去(18pt = 36 半磅)').toContain('w:val="36"');
+    }, 30000);
+
+    // 标题走的是另一条导出路径(整行一个 run),在标题里改字体原本会被悄悄吃掉
+    it('标题里改的行内字体也进得了 docx', async () => {
+        const html = `${SAMPLE}<h2>正常章标题<span style="font-family: KaiTi, serif">这几个字改成楷体</span></h2>`;
+        const blob = await generateDocx(html, styleOf(DocPreset.ACADEMIC));
+        const zip = await JSZip.loadAsync(Buffer.from(await blob.arrayBuffer()));
+        const xml = await zip.file('word/document.xml')!.async('string');
+        const i = xml.indexOf('这几个字改成楷体');
+        expect(i, '标题文字没进导出').toBeGreaterThan(0);
+        const run = xml.slice(xml.lastIndexOf('<w:r>', i), i);
+        expect(run, '标题里的行内字体丢了').toContain('KaiTi');
+        // 同一标题里没改字体的那半仍是标题字体、且保持加粗
+        const j = xml.indexOf('正常章标题');
+        const run0 = xml.slice(xml.lastIndexOf('<w:r>', j), j);
+        expect(run0, '标题原有的加粗丢了').toContain('<w:b/>');
+    }, 30000);
+
+    // styleWithCSS 开着的浏览器(以及网页粘贴)产出的加粗是 <span style="font-weight:bold">,
+    // 不是 <b> —— 只按标签识别的话这类加粗会静默丢失
+    it('span 行内样式形态的粗/斜体也进得了 docx', async () => {
+        const html = `${SAMPLE}<p>前文<span style="font-weight: bold">样式加粗</span>与<span style="font-style: italic">样式斜体</span>后文</p>`;
+        const blob = await generateDocx(html, styleOf(DocPreset.ACADEMIC));
+        const zip = await JSZip.loadAsync(Buffer.from(await blob.arrayBuffer()));
+        const xml = await zip.file('word/document.xml')!.async('string');
+        const boldAt = xml.indexOf('样式加粗');
+        expect(boldAt).toBeGreaterThan(0);
+        expect(xml.slice(xml.lastIndexOf('<w:r>', boldAt), boldAt), 'span 形态加粗丢了').toContain('<w:b/>');
+        const italAt = xml.indexOf('样式斜体');
+        expect(xml.slice(xml.lastIndexOf('<w:r>', italAt), italAt), 'span 形态斜体丢了').toContain('<w:i/>');
+    }, 30000);
+
+    it('标题里的编号空格不被正文那套空格清理吃掉', async () => {
+        const html = `${SAMPLE}<h2>2. 方法<span style="font-family: KaiTi, serif">设计</span></h2>`;
+        const blob = await generateDocx(html, styleOf(DocPreset.ACADEMIC));
+        const zip = await JSZip.loadAsync(Buffer.from(await blob.arrayBuffer()));
+        const xml = await zip.file('word/document.xml')!.async('string');
+        const all = [...xml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]).join('');
+        expect(all, '编号后的空格被吃掉了').toContain('2. 方法设计');
+    }, 30000);
+
+    it('没改字体的标题仍走原来的整行输出', async () => {
+        const { xml } = await buildDocx(DocPreset.ACADEMIC);
+        const i = xml.indexOf('引言');
+        if (i > 0) {
+            const run = xml.slice(xml.lastIndexOf('<w:r>', i), i);
+            expect(run).toContain('<w:b/>');
+        }
+    }, 30000);
+
+    it('没改字体的部分仍按预设走,不被行内样式带偏', async () => {
+        const st = styleOf(DocPreset.ACADEMIC);
+        const html = `${SAMPLE}<p>前半段<span style="font-size: 18pt">改过</span>后半段</p>`;
+        const blob = await generateDocx(html, st);
+        const zip = await JSZip.loadAsync(Buffer.from(await blob.arrayBuffer()));
+        const xml = await zip.file('word/document.xml')!.async('string');
+        const i = xml.indexOf('后半段');
+        const run = xml.slice(xml.lastIndexOf('<w:r>', i), i);
+        const baseHalfPt = Math.round(parseFloat(st.baseSize) * 2);
+        expect(run, `后半段应回到预设字号 ${baseHalfPt}`).toContain(`w:val="${baseHalfPt}"`);
+    }, 30000);
+
     it('页边距按预设写入(不是兜底值)', async () => {
         const { zip } = await buildDocx(DocPreset.ACADEMIC_JOURNAL);
         const xml = await zip.file('word/document.xml')!.async('string');

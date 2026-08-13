@@ -48,6 +48,9 @@ const LEADING_FRONT_MATTER = new Set<string>([
 ]);
 const TRAILING_FRONT_MATTER = new Set<string>([
     '致谢', '致谢辞', 'acknowledgement', 'acknowledgements', 'acknowledgments',
+    // 参考文献在期刊/学位论文里一律不编号(GB/T 7714)。此前它被当成正文一章,
+    // 成稿会出现「5. 参考文献」这种投稿必被退的写法。
+    '参考文献', '参考书目', 'references', 'bibliography',
 ]);
 
 const key = (textOrNorm: string): string => normalizeHeadingText(textOrNorm).toLowerCase();

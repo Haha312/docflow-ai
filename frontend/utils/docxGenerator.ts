@@ -149,7 +149,9 @@ const isInlineNode = (node: Node): boolean => {
     if (node.nodeType === Node.TEXT_NODE) return true;
     if (node.nodeType === Node.ELEMENT_NODE) {
         const tag = (node as HTMLElement).tagName.toUpperCase();
-        return ['SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SUP', 'SUB', 'A', 'CODE'].includes(tag);
+        // FONT:浏览器的 execCommand('fontName'/'fontSize') 在部分环境下仍产出旧式 <font>,
+        // 不算作行内元素的话,用户改过字体的那段会被当成块级另起一段。
+        return ['SPAN', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'SUP', 'SUB', 'A', 'CODE', 'FONT'].includes(tag);
     }
     return false;
 };
@@ -583,21 +585,26 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         };
     };
 
-    const getRichTextRuns = (node: Node, baseFont: any, baseSize: number, color: string = "000000"): (TextRun | DocxMath | ImageRun)[] => {
+    const getRichTextRuns = (node: Node, baseFont: any, baseSize: number, color: string = "000000", baseBold = false, baseItalic = false, preserveSpacing = false): (TextRun | DocxMath | ImageRun)[] => {
         const runs: (TextRun | DocxMath | ImageRun)[] = [];
-        const traverse = (n: Node, style: { isBold: boolean, isItalic: boolean, isSup: boolean, isSub: boolean, isUnderline: boolean }) => {
+        type InlineStyle = { isBold: boolean, isItalic: boolean, isSup: boolean, isSub: boolean, isUnderline: boolean, font?: any, size?: number };
+        const traverse = (n: Node, style: InlineStyle) => {
             if (n.nodeType === Node.TEXT_NODE) {
                 let t = n.textContent;
                 if (t) {
                     // 全面将任意多个可见或不可见空白、全角空格、\xa0 (\xA0 是 &nbsp;) 和制表符转换为一个空格
                     t = t.replace(/[\n\r\t\v\f \xA0\u3000]+/g, ' ');
                     
-                    // 彻底清除“中文/全角标点”与“文字(特别是英文、数字)”之间的独立空格
-                    t = t.replace(/([\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF])\s+(?=[^\s])/g, '$1');
-                    t = t.replace(/(?<=[^\s])\s+([\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF])/g, '$1');
+                    // 下面这套空格清理是给正文治 AI 的空格毛病的。标题不参与 ——
+                    // 套到标题上会把「2. 方法设计」的编号空格也吃掉,变成「2.方法设计」。
+                    if (!preserveSpacing) {
+                        // 彻底清除“中文/全角标点”与“文字(特别是英文、数字)”之间的独立空格
+                        t = t.replace(/([\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF])\s+(?=[^\s])/g, '$1');
+                        t = t.replace(/(?<=[^\s])\s+([\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF])/g, '$1');
                     
-                    // 彻底清除孤立数学符号及括号周围的生硬排版空格 (避免被Word两端对齐强行拉爆宽度)
-                    t = t.replace(/\s*([=+\-×÷<>\(\)\[\]\{\}])\s*/g, '$1');
+                        // 彻底清除孤立数学符号及括号周围的生硬排版空格 (避免被Word两端对齐强行拉爆宽度)
+                        t = t.replace(/\s*([=+\-×÷<>\(\)\[\]\{\}])\s*/g, '$1');
+                    }
 
                     // Match both $$...$$ (Display Math) and $...$ (Inline Math)
                     // Be careful with $ currency: strict constraint that $ cannot be followed by space or number if simple check
@@ -617,11 +624,15 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                             else runs.push(new TextRun({ text: part })); // Fallback if parse fails
                         } else if (part.trim() !== "" || parts.length === 1) {
                             const hasMathChars = /[=+\-×÷<>\u2200-\u22FF\u0370-\u03FF]/.test(part);
-                            const runFont = hasMathChars ? { ...baseFont, ascii: "Times New Roman", hAnsi: "Times New Roman" } : baseFont;
+                            // 行内字体/字号优先于段落基准 —— 用户在富文本编辑器里改的就是这一层。
+                            // 此前一律用 baseFont/baseSize,编辑器里改的字体预览可见、导出即丢失。
+                            const effFont = style.font ?? baseFont;
+                            const effSize = style.size ?? baseSize;
+                            const runFont = hasMathChars ? { ...effFont, ascii: "Times New Roman", hAnsi: "Times New Roman" } : effFont;
                             runs.push(new TextRun({
                                 text: part,
                                 font: runFont,
-                                size: baseSize,
+                                size: effSize,
                                 color: color,
                                 bold: style.isBold,
                                 italics: style.isItalic,
@@ -697,10 +708,30 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                     return;
                 }
 
-                const nextStyle = { ...style };
+                const nextStyle: InlineStyle = { ...style };
+                // 富文本编辑器改字体/字号产出的就是行内样式(或旧式 <font face>);
+                // 内层覆盖外层,与 CSS 继承一致。
+                const inlineFamily = el.style?.fontFamily || (tag === 'FONT' ? el.getAttribute('face') || '' : '');
+                if (inlineFamily) nextStyle.font = makeFont(cleanFontName(inlineFamily));
+                const inlineSize = el.style?.fontSize || '';
+                if (inlineSize) {
+                    const sm = inlineSize.match(/([\d.]+)\s*(pt|px)?/i);
+                    if (sm) {
+                        const n = parseFloat(sm[1]);
+                        // px→pt:96dpi 下 1px = 0.75pt;docx 用半磅
+                        const pt = (sm[2] || 'px').toLowerCase() === 'px' ? n * 0.75 : n;
+                        if (Number.isFinite(pt) && pt > 0) nextStyle.size = Math.round(pt * 2);
+                    }
+                }
                 if (tag === 'B' || tag === 'STRONG') nextStyle.isBold = true;
                 if (tag === 'I' || tag === 'EM') nextStyle.isItalic = true;
                 if (tag === 'U') nextStyle.isUnderline = true;
+                // 粗/斜/下划线的「行内样式」形态也要认:styleWithCSS 开着的浏览器、以及从
+                // 网页粘贴进来的内容,产出的是 <span style="font-weight:bold"> 而非 <b>。
+                const fw = el.style?.fontWeight || '';
+                if (fw === 'bold' || fw === 'bolder' || (parseInt(fw, 10) || 0) >= 600) nextStyle.isBold = true;
+                if ((el.style?.fontStyle || '') === 'italic') nextStyle.isItalic = true;
+                if (/underline/.test(el.style?.textDecoration || (el.style as any)?.textDecorationLine || '')) nextStyle.isUnderline = true;
                 if (tag === 'SUP') nextStyle.isSup = true;
                 if (tag === 'SUB') nextStyle.isSub = true;
                 // <code> 内联代码：切换为等宽字体，其他样式继承
@@ -717,11 +748,11 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 el.childNodes.forEach(c => traverse(c, nextStyle));
             }
         };
-        traverse(node, { isBold: false, isItalic: false, isSup: false, isSub: false, isUnderline: false });
+        traverse(node, { isBold: baseBold, isItalic: baseItalic, isSup: false, isSub: false, isUnderline: false });
         return runs;
     }
 
-    const createHeading = (text: string, level: number): Paragraph => {
+    const createHeading = (text: string, level: number, el?: HTMLElement): Paragraph => {
         let size = getHalfPtSize(styleConfig.baseSize);
         let align = mapAlignment('left');
         let headingLevel: any = HeadingLevel.HEADING_1;
@@ -788,7 +819,14 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
         if (ovAfter !== undefined) afterTwips = ovAfter;
         // For CORPORATE, apply fixed 28pt line height to headings too
         const headingLine = isCorporate ? { line: corporateLine28, lineRule: LineRuleType.EXACT } : {};
-        return new Paragraph({ heading: headingLevel, alignment: align, spacing: { before: beforeTwips, after: afterTwips, ...headingLine }, indent: indent, children: [new TextRun({ text: text, font: makeFont(fontName), color: primaryColor, bold: bold, italics: italics, size: size })] });
+        // 标题正常走「整行一个 run」的老路,一字不动。
+        // 只有当用户在编辑器里给标题里某几个字单独改过字体/字号时,才改走逐段 run ——
+        // 否则那几个字的设置会被这条纯文本路径悄悄吃掉(预览有、导出没有)。
+        const hasInlineFont = !!el && !!el.querySelector('[style*="font-family"], [style*="font-size"], font[face]');
+        const children = hasInlineFont
+            ? getRichTextRuns(el!, makeFont(fontName), size, primaryColor, bold, italics, true)
+            : [new TextRun({ text: text, font: makeFont(fontName), color: primaryColor, bold: bold, italics: italics, size: size })];
+        return new Paragraph({ heading: headingLevel, alignment: align, spacing: { before: beforeTwips, after: afterTwips, ...headingLine }, indent: indent, children });
     };
 
     interface TableContext { inTable: boolean; inHeader: boolean; }
@@ -1170,17 +1208,54 @@ export const generateDocx = async (htmlContent: string, styleConfig: StyleConfig
                 return;
             }
             if (hasElementClass(el, 'doc-doi')) {
-                elements.push(new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 60, after: 120 }, indent: { firstLine: 0 }, children: [new TextRun({ text, font: makeFont(keywordsFont), size: getHalfPtSize(styleConfig.keywordsSize || styleConfig.abstractSize || styleConfig.baseSize), color: "000000" })] }));
+                // DOI 有自己的字体/字号/加粗(期刊多为小五 Times New Roman 加黑);
+                // 此前一律借用关键词的配置,doiFont/doiSize/doiBold 三项配了也没用。
+                elements.push(new Paragraph({
+                    alignment: AlignmentType.LEFT, spacing: { before: 60, after: 120 }, indent: { firstLine: 0 },
+                    children: [new TextRun({
+                        text,
+                        font: makeFont(cleanFontName(styleConfig.doiFont || styleConfig.keywordsFont || styleConfig.fontFamily)),
+                        size: getHalfPtSize(styleConfig.doiSize || styleConfig.keywordsSize || styleConfig.abstractSize || styleConfig.baseSize),
+                        bold: !!styleConfig.doiBold,
+                        color: "000000",
+                    })],
+                }));
+                return;
+            }
+            if (hasElementClass(el, 'references')) {
+                // 参考文献(GB/T 7714):条目序号顶格、第二行起悬挂缩进。docx 里靠
+                // indent.left + 等量负 hanging 实现,与预览侧 padding-left/负 text-indent 对齐。
+                const refFont = cleanFontName(styleConfig.referencesFont || styleConfig.fontFamily);
+                const refSize = getHalfPtSize(styleConfig.referencesSize || styleConfig.baseSize);
+                const hangM = (styleConfig.referencesHangingIndent || '').match(/([\d.]+)\s*(cm|mm|pt|in)?/i);
+                const hangTwips = hangM
+                    ? Math.round(parseFloat(hangM[1]) * ({ cm: 566.93, mm: 56.693, pt: 20, in: 1440 }[(hangM[2] || 'cm').toLowerCase()] ?? 566.93))
+                    : 0;
+                const refLineM = (styleConfig.referencesLineHeight || '').match(/([\d.]+)\s*pt/i);
+                const refSpacing: any = refLineM
+                    ? { before: 0, after: 0, line: Math.round(parseFloat(refLineM[1]) * 20), lineRule: LineRuleType.EXACT }
+                    : { before: 0, after: 0 };
+                // <ol>/<ul> 逐条出;单个 <p> 就是一条
+                const items = el.tagName === 'OL' || el.tagName === 'UL'
+                    ? Array.from(el.children).map((li) => li.textContent || '')
+                    : [text];
+                items.filter((t) => t.trim()).forEach((t) => {
+                    elements.push(new Paragraph({
+                        alignment: AlignmentType.LEFT, spacing: refSpacing,
+                        indent: hangTwips ? { left: hangTwips, hanging: hangTwips } : { firstLine: 0 },
+                        children: [new TextRun({ text: t, font: makeFont(refFont), size: refSize, color: "000000" })],
+                    }));
+                });
                 return;
             }
             if (className.includes('table-caption') || tagName === 'CAPTION') { elements.push(new Paragraph({ alignment: mapAlignment(styleConfig.tableCaptionAlign), spacing: { before: 240, after: 120 }, keepNext: true, children: [new TextRun({ text: text, font: makeFont(tableCaptionFont), size: getHalfPtSize(styleConfig.tableCaptionSize), bold: styleConfig.tableCaptionBold !== false, color: "000000" })] })); return; }
 
-            if (tagName === 'H1') elements.push(createHeading(text, 1));
-            else if (tagName === 'H2') elements.push(createHeading(text, 2));
-            else if (tagName === 'H3') elements.push(createHeading(text, 3));
-            else if (tagName === 'H4') elements.push(createHeading(text, 4));
-            else if (tagName === 'H5') elements.push(createHeading(text, 5));
-            else if (tagName === 'H6') elements.push(createHeading(text, 6));
+            if (tagName === 'H1') elements.push(createHeading(text, 1, el));
+            else if (tagName === 'H2') elements.push(createHeading(text, 2, el));
+            else if (tagName === 'H3') elements.push(createHeading(text, 3, el));
+            else if (tagName === 'H4') elements.push(createHeading(text, 4, el));
+            else if (tagName === 'H5') elements.push(createHeading(text, 5, el));
+            else if (tagName === 'H6') elements.push(createHeading(text, 6, el));
             else if (tagName === 'P' || tagName === 'DIV' || tagName === 'BLOCKQUOTE') elements.push(...processNodes(el.childNodes, listContext, tableContext, currentAlign));
             else if (tagName === 'UL') elements.push(...processNodes(el.childNodes, { type: 'ul' }, tableContext, currentAlign));
             else if (tagName === 'OL') elements.push(...processNodes(el.childNodes, { type: 'ol', counter: { value: 1 } }, tableContext, currentAlign));

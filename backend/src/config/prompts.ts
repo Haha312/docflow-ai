@@ -189,6 +189,7 @@ CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table r
 | 英文关键词行 | \`<p class="keywords keywords-en">KEY WORDS: deep learning; neural network</p>\` |
 | DOI 编号 | \`<p class="doc-doi">DOI: 10.13335/j.xxxx.xxxxxx</p>\` — 如原文有，绝不能省略 |
 | 篇首/正文分隔 | \`<hr class="journal-split">\` |
+| 参考文献列表 | \`<ol class="references"><li>[1] 张三. 题名[J]. 刊名, 2024, 40(3): 1-8.</li></ol>\` — 每条一个 \`<li>\`，原样照抄不得改写 |
 | 一级节标题 | \`<h2>1. 引言</h2>\` |
 | 二级节标题 | \`<h3>1.1 研究背景</h3>\` |
 | 三级节标题 | \`<h4>1.1.1 具体问题</h4>\` |
@@ -205,6 +206,7 @@ CRITICAL: ZERO DATA LOSS. You MUST output EVERY sentence, paragraph, and table r
 8. DOI (doc-doi) — 如原文有 DOI 编号，必须保留，不得省略
 9. \`<hr class="journal-split">\`
 10. 正文各节 (h2 → h3 → h4 → p)
+11. 参考文献 —— 标题写 \`<h2>参考文献</h2>\`（不编号），列表用 \`<ol class="references">\`
 
 ## FORMATTING RULES
 - 摘要和关键词跨双栏显示（已由 CSS column-span 处理，无需特殊标记）

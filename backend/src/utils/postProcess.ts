@@ -744,6 +744,48 @@ export const reconcileHeadingsToSkeleton = (
 };
 
 /**
+ * 给参考文献块打 .references —— 确定性,不指望模型自觉。
+ *
+ * 期刊的参考文献有自己一套字体行距和悬挂缩进(GB/T 7714:六号宋体、12pt 行距、
+ * 0.63cm 悬挂)。这些配置一直配着却是死的:预览和导出两侧都在读,生成层却从不产出
+ * 带 .references 的元素 —— 等于给不存在的元素写样式。
+ *
+ * 做法:从「参考文献 / References」这一标题往后扫,把成条目的内容(<ol>/<ul> 或连续
+ * 的 <p>)标出来,遇到下一个标题就停。模型偶尔会照提示词自己打好,那就原样返回保证幂等。
+ */
+export const tagReferencesBlock = (html: string): string => {
+    const headRe = /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi;
+    let m: RegExpExecArray | null;
+    let start = -1;
+    while ((m = headRe.exec(html)) !== null) {
+        if (/^(参考文献|参考书目|references|bibliography)$/i.test(normalizeHeadingText(m[2]))) {
+            start = m.index + m[0].length;
+            break;
+        }
+    }
+    if (start < 0) return html;
+
+    const rest = html.slice(start);
+    const end = rest.search(/<h[1-6]\b/i);          // 下一个标题即块的边界(文末则到结尾)
+    const block = end < 0 ? rest : rest.slice(0, end);
+    if (!block.trim()) return html;
+    if (/\bclass="[^"]*\breferences\b/i.test(block)) return html;   // 模型已按提示词打好
+
+    const addClass = (full: string, attrs: string, open: string): string =>
+        /\bclass\s*=/i.test(attrs)
+            ? full.replace(/\bclass="([^"]*)"/i, (_x, c: string) => `class="${c} references"`)
+            : open;
+
+    const tagged = block
+        .replace(/<(ol|ul)\b([^>]*)>/i, (full, tag: string, attrs: string) =>
+            addClass(full, attrs, `<${tag}${attrs} class="references">`))
+        .replace(/<p\b([^>]*)>/gi, (full, attrs: string) =>
+            addClass(full, attrs, `<p${attrs} class="references">`));
+
+    return html.slice(0, start) + tagged + (end < 0 ? '' : rest.slice(end));
+};
+
+/**
  * 入口:对合并后的全文跑确定性后处理。返回处理后的文本 + 新增的完整性 issue。
  * 注意:传入的 html 此时仍保留 __IMG_N__ 占位符(图片还原放到最外层、postProcess 之后统一做),
  * 这样 reconcileImages 才能看到并修复占位符。
@@ -759,6 +801,7 @@ export const postProcess = (html: string, opts: PostProcessOptions): { text: str
     const skel = reconcileHeadingsToSkeleton(out, opts.skeleton, canonicalTitle);
     out = skel.text;
     out = promoteSourceCaptionParagraphs(out, opts.sourceCaptions);
+    out = tagReferencesBlock(out);
     out = renumberStructure(out, opts, canonicalTitle);
     const captionRec = reconcileCaptionsToSource(out, opts.sourceCaptions);
     out = captionRec.text;

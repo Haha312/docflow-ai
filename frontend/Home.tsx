@@ -22,6 +22,7 @@ import { PRESETS, VISIBLE_PRESETS } from './constants';
 import { DocPreset, AIState, StyleConfig } from './types';
 import { A4_SHEET_W, A4_SHEET_H, DEFAULT_MARGINS_PX, cssLenToPx, marginsPxOf } from './utils/pageMetrics';
 import { generatePreviewStyles } from './utils/previewStyles';
+import { EDITOR_FONTS, EDITOR_FONT_SIZES } from './utils/editorFonts';
 import katex from 'katex';
 import DOMPurify from 'dompurify';
 import 'katex/dist/katex.min.css';
@@ -32,8 +33,6 @@ const getTextCount = (html: string) => {
 
 // A4 page dimensions at 96 dpi (297mm × 96 / 25.4 ≈ 1122px)
 const A4_HEIGHT_PX = 1122;
-// Top + bottom padding of the paper div (each side = 80px)
-const A4_PADDING_PX = 160;
 
 // ── 真·分页:把一段干净 HTML 按高度切成多张 A4 纸 ──
 // 度量常量与页边距换算已移到 utils/pageMetrics.ts(previewStyles.ts 也要用,放这里会成环),
@@ -637,7 +636,9 @@ function Home() {
 
             // 后端 7 种 status 全部映射为中文阶段提示。此前 VERIFYING / PROCESSING_IMAGES /
             // FINALIZING 没有分支,会把原始英文 token 直接显示给用户。
-            let displayStatus = progressData.status;
+            // 兜底 ''：后端每个 progress 事件都带 status,但少一个字段就会让下面的
+            // startsWith 抛错、整条生成中断 —— 状态提示不值得为它赔掉一次生成。
+            let displayStatus = progressData.status ?? '';
             if (displayStatus === 'GENERATING') {
               displayStatus = t('home.status_generating', '正在智能排版...');
             } else if (displayStatus === 'RECOGNIZING_IMAGES') {
@@ -760,8 +761,14 @@ function Home() {
         // Strip KaTeX-rendered spans — docxGenerator cannot handle KaTeX HTML.
         // 用 displayHtmlRef(干净的已编辑内容,不含 .a4-page 分页包裹)而非分页后的 DOM,
         // 避免把纸张 div / 页脚漏进导出。
+        // 仍在编辑态时以「实时 DOM」为准:displayHtmlRef 只在退出编辑时才刷新,
+        // 用户改完不退出、直接点下载的话,读到的是进入编辑态那一刻的快照 —— 改动全丢(实测)。
+        // 编辑态的 DOM 本就是扁平的(无 .a4-page 包裹),直接读安全。
+        const liveHtml = editMode && previewContentRef.current
+          ? previewContentRef.current.innerHTML
+          : (displayHtmlRef.current || previewContentRef.current?.innerHTML || '');
         const tmp = document.createElement('div');
-        tmp.innerHTML = displayHtmlRef.current || previewContentRef.current!.innerHTML;
+        tmp.innerHTML = liveHtml;
         tmp.querySelectorAll('span.katex').forEach(katexEl => {
           const annotation = katexEl.querySelector('annotation[encoding="application/x-tex"]');
           const tex = annotation?.textContent?.trim() ?? '';
@@ -888,6 +895,39 @@ function Home() {
       selection.addRange(savedRangeRef.current);
     }
     document.execCommand(command, false, value);
+    previewContentRef.current?.focus();
+    handleContentEdit();
+    setTimeout(updateActiveFormats, 10);
+  }, [handleContentEdit, updateActiveFormats]);
+
+  // 局部改字体/字号。浏览器的 execCommand('fontSize') 只认 1~7 这七档旧式尺寸,
+  // 给不了「小四 / 12pt」这种真实字号,所以先用 size=7 打一个标记,再把标记换成
+  // 带真实 pt 的 <span> —— 导出侧(getRichTextRuns)认的正是这个行内样式。
+  const execInlineStyle = useCallback((prop: 'fontFamily' | 'fontSize', value: string) => {
+    const selection = window.getSelection();
+    if (savedRangeRef.current && selection) {
+      selection.removeAllRanges();
+      selection.addRange(savedRangeRef.current);
+    }
+    const root = previewContentRef.current;
+    if (!root || selection?.isCollapsed) { previewContentRef.current?.focus(); return; }
+
+    if (prop === 'fontFamily') {
+      document.execCommand('styleWithCSS', false, 'true');
+      document.execCommand('fontName', false, value);
+      // 必须复位:styleWithCSS 是全局开关,留着 true 的话,之后点加粗产出的是
+      // <span style="font-weight:bold"> 而非 <b> —— 导出侧按标签识别,加粗会静默丢失。
+      document.execCommand('styleWithCSS', false, 'false');
+    } else {
+      document.execCommand('styleWithCSS', false, 'false');
+      document.execCommand('fontSize', false, '7');           // 只作标记,下一步换成真实字号
+      root.querySelectorAll('font[size="7"]').forEach((f) => {
+        const span = document.createElement('span');
+        span.style.fontSize = value;
+        while (f.firstChild) span.appendChild(f.firstChild);
+        f.replaceWith(span);
+      });
+    }
     previewContentRef.current?.focus();
     handleContentEdit();
     setTimeout(updateActiveFormats, 10);
@@ -1134,7 +1174,10 @@ function Home() {
       } else if (editMode) {
         el.innerHTML = displayHtmlRef.current || renderedContent; // 进入编辑态:显示已编辑内容
       }
-      const totalH = el.scrollHeight + A4_PADDING_PX;
+      // 页数估算要用这张纸真实的上下边距,不能用写死的常量 ——
+      // 纸的内边距已改为跟随预设,两者对不上会让编辑态的分页虚线位置整体偏移。
+      const mgNow = marginsPxOf(activeStyle.pageMargins);
+      const totalH = el.scrollHeight + mgNow.top + mgNow.bottom;
       setContentPageCount(Math.max(1, Math.ceil(totalH / A4_HEIGHT_PX)));
       if (container && aiState.isThinking) {
         isProgrammaticScrollRef.current = true;
@@ -1873,6 +1916,32 @@ function Home() {
                             <option value="6">H6</option>
                           </select>
                           <div className="w-px h-4 bg-gray-200 mx-0.5 md:mx-1" />
+                          {/* 字体 / 字号:改选中那一段,不动整篇预设。选空时不生效(execInlineStyle 里已挡) */}
+                          <select
+                            onMouseDown={() => { const sel = window.getSelection(); savedRangeRef.current = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0).cloneRange() : null; }}
+                            onChange={(e) => { if (e.target.value) { execInlineStyle('fontFamily', e.target.value); e.target.value = ''; } }}
+                            value=""
+                            className="text-xs px-1.5 py-1 bg-transparent border border-transparent rounded text-gray-500 hover:bg-white hover:border-gray-200 outline-none cursor-pointer font-medium max-w-[5.5rem]"
+                            title={t('home.font_family', '字体(改选中部分)')}
+                          >
+                            <option value="">{t('home.font_family_short', '字体')}</option>
+                            {EDITOR_FONTS.map((f) => (
+                              <option key={f.value} value={f.value}>{f.label}</option>
+                            ))}
+                          </select>
+                          <select
+                            onMouseDown={() => { const sel = window.getSelection(); savedRangeRef.current = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0).cloneRange() : null; }}
+                            onChange={(e) => { if (e.target.value) { execInlineStyle('fontSize', e.target.value); e.target.value = ''; } }}
+                            value=""
+                            className="text-xs px-1.5 py-1 bg-transparent border border-transparent rounded text-gray-500 hover:bg-white hover:border-gray-200 outline-none cursor-pointer font-medium max-w-[5rem]"
+                            title={t('home.font_size', '字号(改选中部分)')}
+                          >
+                            <option value="">{t('home.font_size_short', '字号')}</option>
+                            {EDITOR_FONT_SIZES.map((s) => (
+                              <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                          </select>
+                          <div className="w-px h-4 bg-gray-200 mx-0.5 md:mx-1" />
                           <button onClick={() => execFormat('justifyLeft')} className={`w-7 h-7 flex items-center justify-center rounded transition-all ${activeFormats.align === 'left' ? 'bg-gray-200 text-gray-800 shadow-inner scale-95' : 'text-gray-400 hover:bg-gray-200 hover:text-gray-700'}`} title={t('home.align_left', '左对齐')}>
                             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18 M3 12h12 M3 18h18" strokeLinecap="round"/></svg>
                           </button>
@@ -1985,7 +2054,12 @@ function Home() {
                           /* A4 纸张模式 */
                           !editMode && !aiState.isThinking ? (
                             /* 生成完毕的只读态:真·分页,灰桌面 + 多张独立 A4 纸(paginateIntoSheets 填充 #preview-content) */
+                            // key 必须与编辑态那支不同:两支的根都是 <div>、位置也相同,不给 key 的话
+                            // React 会复用同一个 DOM 节点。而纸张内容是我们用 innerHTML 直接写进去的,
+                            // 不在 React 的虚拟树里 —— 复用时旧的 .a4-page 全部留在原地,再叠上编辑态
+                            // 自己的子节点,页面上就出现两份内容(实测:点"编辑"后内容重复)。
                             <div
+                              key="preview-readonly"
                               id="preview-content"
                               ref={previewContentRef}
                               className="relative outline-none"
@@ -1993,8 +2067,18 @@ function Home() {
                           ) : (
                             /* 编辑态 / 流式生成中:单张白纸(流式期间逐帧便宜渲染=平滑打字,不做昂贵分页) */
                             <div
+                              key="preview-editing"
                               className="mx-auto bg-white border border-gray-200 mb-2 relative shadow-sm flex flex-col"
-                              style={{ maxWidth: '794px', width: '100%', minHeight: '1123px', padding: '80px 90px 40px' }}
+                              // 内边距必须与只读态的 .a4-page 同源(都取预设页边距)。此前写死
+                              // 80/90/40px,而公文预设是上 3.7cm≈140px、左 2.8cm≈106px —— 编辑时
+                              // 版心比实际宽一大截,断行位置和分页线全是错的,一退出编辑又跳一次。
+                              style={{
+                                maxWidth: `${A4_SHEET_W}px`, width: '100%', minHeight: `${A4_SHEET_H}px`,
+                                paddingTop: marginsPxOf(activeStyle.pageMargins).top,
+                                paddingRight: marginsPxOf(activeStyle.pageMargins).right,
+                                paddingBottom: marginsPxOf(activeStyle.pageMargins).bottom,
+                                paddingLeft: marginsPxOf(activeStyle.pageMargins).left,
+                              }}
                             >
                               {/* 视觉分页线层(仅流式/编辑的扁平视图;只读态用真·纸张) */}
                               {contentPageCount > 1 && (
@@ -2053,6 +2137,7 @@ function Home() {
                           /* 对比模式：全宽无纸张效果 */
                           <>
                             <div
+                              key="preview-compare"
                               id="preview-content"
                               ref={!viewMode || viewMode !== 'preview' ? previewContentRef : undefined}
                               contentEditable={!aiState.isThinking}

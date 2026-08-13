@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { postProcess, enforceSingleTitleAndDemote, extractSourceCaptions, reconcileCaptionsToSource, headingNumbersShouldBePreserved, PostProcessOptions } from '../postProcess';
+import { postProcess, enforceSingleTitleAndDemote, extractSourceCaptions, reconcileCaptionsToSource, headingNumbersShouldBePreserved, tagReferencesBlock, PostProcessOptions } from '../postProcess';
 import { buildSkeleton } from '../skeleton';
 
 const opts = (over: Partial<PostProcessOptions> = {}): PostProcessOptions => ({
@@ -671,5 +671,43 @@ describe('误升成标题的正文引导句', () => {
         const out = run('<h2>技术要求</h2><h3>实施范围及运行要求</h3><h3>说明:</h3>');
         expect(out).toContain('说明');
         expect(out).not.toContain('<p>说明:</p>');
+    });
+});
+
+// 参考文献有自己一套字体/行距/悬挂缩进(GB/T 7714),配置一直配着却是死的 ——
+// 预览和导出都读,生成层从不产出 .references 元素。改为由代码确定性打标。
+describe('参考文献块打标', () => {
+    it('有序列表形态', () => {
+        const out = tagReferencesBlock('<h2>参考文献</h2><ol><li>[1] 张三. 题名[J]. 刊名, 2024.</li></ol>');
+        expect(out).toContain('<ol class="references">');
+    });
+
+    it('连续段落形态', () => {
+        const out = tagReferencesBlock('<h2>参考文献</h2><p>[1] 张三. 题名[J].</p><p>[2] 李四. 题名[M].</p>');
+        expect((out.match(/class="references"/g) ?? [])).toHaveLength(2);
+    });
+
+    it('遇到下一个标题就停,不误伤后文', () => {
+        const out = tagReferencesBlock('<h2>参考文献</h2><p>[1] 张三.</p><h2>致谢</h2><p>感谢基金支持</p>');
+        expect(out).toContain('<p class="references">[1] 张三.</p>');
+        expect(out).toContain('<p>感谢基金支持</p>');
+    });
+
+    it('模型已按提示词打好则不重复打(幂等)', () => {
+        const src = '<h2>参考文献</h2><ol class="references"><li>[1] 张三.</li></ol>';
+        expect(tagReferencesBlock(src)).toBe(src);
+        expect(tagReferencesBlock(tagReferencesBlock(src))).toBe(src);
+    });
+
+    it('没有参考文献标题时原样返回', () => {
+        const src = '<h2>结论</h2><p>本文提出…</p>';
+        expect(tagReferencesBlock(src)).toBe(src);
+    });
+
+    it('参考文献标题不参与章编号', () => {
+        const out = postProcess('<h2>引言</h2><p>正文</p><h2>参考文献</h2><p>[1] 张三.</p>', opts()).text;
+        expect(out).toContain('<h2>1. 引言</h2>');
+        expect(out).toMatch(/<h2[^>]*>参考文献<\/h2>/);
+        expect(out).not.toContain('2. 参考文献');
     });
 });

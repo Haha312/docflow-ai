@@ -166,9 +166,16 @@ export const generatePreviewStyles = (activeStyle: StyleConfig, paginated: boole
       #preview-content .doc-subtitle { text-indent: 0 !important; text-align: center; font-weight: bold; font-size: 16pt; margin: 0.3em 0; }
       #preview-content .doc-meta { text-indent: 0 !important; text-align: center; font-size: 16pt; margin: 0.15em 0; }
       /* 学术期刊:篇首信息与正文之间的分隔线 */
-      /* 期刊专属块。注意:.references / .doi / .full-width 这几类的配置(referencesFont、
-         doiFont、figureWidthFull 等)此处刻意不实现 —— 生成层的提示词根本不产出这些元素,
-         给不存在的元素写样式是死代码。要让它们生效,得先在期刊提示词里加上对应的类。 */
+      /* 参考文献(GB/T 7714):六号宋体、固定 12pt 行距、0.63cm 悬挂缩进 —— 第二行起缩进,
+         条目序号顶格。悬挂靠 padding-left + 负 text-indent 实现,与导出侧 hanging 对齐。 */
+      #preview-content .references { text-indent: 0; font-family: ${getPreviewFontStack(s.referencesFont || s.fontFamily)}; font-size: ${s.referencesSize || s.baseSize}; ${s.referencesLineHeight ? `line-height: ${toCssLineHeight(s.referencesLineHeight, s.referencesFont || s.fontFamily)};` : ''} margin: 0.2em 0; }
+      #preview-content ol.references, #preview-content ul.references { padding-left: ${s.referencesHangingIndent || '0.63cm'}; list-style-position: outside; }
+      #preview-content p.references { padding-left: ${s.referencesHangingIndent || '0.63cm'}; text-indent: -${s.referencesHangingIndent || '0.63cm'}; }
+      /* DOI 行有独立字体字号(期刊多为小五 Times New Roman 加黑),此前借用关键词的配置 */
+      #preview-content .doc-doi { text-indent: 0; font-family: ${getPreviewFontStack(s.doiFont || s.keywordsFont || s.fontFamily)}; font-size: ${s.doiSize || s.keywordsSize || s.baseSize}; font-weight: ${s.doiBold ? 'bold' : 'normal'}; }
+      /* 通栏图:双栏排版下跨两栏显示 */
+      #preview-content .full-width { column-span: all; text-indent: 0; }
+      #preview-content .full-width img { max-width: ${s.figureWidthFull || '100%'}; margin: 8px auto; }
       #preview-content .keywords.keywords-en { font-family: ${getPreviewFontStack(s.englishKeywordsFont || s.englishAbstractFont || '"Times New Roman", serif')}; }
       #preview-content .figure-caption { font-weight: ${s.figureCaptionBold === false ? 'normal' : 'bold'}; }
       #preview-content .table-caption { font-weight: ${s.tableCaptionBold === false ? 'normal' : 'bold'}; }

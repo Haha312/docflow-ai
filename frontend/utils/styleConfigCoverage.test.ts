@@ -35,10 +35,7 @@ const EXPORT_ONLY: Record<string, string> = {
  * 得先在提示词里加上对应的类,那是生成层的改动,不该混在排版层里做。
  */
 const NOT_IMPLEMENTED: Record<string, string> = {
-    referencesFont: '生成层未产出 .references 元素', referencesSize: '同上',
-    referencesLineHeight: '同上', referencesHangingIndent: '同上',
-    doiFont: '生成层未产出 .doi 元素', doiSize: '同上', doiBold: '同上',
-    figureWidthFull: '生成层未产出 .full-width 标记(通栏图)',
+    figureWidthFull: '预览已实现 column-span,但没有产出 .full-width 标记的来源:模型看不到图的像素宽,判不了通栏;要做得在前端回填图片时按实际宽度打标',
     figureWidthHalf: '双栏下 max-width:100% 已等价于半栏宽,无需额外配置',
     linesPerPage: '每页行数是排版约束,由页高与行距共同决定,不是可直接下发的属性',
     charsPerLine: '每行字数同理,由栏宽与字号决定',
