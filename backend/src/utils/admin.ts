@@ -31,3 +31,20 @@ export async function isAdmin(phone: string | undefined | null): Promise<boolean
     const list = await getAdminPhones();
     return list.includes(phone);
 }
+
+/**
+ * 管理员调整赠送次数的规则(纯函数,路由与测试共用同一口径):
+ *  - 只收非零整数,绝对值封顶 10000(防手滑多敲个零);
+ *  - 结果落在 bonusQuota 上,减到 0 为止(bonusQuota 永不为负,
+ *    否则会倒扣档位本身的额度,把付费用户扣成负资产)。
+ */
+export const applyQuotaDelta = (
+    current: number,
+    delta: unknown,
+): { ok: true; value: number } | { ok: false; error: string } => {
+    const n = Number(delta);
+    if (!Number.isInteger(n) || n === 0 || Math.abs(n) > 10000) {
+        return { ok: false, error: 'addQuota 须为非零整数,绝对值不超过 10000' };
+    }
+    return { ok: true, value: Math.max(0, current + n) };
+};

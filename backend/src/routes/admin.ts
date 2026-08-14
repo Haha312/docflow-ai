@@ -2,7 +2,7 @@ import express, { Response } from 'express';
 import prisma from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { isAdmin } from '../utils/admin';
+import { isAdmin, applyQuotaDelta } from '../utils/admin';
 import redis from '../utils/redis';
 
 const router = express.Router();
@@ -340,6 +340,7 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
                     email: true,
                     subscriptionStatus: true,
                     subscriptionEndDate: true,
+                    bonusQuota: true,
                     createdAt: true,
                     usageLogs: {
                         select: { id: true } // just to eventually get count if needed, or we compute in separate query
@@ -369,6 +370,7 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
             email: u.email,
             subscriptionStatus: u.subscriptionStatus,
             subscriptionEndDate: u.subscriptionEndDate,
+            bonusQuota: u.bonusQuota,
             createdAt: u.createdAt,
             usageCount: usageMap.get(u.id) ?? 0,
             banned: bannedMap.get(u.id) ?? false,
@@ -396,10 +398,27 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
 router.post('/users/:id', authenticate, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
         const userId = String(req.params.id || '');
-        const { subscriptionStatus, additionalDays } = req.body;
+        const { subscriptionStatus, additionalDays, addQuota } = req.body;
 
         const VALID_STATUSES = ['FREE', 'PLUS', 'PRO', 'ULTRA'];
         const data: any = {};
+
+        // 管理员手动加/减次数,走 bonusQuota(额度 = 档位上限 + bonusQuota,
+        // 与邀请奖励同一字段同一口径,前后台显示天然一致)。负数用于纠错,减到 0 为止。
+        if (addQuota !== undefined) {
+            const target = await prisma.user.findUnique({ where: { id: userId }, select: { bonusQuota: true } });
+            if (!target) {
+                res.status(404).json({ error: 'User not found' });
+                return;
+            }
+            const r = applyQuotaDelta(target.bonusQuota, addQuota);
+            if (!r.ok) {
+                res.status(400).json({ error: r.error });
+                return;
+            }
+            data.bonusQuota = r.value;
+            console.log(`[ADMIN_QUOTA] 管理员 ${req.user?.id} 给用户 ${userId} 调整次数 ${addQuota}(bonusQuota ${target.bonusQuota} → ${r.value})`);
+        }
         if (subscriptionStatus !== undefined) {
             if (!VALID_STATUSES.includes(subscriptionStatus)) {
                 res.status(400).json({ error: `Invalid subscriptionStatus. Must be one of: ${VALID_STATUSES.join(', ')}` });
@@ -422,7 +441,7 @@ router.post('/users/:id', authenticate, requireAdmin, async (req: AuthRequest, r
         const updatedUser = await prisma.user.update({
             where: { id: userId },
             data,
-            select: { id: true, email: true, subscriptionStatus: true, subscriptionEndDate: true }
+            select: { id: true, email: true, subscriptionStatus: true, subscriptionEndDate: true, bonusQuota: true }
         });
 
         res.json({ success: true, user: updatedUser });

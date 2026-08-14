@@ -38,6 +38,7 @@ interface UserData {
     createdAt: string;
     usageCount: number;
     banned?: boolean;
+    bonusQuota?: number;
 }
 
 interface AdminStats {
@@ -345,6 +346,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const [editingUser, setEditingUser] = useState<UserData | null>(null);
     const [editStatus, setEditStatus] = useState<string>('FREE');
     const [editDays, setEditDays] = useState<number>(0);
+    const [editQuota, setEditQuota] = useState<number>(0);
     const [editSaveResult, setEditSaveResult] = useState<'success' | 'error' | null>(null);
     const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
 
@@ -470,7 +472,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             const res = await fetch(`${API}/api/admin/users/${editingUser.id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeader() },
-                body: JSON.stringify({ subscriptionStatus: editStatus, additionalDays: editDays !== 0 ? editDays : undefined })
+                body: JSON.stringify({ subscriptionStatus: editStatus, additionalDays: editDays !== 0 ? editDays : undefined, addQuota: editQuota !== 0 ? editQuota : undefined })
             });
             if (res.ok) {
                 setEditSaveResult('success');
@@ -949,9 +951,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 <td className={`px-5 py-3.5 text-sm ${T.t4}`}>
                                                     {u.subscriptionStatus === 'FREE' ? t('admin.permanent') : formatDateOnly(u.subscriptionEndDate)}
                                                 </td>
-                                                <td className={`px-5 py-3.5 text-sm ${T.t2} text-center font-mono`}>{u.usageCount}</td>
+                                                <td className={`px-5 py-3.5 text-sm ${T.t2} text-center font-mono`}>
+                                                    {u.usageCount}
+                                                    {(u.bonusQuota ?? 0) > 0 && <span className="ml-1.5 inline-block px-1.5 py-0.5 text-[10px] bg-emerald-500/20 text-emerald-400 rounded" title="赠送次数(邀请奖励+管理员发放)">+{u.bonusQuota}</span>}
+                                                </td>
                                                 <td className="px-5 py-3.5 text-right space-x-2">
-                                                    <button onClick={() => { setEditStatus(u.subscriptionStatus); setEditDays(0); setEditingUser(u); }} className={`text-xs ${T.editBtn} px-3 py-1.5 rounded transition-colors`}>{t('admin.edit_status')}</button>
+                                                    <button onClick={() => { setEditStatus(u.subscriptionStatus); setEditDays(0); setEditQuota(0); setEditingUser(u); }} className={`text-xs ${T.editBtn} px-3 py-1.5 rounded transition-colors`}>{t('admin.edit_status')}</button>
                                                     <button onClick={() => toggleBanUser(u)} className={`text-xs px-3 py-1.5 rounded transition-colors ${u.banned ? T.unbanBtn : T.banBtn}`}>
                                                         {u.banned ? t('admin.unban', '解封') : t('admin.ban', '封禁')}
                                                     </button>
@@ -1119,6 +1124,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                     <option value="PRO">{t('admin.tier_pro_label')}</option>
                                     <option value="ULTRA">{t('admin.tier_ultra_label')}</option>
                                 </select>
+                            </div>
+
+                            <div>
+                                <label className={`block text-xs ${T.modalLabel} mb-2`}>{t('admin.add_quota', '加次数')}</label>
+                                <input
+                                    type="number"
+                                    value={editQuota}
+                                    onChange={e => setEditQuota(Number(e.target.value))}
+                                    className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none ${T.modalInput}`}
+                                    placeholder={t('admin.add_quota_placeholder', '正数加,负数减(纠错用)')}
+                                />
+                                <p className={`text-[11px] ${T.t5} mt-1`}>{t('admin.add_quota_hint', '当前赠送 {{n}} 次;与档位额度相加,立即生效', { n: editingUser.bonusQuota ?? 0 })}</p>
                             </div>
 
                             {editStatus !== 'FREE' && (
