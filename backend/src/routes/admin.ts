@@ -3,6 +3,8 @@ import prisma from '../config/database';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { isAdmin, applyQuotaDelta } from '../utils/admin';
+import { TIER_LIMITS } from '../config/tierConfig';
+import { getPeriodStart } from '../utils/usageCount';
 import redis from '../utils/redis';
 
 const router = express.Router();
@@ -341,6 +343,7 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
                     subscriptionStatus: true,
                     subscriptionEndDate: true,
                     bonusQuota: true,
+                    quotaPeriodStart: true,
                     createdAt: true,
                     usageLogs: {
                         select: { id: true } // just to eventually get count if needed, or we compute in separate query
@@ -364,17 +367,40 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
         const usageMap = new Map(usageCounts.map(g => [g.userId, g._count.id]));
         const bannedMap = new Map(userIds.map((id, i) => [id, !!bannedStatuses[i]]));
 
-        const enrichedUsers = users.map(u => ({
-            id: u.id,
-            phone: u.phone,
-            email: u.email,
-            subscriptionStatus: u.subscriptionStatus,
-            subscriptionEndDate: u.subscriptionEndDate,
-            bonusQuota: u.bonusQuota,
-            createdAt: u.createdAt,
-            usageCount: usageMap.get(u.id) ?? 0,
-            banned: bannedMap.get(u.id) ?? false,
+        // 周期内用量:付费档按订阅周期重置,FREE 是终身计数(与 rateLimit 中间件同口径,
+        // 否则后台显示的剩余次数和用户实际能用的对不上)。一条 groupBy 拿到所有付费用户的周期用量。
+        const paidUsers = users.filter(u => u.subscriptionStatus !== 'FREE');
+        const periodUsage = new Map<string, number>();
+        await Promise.all(paidUsers.map(async (u) => {
+            const periodStart = getPeriodStart(u.quotaPeriodStart);
+            const n = await prisma.usageLog.count({
+                where: { userId: u.id, actionType: { startsWith: 'generate_document' }, createdAt: { gte: periodStart } },
+            });
+            periodUsage.set(u.id, n);
         }));
+
+        const enrichedUsers = users.map(u => {
+            const tierLimit = TIER_LIMITS[u.subscriptionStatus as keyof typeof TIER_LIMITS] ?? TIER_LIMITS.FREE;
+            const used = u.subscriptionStatus === 'FREE'
+                ? (usageMap.get(u.id) ?? 0)                 // FREE:终身计数
+                : (periodUsage.get(u.id) ?? 0);             // 付费:本周期
+            const totalQuota = tierLimit + u.bonusQuota;
+            return {
+                id: u.id,
+                phone: u.phone,
+                email: u.email,
+                subscriptionStatus: u.subscriptionStatus,
+                subscriptionEndDate: u.subscriptionEndDate,
+                bonusQuota: u.bonusQuota,
+                createdAt: u.createdAt,
+                usageCount: usageMap.get(u.id) ?? 0,        // 历史累计(所有周期)
+                quotaUsed: used,                            // 计入当前额度的用量
+                quotaTierLimit: tierLimit,
+                quotaTotal: totalQuota,
+                quotaRemaining: Math.max(0, totalQuota - used),
+                banned: bannedMap.get(u.id) ?? false,
+            };
+        });
 
         res.json({
             data: enrichedUsers,

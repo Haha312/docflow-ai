@@ -506,7 +506,16 @@
         "status_all": "全部状态",
         "refund": "退款",
         "refund_confirm": "确定为 {{who}} 退款 ¥{{amt}}? 用户将立即降级为免费版。",
-        "no_orders": "暂无订单"
+        "no_orders": "暂无订单",
+        "quota_col": "剩余次数",
+        "quota_breakdown": "档位 {{tier}}",
+        "quota_bonus": "赠送 {{n}}",
+        "quota_now": "当前",
+        "quota_after": "调整后",
+        "quota_used": "已用 {{n}}",
+        "add_quota": "加次数",
+        "collapse": "收起",
+        "reset_zero": "清零"
     },
     "profile": {
         "title": "用户中心",

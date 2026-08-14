@@ -504,7 +504,16 @@
         "status_all": "All Status",
         "refund": "Refund",
         "refund_confirm": "Refund ¥{{amt}} to {{who}}? They will be downgraded to Free immediately.",
-        "no_orders": "No orders"
+        "no_orders": "No orders",
+        "quota_col": "Quota Left",
+        "quota_breakdown": "tier {{tier}}",
+        "quota_bonus": "bonus {{n}}",
+        "quota_now": "Now",
+        "quota_after": "After",
+        "quota_used": "used {{n}}",
+        "add_quota": "Add Quota",
+        "collapse": "Collapse",
+        "reset_zero": "Clear"
     },
     "profile": {
         "title": "User Profile",

@@ -7,6 +7,10 @@ import { useNavigate } from 'react-router-dom';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Area, AreaChart } from 'recharts';
 import { useTranslation } from 'react-i18next';
 
+// 与后端 config/tierConfig.ts 保持一致。只用于「调整后」的即时预演,
+// 真实额度仍以后端返回的 quotaTotal 为准(保存后会重新拉取覆盖)。
+const TIER_LIMITS: Record<string, number> = { FREE: 3, PLUS: 50, PRO: 200, ULTRA: 1000 };
+
 interface DailyData {
     date: string;
     dateLabel: string;
@@ -39,6 +43,10 @@ interface UserData {
     usageCount: number;
     banned?: boolean;
     bonusQuota?: number;
+    quotaUsed?: number;
+    quotaTierLimit?: number;
+    quotaTotal?: number;
+    quotaRemaining?: number;
 }
 
 interface AdminStats {
@@ -267,7 +275,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         modal:       isDark ? 'bg-[#111] border border-white/10' : 'bg-white border border-gray-200',
         modalClose:  isDark ? 'text-white/40 hover:text-white' : 'text-gray-400 hover:text-gray-600',
         modalLabel:  isDark ? 'text-white/50' : 'text-gray-500',
-        modalInput:  isDark ? 'bg-white/5 border border-white/10 text-white' : 'bg-gray-50 border border-gray-200 text-gray-900',
+        // [&>option] 必须显式配色:深色主题给 select 设了 text-white,但下拉弹层由系统渲染在
+        // 白色背景上 —— 白字白底,除高亮项外全部隐形(实测下拉一片空白,等于选不了)。
+        modalInput:  isDark ? 'bg-white/5 border border-white/10 text-white [&>option]:bg-[#1c1c1c] [&>option]:text-white' : 'bg-gray-50 border border-gray-200 text-gray-900',
         editBtn:     isDark ? 'bg-white/[0.05] hover:bg-white/[0.1] text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700',
         banBtn:      isDark ? 'bg-red-500/20 hover:bg-red-500/30 text-red-300'   : 'bg-red-100 hover:bg-red-200 text-red-700',
         unbanBtn:    isDark ? 'bg-green-500/20 hover:bg-green-500/30 text-green-300' : 'bg-green-100 hover:bg-green-200 text-green-700',
@@ -930,14 +940,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                 <table className="w-full">
                                     <thead>
                                         <tr className={T.tableHead}>
-                                            {[t('admin.register_time'), t('admin.account_email'), t('admin.identity_tier'), t('admin.subscription_expiry'), t('admin.historical_layout'), t('admin.action')].map((h, i) => (
-                                                <th key={i} className={`px-5 py-4 ${i === 4 ? 'text-center' : i === 5 ? 'text-right' : 'text-left'} text-xs font-medium ${T.tableThText} uppercase tracking-wide`}>{h}</th>
+                                            {[t('admin.register_time'), t('admin.account_email'), t('admin.identity_tier'), t('admin.subscription_expiry'), t('admin.quota_col', '剩余次数'), t('admin.historical_layout'), t('admin.action')].map((h, i) => (
+                                                <th key={i} className={`px-5 py-4 ${i === 4 || i === 5 ? 'text-center' : i === 6 ? 'text-right' : 'text-left'} text-xs font-medium ${T.tableThText} uppercase tracking-wide`}>{h}</th>
                                             ))}
                                         </tr>
                                     </thead>
                                     <tbody className={T.tableDivide}>
                                         {users.map(u => (
-                                            <tr key={u.id} className={T.tableHover}>
+                                            <React.Fragment key={u.id}>
+                                            <tr className={T.tableHover}>
                                                 <td className={`px-5 py-3.5 text-sm ${T.t4}`}>{formatDateOnly(u.createdAt)}</td>
                                                 <td className={`px-5 py-3.5 text-sm ${T.t1} font-medium`}>
                                                     <span className={u.banned ? 'line-through opacity-60' : ''}>{u.phone || u.email || u.id}</span>
@@ -951,17 +962,122 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 <td className={`px-5 py-3.5 text-sm ${T.t4}`}>
                                                     {u.subscriptionStatus === 'FREE' ? t('admin.permanent') : formatDateOnly(u.subscriptionEndDate)}
                                                 </td>
-                                                <td className={`px-5 py-3.5 text-sm ${T.t2} text-center font-mono`}>
-                                                    {u.usageCount}
-                                                    {(u.bonusQuota ?? 0) > 0 && <span className="ml-1.5 inline-block px-1.5 py-0.5 text-[10px] bg-emerald-500/20 text-emerald-400 rounded" title="赠送次数(邀请奖励+管理员发放)">+{u.bonusQuota}</span>}
+                                                {/* 剩余次数是管理员最需要一眼看到的:剩余/总额度,再拆出「档位+赠送」 */}
+                                                <td className="px-5 py-3.5 text-center">
+                                                    <div className={`text-sm font-mono ${T.t1}`}>
+                                                        <span className={(u.quotaRemaining ?? 0) === 0 ? 'text-red-400' : ''}>{u.quotaRemaining ?? '—'}</span>
+                                                        <span className={T.t5}> / {u.quotaTotal ?? '—'}</span>
+                                                    </div>
+                                                    <div className={`text-[10px] ${T.t5} mt-0.5`}>
+                                                        {t('admin.quota_breakdown', '档位 {{tier}}', { tier: u.quotaTierLimit ?? 0 })}
+                                                        {(u.bonusQuota ?? 0) > 0 && <span className="text-emerald-400"> +{t('admin.quota_bonus', '赠送 {{n}}', { n: u.bonusQuota })}</span>}
+                                                    </div>
                                                 </td>
+                                                <td className={`px-5 py-3.5 text-sm ${T.t2} text-center font-mono`}>{u.usageCount}</td>
                                                 <td className="px-5 py-3.5 text-right space-x-2">
-                                                    <button onClick={() => { setEditStatus(u.subscriptionStatus); setEditDays(0); setEditQuota(0); setEditingUser(u); }} className={`text-xs ${T.editBtn} px-3 py-1.5 rounded transition-colors`}>{t('admin.edit_status')}</button>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (editingUser?.id === u.id) { setEditingUser(null); setEditSaveResult(null); return; }
+                                                            setEditStatus(u.subscriptionStatus); setEditDays(0); setEditQuota(0);
+                                                            setEditSaveResult(null); setEditingUser(u);
+                                                        }}
+                                                        className={`text-xs ${T.editBtn} px-3 py-1.5 rounded transition-colors`}
+                                                    >
+                                                        {editingUser?.id === u.id ? t('admin.collapse', '收起') : t('admin.edit_status')}
+                                                    </button>
                                                     <button onClick={() => toggleBanUser(u)} className={`text-xs px-3 py-1.5 rounded transition-colors ${u.banned ? T.unbanBtn : T.banBtn}`}>
                                                         {u.banned ? t('admin.unban', '解封') : t('admin.ban', '封禁')}
                                                     </button>
                                                 </td>
                                             </tr>
+
+                                            {/* 行内展开面板:改次数是高频小动作,弹窗太重、还会挡住其他用户的数据。
+                                                展开在当前行下方 —— 左边现状、中间改动、下方实时算出「调整后」。 */}
+                                            {editingUser?.id === u.id && (
+                                                <tr className={isDark ? 'bg-white/[0.03]' : 'bg-gray-50'}>
+                                                    <td colSpan={7} className="px-5 py-4">
+                                                        <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
+                                                            <div>
+                                                                <label className={`block text-[11px] ${T.t5} mb-1.5`}>{t('admin.subscription_tier')}</label>
+                                                                <select
+                                                                    className={`rounded-lg px-3 py-1.5 text-sm focus:outline-none ${T.modalInput}`}
+                                                                    value={editStatus}
+                                                                    onChange={e => setEditStatus(e.target.value)}
+                                                                >
+                                                                    <option value="FREE">{t('admin.tier_free_label')}</option>
+                                                                    <option value="PLUS">{t('admin.tier_plus_label')}</option>
+                                                                    <option value="PRO">{t('admin.tier_pro_label')}</option>
+                                                                    <option value="ULTRA">{t('admin.tier_ultra_label')}</option>
+                                                                </select>
+                                                            </div>
+
+                                                            {editStatus !== 'FREE' && (
+                                                                <div>
+                                                                    <label className={`block text-[11px] ${T.t5} mb-1.5`}>{t('admin.add_days')}</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={editDays}
+                                                                        onChange={e => setEditDays(Number(e.target.value))}
+                                                                        className={`w-24 rounded-lg px-3 py-1.5 text-sm focus:outline-none ${T.modalInput}`}
+                                                                    />
+                                                                </div>
+                                                            )}
+
+                                                            <div>
+                                                                <label className={`block text-[11px] ${T.t5} mb-1.5`}>{t('admin.add_quota', '加次数')}</label>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <input
+                                                                        type="number"
+                                                                        value={editQuota}
+                                                                        onChange={e => setEditQuota(Number(e.target.value))}
+                                                                        className={`w-24 rounded-lg px-3 py-1.5 text-sm focus:outline-none ${T.modalInput}`}
+                                                                    />
+                                                                    {[5, 10, 50].map(n => (
+                                                                        <button key={n} onClick={() => setEditQuota(q => q + n)}
+                                                                            className={`text-xs px-2 py-1.5 rounded ${T.editBtn} transition-colors`}>+{n}</button>
+                                                                    ))}
+                                                                    {editQuota !== 0 && (
+                                                                        <button onClick={() => setEditQuota(0)}
+                                                                            className={`text-xs px-2 py-1.5 rounded ${T.t5} transition-colors`}>{t('admin.reset_zero', '清零')}</button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* 「调整后」实时算给管理员看 —— 不能让人心算「档位 + 赠送 − 已用」 */}
+                                                            <div className={`text-xs ${T.t4} leading-relaxed`}>
+                                                                <div>
+                                                                    {t('admin.quota_now', '当前')}
+                                                                    <span className="font-mono ml-1">{u.quotaRemaining ?? 0} / {u.quotaTotal ?? 0}</span>
+                                                                    <span className={T.t5}> ({t('admin.quota_used', '已用 {{n}}', { n: u.quotaUsed ?? 0 })})</span>
+                                                                </div>
+                                                                {(() => {
+                                                                    const nextBonus = Math.max(0, (u.bonusQuota ?? 0) + editQuota);
+                                                                    const nextTotal = (TIER_LIMITS[editStatus] ?? TIER_LIMITS.FREE) + nextBonus;
+                                                                    const nextRemaining = Math.max(0, nextTotal - (u.quotaUsed ?? 0));
+                                                                    const changed = editQuota !== 0 || editStatus !== u.subscriptionStatus;
+                                                                    return changed ? (
+                                                                        <div className="text-emerald-400 mt-0.5">
+                                                                            {t('admin.quota_after', '调整后')}
+                                                                            <span className="font-mono ml-1">{nextRemaining} / {nextTotal}</span>
+                                                                            <span className="ml-1">({t('admin.quota_bonus', '赠送 {{n}}', { n: nextBonus })})</span>
+                                                                        </div>
+                                                                    ) : null;
+                                                                })()}
+                                                            </div>
+
+                                                            <div className="flex items-center gap-3 ml-auto">
+                                                                {editSaveResult === 'success' && <span className="text-sm text-green-500">{t('admin.saved')}</span>}
+                                                                {editSaveResult === 'error' && <span className="text-sm text-red-400">{t('admin.save_error')}</span>}
+                                                                <button onClick={() => { setEditingUser(null); setEditSaveResult(null); }}
+                                                                    className={`px-3 py-1.5 text-xs ${T.t4}`}>{t('admin.cancel')}</button>
+                                                                <button onClick={saveUserEdit} disabled={editSaveResult === 'success'}
+                                                                    className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg">{t('admin.confirm_edit')}</button>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            </React.Fragment>
                                         ))}
                                     </tbody>
                                 </table>
@@ -1103,65 +1219,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                 </div>
             </div>
 
-            {/* Edit User Modal */}
-            {editingUser && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className={`${T.modal} rounded-2xl w-full max-w-md shadow-2xl p-6 relative`}>
-                        <button onClick={() => setEditingUser(null)} className={`absolute top-4 right-4 ${T.modalClose}`}>
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                        </button>
-                        <h3 className={`text-lg font-bold ${T.t1} mb-1`}>{t('admin.edit_user')}</h3>
-                        <p className={`text-sm ${T.t3} mb-6`}>{editingUser.phone || editingUser.email || editingUser.id}</p>
-
-                        <div className="space-y-4 mb-6">
-                            <div>
-                                <label className={`block text-xs ${T.modalLabel} mb-2`}>{t('admin.subscription_tier')}</label>
-                                <select className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none ${T.modalInput}`} value={editStatus} onChange={e => setEditStatus(e.target.value)}>
-                                    <option value="FREE">{t('admin.tier_free_label')}</option>
-                                    <option value="PLUS">{t('admin.tier_plus_label')}</option>
-                                    <option value="PRO">{t('admin.tier_pro_label')}</option>
-                                    <option value="ULTRA">{t('admin.tier_ultra_label')}</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className={`block text-xs ${T.modalLabel} mb-2`}>{t('admin.add_quota', '加次数')}</label>
-                                <input
-                                    type="number"
-                                    value={editQuota}
-                                    onChange={e => setEditQuota(Number(e.target.value))}
-                                    className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none ${T.modalInput}`}
-                                    placeholder={t('admin.add_quota_placeholder', '正数加,负数减(纠错用)')}
-                                />
-                                <p className={`text-[11px] ${T.t5} mt-1`}>{t('admin.add_quota_hint', '当前赠送 {{n}} 次;与档位额度相加,立即生效', { n: editingUser.bonusQuota ?? 0 })}</p>
-                            </div>
-
-                            {editStatus !== 'FREE' && (
-                                <div>
-                                    <label className={`block text-xs ${T.modalLabel} mb-2`}>{t('admin.add_days')}</label>
-                                    <input
-                                        type="number"
-                                        value={editDays}
-                                        onChange={e => setEditDays(Number(e.target.value))}
-                                        className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none ${T.modalInput}`}
-                                        placeholder={t('admin.add_days_placeholder')}
-                                    />
-                                    <p className={`text-[11px] ${T.t5} mt-1`}>{t('admin.add_days_hint')}</p>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex items-center justify-end gap-3">
-                            {editSaveResult === 'success' && <span className="text-sm text-green-500">{t('admin.saved')}</span>}
-                            {editSaveResult === 'error'   && <span className="text-sm text-red-400">{t('admin.save_error')}</span>}
-                            <button onClick={() => { setEditingUser(null); setEditSaveResult(null); }} className={`px-4 py-2 text-sm ${T.t4} hover:${T.t1}`}>{t('admin.cancel')}</button>
-                            <button onClick={saveUserEdit} disabled={editSaveResult === 'success'} className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg">{t('admin.confirm_edit')}</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
