@@ -223,9 +223,13 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
         const periodStart = userTier === 'FREE' ? null : getPeriodStart(user.quotaPeriodStart);
         const usageCount = adminUser ? 0 : await getUsageCount(user.id, periodStart);
         // 邀请奖励的次数直接并进总额度 —— 前端只显示一个总数,不做「3 + 5」的拆分展示
-        const { bonusQuota } = (await prisma.user.findUnique({
-            where: { id: user.id }, select: { bonusQuota: true },
-        })) ?? { bonusQuota: 0 };
+        // 顺带取微信字段:authenticate 中间件只 select 了核心几列,
+        // 而前端要用昵称当显示名(微信注册的账号没有手机号可显示)
+        const extra = (await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { bonusQuota: true, wxNickname: true, wxOpenid: true },
+        })) ?? { bonusQuota: 0, wxNickname: null, wxOpenid: null };
+        const { bonusQuota } = extra;
         const limit = (TIER_LIMITS[userTier] || 10) + bonusQuota;
         const remainingQuota = adminUser ? Number.MAX_SAFE_INTEGER : Math.max(0, limit - usageCount);
 
@@ -234,6 +238,10 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
                 id: user.id,
                 phone: user.phone,
                 email: user.email,
+                // 微信注册的账号没有手机号,昵称是前端唯一能显示的名字;
+                // hasWechat 用于账号设置里判断「已绑/未绑微信」
+                wxNickname: extra.wxNickname,
+                hasWechat: !!extra.wxOpenid,
                 isAdmin: adminUser,
                 subscriptionStatus: user.subscriptionStatus,
                 subscriptionEndDate: user.subscriptionEndDate,

@@ -192,6 +192,27 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     }
   };
 
+  /* 协议勾选:两种登录方式共用同一道门槛,但要各自摆在「动作旁边」——
+     手机号那侧在登录按钮上方,微信那侧在二维码下方。
+     放在页签正下方会横在扫码动线中间(实测视觉上很别扭)。 */
+  const termsCheckbox = (
+    <label className="flex items-start gap-2 text-xs text-gray-600 select-none cursor-pointer">
+      <input
+        type="checkbox"
+        checked={agreedTerms}
+        onChange={(e) => setAgreedTerms(e.target.checked)}
+        disabled={isLoading}
+        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-gray-900 focus:ring-gray-900 focus:ring-offset-0"
+      />
+      <span>
+        {t('auth.agree_prefix', '我已阅读并同意 ')}
+        <button type="button" onClick={() => setLegalType('terms')} className="text-gray-900 underline hover:text-gray-700">{t('auth.terms', '用户协议')}</button>
+        {t('auth.agree_and', ' 和 ')}
+        <button type="button" onClick={() => setLegalType('privacy')} className="text-gray-900 underline hover:text-gray-700">{t('auth.privacy', '隐私与保密条款')}</button>
+      </span>
+    </label>
+  );
+
   return (
     <div className="prism-modal auth-modal fixed inset-0 z-50 flex items-center justify-center px-4">
       <button
@@ -270,24 +291,6 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             </div>
           )}
 
-          {/* 协议同意:两种登录方式共用同一道门槛。
-              原来只挡手机号那侧,微信侧仅有一句提示 —— 同一个产品两套标准,说不通。 */}
-          <label className="flex items-start gap-2 mb-4 text-xs text-gray-600 select-none cursor-pointer">
-            <input
-              type="checkbox"
-              checked={agreedTerms}
-              onChange={(e) => setAgreedTerms(e.target.checked)}
-              disabled={isLoading}
-              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-gray-900 focus:ring-gray-900 focus:ring-offset-0"
-            />
-            <span>
-              {t('auth.agree_prefix', '我已阅读并同意 ')}
-              <button type="button" onClick={() => setLegalType('terms')} className="text-gray-900 underline hover:text-gray-700">{t('auth.terms', '用户协议')}</button>
-              {t('auth.agree_and', ' 和 ')}
-              <button type="button" onClick={() => setLegalType('privacy')} className="text-gray-900 underline hover:text-gray-700">{t('auth.privacy', '隐私与保密条款')}</button>
-            </span>
-          </label>
-
           {wechatOn && tab === 'wechat' ? (
             <div className="flex flex-col items-center">
               {/* 微信官方二维码页。用 iframe 内嵌而非跳走 —— 跳出去再回来,用户容易以为流程断了 */}
@@ -309,7 +312,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   <iframe
                     src={qrUrl}
                     title={t('auth.tab_wechat', '微信扫码')}
-                    className="block border-0 origin-top-left w-[300px] h-[340px] max-[360px]:scale-[0.75] max-[360px]:-mb-[85px]"
+                    className="block border-0 origin-top-left w-[300px] h-[250px] max-[360px]:scale-[0.75] max-[360px]:-mb-[62px]"
                     sandbox="allow-scripts allow-same-origin allow-top-navigation allow-popups"
                   />
 
@@ -318,7 +321,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   {!agreedTerms && (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/85 backdrop-blur-[1px] rounded-lg">
                       <p className="px-6 text-center text-sm text-gray-600">
-                        {t('auth.agree_before_scan', '请先勾选上方协议,再扫码登录')}
+                        {t('auth.agree_before_scan', '请先勾选下方协议,再扫码登录')}
                       </p>
                     </div>
                   )}
@@ -339,7 +342,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 </div>
               )}
               {!qrUrl && !qrError && (
-                <div className="w-full max-w-[300px] h-[340px] flex items-center justify-center text-sm text-gray-400">
+                <div className="w-full max-w-[300px] h-[250px] flex items-center justify-center text-sm text-gray-400">
                   {t('auth.qr_loading', '二维码加载中…')}
                 </div>
               )}
@@ -355,8 +358,10 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   </button>
                 </div>
               )}
-              <p className="text-xs text-gray-400 mt-3 text-center px-4">
-                {t('auth.wechat_hint', '用微信扫码即表示同意用户协议与隐私政策;首次扫码将自动创建账号')}
+              {/* 协议放在二维码「下方」而非页签下方 —— 后者会横在扫码动线正中间 */}
+              <div className="w-full max-w-[300px] mt-4">{termsCheckbox}</div>
+              <p className="text-xs text-gray-400 mt-2 text-center px-4">
+                {t('auth.wechat_hint', '首次扫码将自动创建账号')}
               </p>
             </div>
           ) : (
@@ -456,6 +461,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             {devHint && (
               <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{devHint}</p>
             )}
+
+            {termsCheckbox}
 
             {error && (
               <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">

@@ -8,6 +8,10 @@
  * 所以这个文件必须随前端一起部署在 docflow.kunlunjz.com.cn 下。
  */
 
+.impowerBox {
+  margin: 0 !important;          /* 微信默认有外边距,不清掉 iframe 里会多出一截空白 */
+}
+
 .impowerBox .title {
   display: none;                 /* 去掉「微信登录」大标题,我们弹窗里已经有了 */
 }
@@ -19,6 +23,8 @@
   border-radius: 12px;
   padding: 8px;
   box-sizing: content-box;
+  /* 二维码 200 + 上下 padding 16 + 边框 2 = 218px。
+     iframe 高度按这个算,别再留一截空白。 */
 }
 
 .impowerBox .info {
@@ -26,7 +32,8 @@
 }
 
 .impowerBox .status {
-  margin-top: 12px;
+  margin-top: 10px;
+  margin-bottom: 0;
   text-align: center;
   font-size: 13px;
   color: #6b7280;

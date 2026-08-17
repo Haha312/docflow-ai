@@ -86,6 +86,10 @@ beforeEach(() => {
     db.seq = 0;
     store.clear();
     globalThis.fetch = realFetch;
+    // 必须清掉:开发机 .env 里若配了真凭据,「未配置」这组用例会被污染成已配置
+    // (实测踩过 —— 凭据一填进本地 .env,两条断言当场翻红)。
+    delete process.env.WXLOGIN_APPID;
+    delete process.env.WXLOGIN_SECRET;
 });
 
 /** 微信的两个接口都替换掉:换 token / 取昵称 */

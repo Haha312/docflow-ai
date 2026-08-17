@@ -18,10 +18,27 @@ export interface User {
     id: string;
     phone: string | null;
     email: string | null;
+    /** 微信昵称。微信扫码注册的账号没有手机号,这是唯一能显示的名字 */
+    wxNickname?: string | null;
+    /** 是否已绑定微信(账号设置里据此显示「绑定 / 已绑定」) */
+    hasWechat?: boolean;
     isAdmin?: boolean;
     subscriptionStatus: 'FREE' | 'PLUS' | 'PRO' | 'ULTRA';
     subscriptionEndDate?: string;
 }
+
+/**
+ * 界面上「这个账号叫什么」的统一口径。
+ * 优先手机号(脱敏)—— 它是账号的主标识;微信用户没有手机号时用昵称,
+ * 都没有才退到「用户」。此前微信用户这里是一片空白。
+ */
+export const displayName = (u: Pick<User, 'phone' | 'email' | 'wxNickname'> | null | undefined): string => {
+    if (!u) return '';
+    if (u.phone) return `${u.phone.slice(0, 3)}****${u.phone.slice(-4)}`;
+    if (u.wxNickname) return u.wxNickname;
+    if (u.email) return u.email.split('@')[0];
+    return '';
+};
 
 export interface AuthResponse {
     token: string;

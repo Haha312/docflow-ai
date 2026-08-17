@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { displayName } from '../services/authService';
 import { OrderHistory } from './OrderHistory';
 import { cancelSubscription, getUserUsage } from '../services/backendApiService';
 import { useTranslation } from 'react-i18next';
@@ -94,7 +95,7 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
             <UserAvatar tone={accountTone} size="lg" />
             <div>
               <h2 className="profile-title text-xl font-medium">{t('profile.title')}</h2>
-              <p className="profile-subtitle text-sm mt-0.5">{user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : (user.email || '')}</p>
+              <p className="profile-subtitle text-sm mt-0.5">{displayName(user) || t('nav.user', '用户')}</p>
             </div>
           </div>
 

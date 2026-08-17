@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { displayName } from '../services/authService';
 import { useTranslation } from 'react-i18next';
 import { AccountTone, UserAvatar } from './UserAvatar';
 
@@ -82,7 +83,7 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin
         <UserAvatar tone={accountTone} size="sm" className="group-hover:scale-[1.03] transition-transform duration-200" />
         <div className="hidden sm:flex flex-col items-start gap-0.5">
           <span className="text-xs font-semibold text-zinc-200 max-w-[100px] truncate leading-none">
-            {user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : (user.email?.split('@')[0] || t('nav.user', '用户'))}
+            {displayName(user) || t('nav.user', '用户')}
           </span>
           <span className="user-tier-label text-[10px] font-bold tracking-wide uppercase leading-none" data-account-tone={accountTone}>
             {tierLabel}
@@ -99,7 +100,7 @@ export function UserInfo({ onOpenPricing, onOpenAuth, onOpenProfile, onOpenAdmin
       {showMenu && (
         <div className="absolute right-0 top-full mt-2 w-52 bg-[#111111] rounded-xl shadow-2xl border border-white/10 py-1 z-50">
           <div className="px-3 py-2 border-b border-white/10">
-            <p className="text-xs text-zinc-500">{user.phone ? `${user.phone.slice(0, 3)}****${user.phone.slice(-4)}` : user.email}</p>
+            <p className="text-xs text-zinc-500">{displayName(user) || t('nav.user', '用户')}</p>
             <div className="flex items-center justify-between mt-1">
               <span className="user-tier-label text-sm font-bold" data-account-tone={accountTone}>
                 {tierLabel}
