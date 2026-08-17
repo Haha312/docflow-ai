@@ -932,6 +932,19 @@ body {
   color: var(--df-primary-text) !important;
 }
 
+/* 登录框页签只保留焦点环。配色走 React 行内样式 ——
+   弹窗子树里 .prism-modal 那批 !important 规则会接管背景/文字色,
+   实测连 [data-doc-theme="dark"] .auth-tab 都压不过去(选择器匹配、规则存在、
+   仍取到浅色值)。行内样式不参与这场层叠竞争,深浅两套都稳。 */
+.auth-tab:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: -2px;
+}
+
+[data-doc-theme="dark"] .auth-tab:focus-visible {
+  outline-color: #5eead4;
+}
+
 .auth-panel {
   color: var(--df-text);
 }

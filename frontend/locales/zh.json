@@ -34,7 +34,21 @@
         "agree_prefix": "我已阅读并同意 ",
         "terms": "用户协议",
         "agree_and": " 和 ",
-        "privacy": "隐私与保密条款"
+        "privacy": "隐私与保密条款",
+        "tab_sms": "手机号",
+        "tab_wechat": "微信扫码",
+        "qr_loading": "二维码加载中…",
+        "use_sms_instead": "改用手机号登录",
+        "wechat_hint": "用微信扫码即表示同意用户协议与隐私政策;首次扫码将自动创建账号",
+        "wxerr_expired": "二维码已过期,请重新扫码",
+        "wxerr_cancelled": "扫码未完成,请重新扫码",
+        "wxerr_exchange": "微信授权失败,请重新扫码",
+        "wxerr_unconfigured": "微信登录暂未开通",
+        "wxerr_generic": "微信登录失败,请重试",
+        "agree_before_scan": "请先勾选上方协议,再扫码登录",
+        "qr_expired": "二维码已过期",
+        "qr_refresh": "点击刷新",
+        "refresh_captcha": "换一张"
     },
     "not_found": {
         "title": "页面不存在",
@@ -355,7 +369,8 @@
         "refund_failed": "退款失败",
         "change_password_failed": "密码修改失败",
         "change_email_failed": "邮箱修改失败",
-        "delete_account_failed": "账号删除失败"
+        "delete_account_failed": "账号删除失败",
+        "wechat_start_failed": "微信登录暂不可用"
     },
     "backend_errors": {
         "AUTH_MISSING_FIELDS": "邮箱、密码和验证码不能为空",
@@ -601,7 +616,18 @@
         "request_refund": "申请退款",
         "refund_warning": "申请退款将全额退还该笔订单(1-3 个工作日内到账),账号立即降级为免费版,剩余会员天数作废。退款成功后不可撤销。是否继续?",
         "refund_success": "退款申请已提交,款项将在 1-3 个工作日内退回原支付账户",
-        "refund_failed": "退款失败"
+        "refund_failed": "退款失败",
+        "phone": "手机号",
+        "phone_unbound": "未绑定",
+        "bind_phone": "绑定",
+        "change_phone": "更换",
+        "bind_phone_why": "绑定后可用手机号登录。微信换号或应用被清理时,账号和已购额度还能找回。",
+        "bind_done": "手机号已绑定",
+        "confirm_bind": "确认绑定",
+        "confirm_change": "确认更换",
+        "enter_code": "请输入验证码",
+        "bind_failed": "绑定失败,请重试",
+        "captcha_load_failed": "图形码加载失败,请重试"
     },
     "styles": {
         "title": "高级排版配置",

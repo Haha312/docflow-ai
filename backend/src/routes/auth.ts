@@ -12,6 +12,10 @@ import { TIER_LIMITS } from '../config/tierConfig';
 import { getUsageCount, getPeriodStart } from '../utils/usageCount';
 import { bindReferral } from '../utils/referral';
 import { isAdmin } from '../utils/admin';
+import {
+    getWechatConfig, isWechatLoginConfigured, signState, verifyState, buildQrUrl,
+    issueTicket, consumeTicket, exchangeCodeForIdentity, findOrCreateByWechat,
+} from '../utils/wechatLogin';
 
 const svgCaptcha = require('svg-captcha');
 
@@ -404,6 +408,129 @@ router.delete('/account', authenticate, async (req: AuthRequest, res: Response):
     } catch (error) {
         console.error('Delete account error:', error);
         res.status(500).json(errorResponse('AUTH_DELETE_ACCOUNT_FAILED', 500));
+    }
+});
+
+// ── 微信扫码登录 ──────────────────────────────────────────────
+
+/** 站点对外地址。回调地址必须与开放平台配置的「授权回调域」同域 */
+const publicBase = (req: Request): string =>
+    process.env.PUBLIC_URL
+    || process.env.BACKEND_URL
+    || process.env.FRONTEND_URL
+    || `${req.protocol}://${req.get('host')}`;
+
+/** 前端首页地址:回调完成后带票跳回这里 */
+const frontendBase = (req: Request): string =>
+    process.env.FRONTEND_URL || publicBase(req);
+
+/**
+ * GET /api/auth/wechat/status — 前端据此决定要不要显示「微信登录」页签。
+ * 没配凭据时不显示,免得用户点了一个必然失败的入口。
+ */
+router.get('/wechat/status', async (_req: Request, res: Response): Promise<void> => {
+    res.json(successResponse({ enabled: await isWechatLoginConfigured() }));
+});
+
+/**
+ * GET /api/auth/wechat/start — 取二维码页地址。
+ * ?json=1 返回地址给前端内嵌 iframe(不把用户带离站点);否则 302 直跳。
+ */
+router.get('/wechat/start', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const cfg = await getWechatConfig();
+        const wantJson = req.query.json === '1' || req.query.json === 'true';
+        if (!cfg.appid || !cfg.secret) {
+            res.status(404).json(errorResponse('微信登录未配置', 404));
+            return;
+        }
+        const ref = typeof req.query.ref === 'string' ? req.query.ref.slice(0, 16) : undefined;
+        const url = buildQrUrl({
+            appid: cfg.appid,
+            callbackUrl: `${publicBase(req)}/api/auth/wechat/callback`,
+            state: signState({ ref }),
+            styleHref: `${publicBase(req)}/wxqr.css`,
+        });
+        if (wantJson) {
+            res.json(successResponse({ url, expiresIn: 300 }));
+            return;
+        }
+        res.redirect(url);
+    } catch (error) {
+        console.error('WeChat start error:', error);
+        res.status(500).json(errorResponse('微信登录发起失败', 500));
+    }
+});
+
+/**
+ * GET /api/auth/wechat/callback — 微信扫码后回跳到这里。
+ * 一律 302 回首页(带票或带错误码),不返回 JSON —— 这个地址是用户浏览器直接访问的。
+ */
+router.get('/wechat/callback', async (req: Request, res: Response): Promise<void> => {
+    const home = frontendBase(req);
+    try {
+        const cfg = await getWechatConfig();
+        if (!cfg.appid || !cfg.secret) { res.redirect(`${home}/?wxerr=unconfigured`); return; }
+
+        const { code, state } = req.query as { code?: string; state?: string };
+        const st = verifyState(String(state || ''));
+        if (!st.ok) { res.redirect(`${home}/?wxerr=state`); return; }
+        if (!code) { res.redirect(`${home}/?wxerr=nocode`); return; }
+
+        const identity = await exchangeCodeForIdentity(String(code), cfg);
+        if (!identity) { res.redirect(`${home}/?wxerr=exchange`); return; }
+
+        const { userId, isNew } = await findOrCreateByWechat(identity);
+
+        // 与短信登录同一口径:只有新用户登记邀请关系,且此刻只登记不发奖
+        if (isNew && st.ref) {
+            const ip = (req.headers['x-forwarded-for'] as string || '').split(',')[0].trim() || req.ip;
+            await bindReferral(userId, st.ref, ip);
+        }
+
+        const ticket = await issueTicket(userId);
+        res.redirect(`${home}/?wxlogin=${ticket}`);
+    } catch (error) {
+        console.error('WeChat callback error:', error);
+        res.redirect(`${home}/?wxerr=server`);
+    }
+});
+
+/**
+ * POST /api/auth/wechat/finish — 用一次性票换正式 JWT。
+ * JWT 只走这条 POST 返回,绝不进 URL(URL 会留在浏览器历史、Referer 和访问日志里)。
+ */
+router.post('/wechat/finish', loginRateLimit, async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { ticket } = req.body as { ticket?: string };
+        const userId = await consumeTicket(String(ticket || ''));
+        if (!userId) {
+            res.status(400).json(errorResponse('登录票据无效或已过期,请重新扫码', 400));
+            return;
+        }
+        const banned = await redis.get(`banned:${userId}`);
+        if (banned) {
+            res.status(403).json(errorResponse('账号已被封禁,如有疑问请联系客服', 403));
+            return;
+        }
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+            res.status(404).json(errorResponse('用户不存在', 404));
+            return;
+        }
+        res.json(successResponse({
+            token: signToken(user),
+            user: {
+                id: user.id,
+                phone: user.phone,
+                email: user.email,
+                subscriptionStatus: user.subscriptionStatus,
+                subscriptionEndDate: user.subscriptionEndDate,
+            },
+        }, '登录成功'));
+    } catch (error) {
+        console.error('WeChat finish error:', error);
+        res.status(500).json(errorResponse('AUTH_LOGIN_FAILED', 500));
     }
 });
 

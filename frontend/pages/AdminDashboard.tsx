@@ -9,6 +9,19 @@ import { useTranslation } from 'react-i18next';
 
 // 与后端 config/tierConfig.ts 保持一致。只用于「调整后」的即时预演,
 // 真实额度仍以后端返回的 quotaTotal 为准(保存后会重新拉取覆盖)。
+/**
+ * 后台显示用的用户标识。微信用户没有手机号和邮箱,
+ * 原来会掉到完整 UUID —— 几十行 UUID 排在一起,谁是谁完全看不出。
+ */
+const userLabel = (u: { phone?: string | null; email?: string | null; wxNickname?: string | null; id: string }): string =>
+    u.phone || u.email || u.wxNickname || `#${u.id.slice(0, 8)}`;
+
+/** 日志/订单里关联查出的用户没有 id,只能退到「未知用户」 */
+const relatedUserLabel = (
+    u: { phone?: string | null; email?: string | null; wxNickname?: string | null } | undefined,
+    fallback: string,
+): string => u?.phone || u?.email || u?.wxNickname || fallback;
+
 const TIER_LIMITS: Record<string, number> = { FREE: 3, PLUS: 50, PRO: 200, ULTRA: 1000 };
 
 interface DailyData {
@@ -30,7 +43,7 @@ interface UsageLog {
     presetUsed: string;
     tokenUsage: number | null;
     createdAt: string;
-    user: { phone?: string | null; email?: string | null; subscriptionStatus: string };
+    user: { phone?: string | null; email?: string | null; wxNickname?: string | null; subscriptionStatus: string };
 }
 
 interface UserData {
@@ -47,6 +60,8 @@ interface UserData {
     quotaTierLimit?: number;
     quotaTotal?: number;
     quotaRemaining?: number;
+    wxNickname?: string | null;
+    loginMethods?: string[];
 }
 
 interface AdminStats {
@@ -76,7 +91,7 @@ interface AdminOrder {
     planType: string;
     status: string;
     createdAt: string;
-    user?: { phone?: string | null; email?: string | null; subscriptionStatus: string };
+    user?: { phone?: string | null; email?: string | null; wxNickname?: string | null; subscriptionStatus: string };
 }
 
 const getPresetName = (key: string, t: any) => {
@@ -497,8 +512,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
     const toggleBanUser = async (u: UserData) => {
         const action = u.banned ? 'unban' : 'ban';
         const confirmMsg = u.banned
-            ? t('admin.unban_confirm', '确定解封 {{email}}?', { email: u.phone || u.email || u.id })
-            : t('admin.ban_confirm', '确定封禁 {{email}}? 用户将无法访问任何 API。', { email: u.phone || u.email || u.id });
+            ? t('admin.unban_confirm', '确定解封 {{email}}?', { email: userLabel(u) })
+            : t('admin.ban_confirm', '确定封禁 {{email}}? 用户将无法访问任何 API。', { email: userLabel(u) });
         if (!window.confirm(confirmMsg)) return;
         try {
             const res = await fetch(`${API}/api/admin/users/${u.id}/${action}`, { method: 'POST', headers: authHeader() });
@@ -508,7 +523,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
 
     const handleAdminRefund = async (o: AdminOrder) => {
         if (refundingId) return;
-        const who = o.user?.phone || o.user?.email || o.id;
+        const who = relatedUserLabel(o.user, `#${o.id.slice(0, 8)}`);
         const msg = t('admin.refund_confirm', '确定为 {{who}} 退款 ¥{{amt}}? 用户将立即降级为免费版。', { who, amt: o.amount });
         if (!window.confirm(msg)) return;
         setRefundingId(o.id);
@@ -547,6 +562,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         { key: 'DEEPSEEK_MODEL',         label: 'DeepSeek 模型名(留空用 deepseek-v4-flash)' },
         { key: 'DOUBAO_API_KEY',         label: '豆包 API Key(升级模型时使用)' },
         { key: 'DOUBAO_ENDPOINT_ID',     label: '豆包 Endpoint ID' },
+        // 微信开放平台「网站应用」审核通过后,在这里填就能启用扫码登录,不用登服务器改配置。
+        // 两项都留空时,登录框不会出现「微信扫码」页签。
+        { key: 'WXLOGIN_APPID',          label: '微信扫码登录 AppID' },
+        { key: 'WXLOGIN_SECRET',         label: '微信扫码登录 AppSecret' },
     ];
 
     const periodTotalTokens = stats?.dailyHistory.reduce((a, b) => a + b.tokens, 0) || 0;
@@ -890,7 +909,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                             return (
                                                 <tr key={log.id} className={T.tableHover}>
                                                     <td className={`px-5 py-3.5 text-sm ${T.t4}`}>{formatTime(log.createdAt)}</td>
-                                                    <td className={`px-5 py-3.5 text-sm ${T.t1} font-medium`}>{log.user?.phone || log.user?.email || t('admin.unknown_user')}</td>
+                                                    <td className={`px-5 py-3.5 text-sm ${T.t1} font-medium`}>{relatedUserLabel(log.user, t('admin.unknown_user'))}</td>
                                                     <td className="px-5 py-3.5">
                                                         <span className={`inline-flex text-[10px] font-bold tracking-wider px-2 py-1 rounded uppercase ${T.tierBadge(s)}`}>
                                                             {getTierLabel(s, t)}
@@ -951,7 +970,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                             <tr className={T.tableHover}>
                                                 <td className={`px-5 py-3.5 text-sm ${T.t4}`}>{formatDateOnly(u.createdAt)}</td>
                                                 <td className={`px-5 py-3.5 text-sm ${T.t1} font-medium`}>
-                                                    <span className={u.banned ? 'line-through opacity-60' : ''}>{u.phone || u.email || u.id}</span>
+                                                    <span className={u.banned ? 'line-through opacity-60' : ''}>{userLabel(u)}</span>
+                                                    {(u.loginMethods ?? []).includes('wechat') && (
+                                                        <span className="ml-1.5 inline-block px-1.5 py-0.5 text-[10px] bg-emerald-500/20 text-emerald-400 rounded" title="微信扫码登录">微信</span>
+                                                    )}
+                                                    {(u.loginMethods ?? []).includes('phone') && (
+                                                        <span className="ml-1.5 inline-block px-1.5 py-0.5 text-[10px] bg-blue-500/20 text-blue-400 rounded" title="手机号登录">手机</span>
+                                                    )}
                                                     {u.banned && <span className="ml-2 inline-block px-1.5 py-0.5 text-[10px] bg-red-500/30 text-red-300 rounded">{t('admin.banned_badge', '已封禁')}</span>}
                                                 </td>
                                                 <td className="px-5 py-3.5">
@@ -1127,7 +1152,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                         {orders.map(o => (
                                             <tr key={o.id} className={T.tableHover}>
                                                 <td className={`px-5 py-3.5 text-sm ${T.t4}`}>{formatTime(o.createdAt)}</td>
-                                                <td className={`px-5 py-3.5 text-sm ${T.t1} font-medium`}>{o.user?.phone || o.user?.email || t('admin.unknown_user')}</td>
+                                                <td className={`px-5 py-3.5 text-sm ${T.t1} font-medium`}>{relatedUserLabel(o.user, t('admin.unknown_user'))}</td>
                                                 <td className={`px-5 py-3.5 text-sm ${T.t4}`}>{getPlanLabel(o.planType, t)}</td>
                                                 <td className={`px-5 py-3.5 text-sm ${T.t1} text-right font-mono`}>¥{formatNumber(o.amount)}</td>
                                                 <td className="px-5 py-3.5">

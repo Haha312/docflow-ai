@@ -1,0 +1,44 @@
+/*
+ * 微信扫码登录 iframe 的外观定制。
+ *
+ * 微信的 qrconnect 页面支持通过 href 参数加载一份外部样式表,用来去掉它自带的
+ * 标题、边框和说明文字,让二维码跟我们自己的弹窗融为一体。
+ *
+ * 两条硬性限制(微信侧):必须是 https、且与「授权回调域」同域,否则直接忽略。
+ * 所以这个文件必须随前端一起部署在 docflow.kunlunjz.com.cn 下。
+ */
+
+.impowerBox .title {
+  display: none;                 /* 去掉「微信登录」大标题,我们弹窗里已经有了 */
+}
+
+.impowerBox .qrcode {
+  width: 200px;
+  margin-top: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 8px;
+  box-sizing: content-box;
+}
+
+.impowerBox .info {
+  display: none;                 /* 去掉「请使用微信扫一扫」说明,改由我们自己的文案承担 */
+}
+
+.impowerBox .status {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.impowerBox .status_txt h4,
+.impowerBox .status p {
+  font-weight: 400;
+  color: #6b7280;
+}
+
+/* 扫码成功后的提示保持克制,不用微信默认的大绿块 */
+.impowerBox .status_succ .status_txt h4 {
+  color: #059669;
+}

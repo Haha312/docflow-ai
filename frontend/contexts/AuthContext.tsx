@@ -8,6 +8,10 @@ interface AuthContextType {
     quotaTotal: number;
     isLoading: boolean;
     isAuthenticated: boolean;
+    /** 微信扫码失败的原因(回跳带回)。有值时首页会自动弹出登录框并展示,
+        否则用户扫完码只看到页面刷新一下、毫无反应,会以为产品坏了。 */
+    wechatError: string | null;
+    clearWechatError: () => void;
     login: (phone: string, code: string) => Promise<void>;
     logout: () => void;
     refreshUser: () => Promise<void>;
@@ -20,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [remainingQuota, setRemainingQuota] = useState<number>(0);
     const [quotaTotal, setQuotaTotal] = useState<number>(0);
     const [isLoading, setIsLoading] = useState<boolean>(true);
+    const [wechatError, setWechatError] = useState<string | null>(null);
 
     // 加载用户信息
     const loadUser = async () => {
@@ -44,9 +49,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    // 初始化时加载用户信息
+    // 初始化:先处理微信扫码回跳,再加载用户信息(合并成一次,避免闪一下未登录态)
     useEffect(() => {
-        loadUser();
+        void (async () => {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const ticket = params.get('wxlogin');
+                const wxerr = params.get('wxerr');
+                if (ticket || wxerr) {
+                    // 无论成败都先把参数从地址栏抹掉:票是一次性的,留在 URL 里
+                    // 会随刷新/分享泄漏,也会让用户看到一串没有意义的乱码
+                    params.delete('wxlogin');
+                    params.delete('wxerr');
+                    const q = params.toString();
+                    window.history.replaceState(
+                        {}, '',
+                        window.location.pathname + (q ? `?${q}` : '') + window.location.hash,
+                    );
+                }
+                if (ticket) {
+                    await authService.wechatFinish(ticket);
+                } else if (wxerr) {
+                    console.warn('[wxlogin] 扫码登录未完成:', wxerr);
+                    setWechatError(wxerr);
+                }
+            } catch (e) {
+                console.error('微信登录失败:', e);
+                // 票据过期/被用过时后端返回 400,这里也要让用户看见
+                setWechatError('finish');
+            }
+            await loadUser();
+        })();
     }, []);
 
     // 登录(手机号 + 短信验证码,新用户自动注册)
@@ -76,6 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         refreshUser,
+        wechatError,
+        clearWechatError: () => setWechatError(null),
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

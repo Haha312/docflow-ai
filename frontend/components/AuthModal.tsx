@@ -29,13 +29,78 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 微信扫码:未配置凭据时整个页签都不出现,免得用户点一个必然失败的入口
+  const [tab, setTab] = useState<'sms' | 'wechat'>('sms');
+  const [wechatOn, setWechatOn] = useState(false);
+  const [qrUrl, setQrUrl] = useState('');
+  const [qrError, setQrError] = useState('');
+  const [qrExpired, setQrExpired] = useState(false);
+  const [qrNonce, setQrNonce] = useState(0);   // 自增即重新拉一张新码
+  // 页签配色随主题走。不用 CSS 类 —— 弹窗子树里 .prism-modal 那批 !important
+  // 规则会接管背景/文字色,主题选择器压不过去(实测)。行内样式不参与那场竞争。
+  const [isDark, setIsDark] = useState<boolean>(
+    () => (typeof document !== 'undefined'
+      && document.documentElement.getAttribute('data-doc-theme') === 'dark'),
+  );
 
-  const { login } = useAuth();
+  React.useEffect(() => {
+    const root = document.documentElement;
+    const sync = () => setIsDark(root.getAttribute('data-doc-theme') === 'dark');
+    sync();
+    const mo = new MutationObserver(sync);
+    mo.observe(root, { attributes: true, attributeFilter: ['data-doc-theme'] });
+    return () => mo.disconnect();
+  }, []);
+
+  const { login, wechatError, clearWechatError } = useAuth();
   const { t } = useTranslation();
 
   React.useEffect(() => {
     return () => { if (countdownTimerRef.current) clearInterval(countdownTimerRef.current); };
   }, []);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    authService.wechatEnabled().then((on) => { if (!cancelled) setWechatOn(on); });
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
+  // 扫码失败回跳后:直接切到微信页签并把原因说清楚,而不是让用户对着首页发愣
+  React.useEffect(() => {
+    if (!isOpen || !wechatError) return;
+    setTab('wechat');
+    const MSG: Record<string, string> = {
+      state: t('auth.wxerr_expired', '二维码已过期,请重新扫码'),
+      nocode: t('auth.wxerr_cancelled', '扫码未完成,请重新扫码'),
+      exchange: t('auth.wxerr_exchange', '微信授权失败,请重新扫码'),
+      finish: t('auth.wxerr_expired', '二维码已过期,请重新扫码'),
+      unconfigured: t('auth.wxerr_unconfigured', '微信登录暂未开通'),
+    };
+    setError(MSG[wechatError] || t('auth.wxerr_generic', '微信登录失败,请重试'));
+    clearWechatError();
+  }, [isOpen, wechatError, t, clearWechatError]);
+
+  // 二维码地址按需拉取:切到微信页签才请求,且每次重开弹窗都取新的
+  // (state 里签了 5 分钟有效期,复用旧地址会扫出「已过期」)
+  React.useEffect(() => {
+    if (!isOpen || tab !== 'wechat') return;
+    let cancelled = false;
+    let expireTimer: ReturnType<typeof setTimeout> | undefined;
+    setQrError('');
+    setQrUrl('');
+    setQrExpired(false);
+    authService.wechatQrUrl()
+      .then((u) => {
+        if (cancelled) return;
+        setQrUrl(u);
+        // state 只签了 5 分钟。到期不提示的话,用户会扫一个注定失败的码,
+        // 然后对着「扫了没反应」一脸茫然 —— 提前 10 秒标记过期。
+        expireTimer = setTimeout(() => { if (!cancelled) setQrExpired(true); }, 290_000);
+      })
+      .catch((e) => { if (!cancelled) setQrError(e.message || '二维码加载失败'); });
+    return () => { cancelled = true; if (expireTimer) clearTimeout(expireTimer); };
+  }, [isOpen, tab, qrNonce]);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -136,7 +201,9 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         aria-label={t('common.close', '关闭')}
       />
 
-      <div className="auth-panel modal-surface relative z-10 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+      {/* max-h + 纵向可滚:矮屏(横屏手机、320×640 老机型)上弹窗会比视口高,
+          原来是 overflow-hidden —— 底部的登录按钮直接被截掉且划不到,等于登不了。 */}
+      <div className="auth-panel modal-surface relative z-10 w-full max-w-md rounded-2xl shadow-2xl overflow-x-hidden overflow-y-auto max-h-[calc(100vh-2rem)]">
         <div className="px-8 pt-8 pb-6">
           <button
             onClick={onClose}
@@ -168,6 +235,131 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         </div>
 
         <div className="px-8 pb-8">
+          {/* 两种登录方式并列。只有配好微信凭据时才出现页签,否则保持原来的单一表单 */}
+          {wechatOn && (
+            <div
+              className="flex gap-1 p-1 mb-5 rounded-xl"
+              role="tablist"
+              style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.07)' }}
+            >
+              {([
+                ['sms', t('auth.tab_sms', '手机号')],
+                ['wechat', t('auth.tab_wechat', '微信扫码')],
+              ] as const).map(([key, label]) => {
+                const active = tab === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => { setTab(key); setError(''); }}
+                    className="auth-tab flex-1 py-2 text-sm font-medium rounded-lg transition-colors"
+                    style={active
+                      ? {
+                          backgroundColor: isDark ? '#2f2f2f' : '#ffffff',
+                          color: isDark ? '#f4f4f5' : '#111827',
+                          boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,.06)',
+                        }
+                      : { backgroundColor: 'transparent', color: isDark ? '#a1a1aa' : '#4b5563' }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 协议同意:两种登录方式共用同一道门槛。
+              原来只挡手机号那侧,微信侧仅有一句提示 —— 同一个产品两套标准,说不通。 */}
+          <label className="flex items-start gap-2 mb-4 text-xs text-gray-600 select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={agreedTerms}
+              onChange={(e) => setAgreedTerms(e.target.checked)}
+              disabled={isLoading}
+              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-gray-900 focus:ring-gray-900 focus:ring-offset-0"
+            />
+            <span>
+              {t('auth.agree_prefix', '我已阅读并同意 ')}
+              <button type="button" onClick={() => setLegalType('terms')} className="text-gray-900 underline hover:text-gray-700">{t('auth.terms', '用户协议')}</button>
+              {t('auth.agree_and', ' 和 ')}
+              <button type="button" onClick={() => setLegalType('privacy')} className="text-gray-900 underline hover:text-gray-700">{t('auth.privacy', '隐私与保密条款')}</button>
+            </span>
+          </label>
+
+          {wechatOn && tab === 'wechat' ? (
+            <div className="flex flex-col items-center">
+              {/* 微信官方二维码页。用 iframe 内嵌而非跳走 —— 跳出去再回来,用户容易以为流程断了 */}
+              {/* 窄屏(320px 老机型)上内容区只剩 224px,固定 300px 会把二维码右边切掉。
+                  外层限宽 + 内层等比缩放:二维码整体缩小而不是被裁,扫码仍然可用。 */}
+              {/* 微信侧的错误(扫码回跳带回的原因)必须显示在这里 ——
+                  它原来只渲染在手机号表单内部,微信页签下等于石沉大海。 */}
+              {error && (
+                <div className="w-full max-w-[300px] mb-3 flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {qrUrl && !qrError && (
+                <div className="relative w-full max-w-[300px] overflow-hidden">
+                  <iframe
+                    src={qrUrl}
+                    title={t('auth.tab_wechat', '微信扫码')}
+                    className="block border-0 origin-top-left w-[300px] h-[340px] max-[360px]:scale-[0.75] max-[360px]:-mb-[85px]"
+                    sandbox="allow-scripts allow-same-origin allow-top-navigation allow-popups"
+                  />
+
+                  {/* 没勾协议时挡住二维码:两种登录方式同一道门槛,
+                      不能手机号那侧强制勾选、微信侧扫了就进。 */}
+                  {!agreedTerms && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/85 backdrop-blur-[1px] rounded-lg">
+                      <p className="px-6 text-center text-sm text-gray-600">
+                        {t('auth.agree_before_scan', '请先勾选上方协议,再扫码登录')}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 二维码过期:换成可点的刷新,而不是让用户扫一个注定失败的码 */}
+                  {qrExpired && agreedTerms && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/92 rounded-lg">
+                      <p className="text-sm text-gray-500">{t('auth.qr_expired', '二维码已过期')}</p>
+                      <button
+                        type="button"
+                        onClick={() => { setError(''); setQrNonce((n) => n + 1); }}
+                        className="px-4 py-2 text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors"
+                      >
+                        {t('auth.qr_refresh', '点击刷新')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {!qrUrl && !qrError && (
+                <div className="w-full max-w-[300px] h-[340px] flex items-center justify-center text-sm text-gray-400">
+                  {t('auth.qr_loading', '二维码加载中…')}
+                </div>
+              )}
+              {qrError && (
+                <div className="w-full max-w-[300px] py-10 text-center">
+                  <p className="text-sm text-red-500 mb-3">{qrError}</p>
+                  <button
+                    type="button"
+                    onClick={() => setTab('sms')}
+                    className="text-sm text-emerald-600 hover:text-emerald-500"
+                  >
+                    {t('auth.use_sms_instead', '改用手机号登录')}
+                  </button>
+                </div>
+              )}
+              <p className="text-xs text-gray-400 mt-3 text-center px-4">
+                {t('auth.wechat_hint', '用微信扫码即表示同意用户协议与隐私政策;首次扫码将自动创建账号')}
+              </p>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* 手机号 */}
             <div>
@@ -265,23 +457,6 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{devHint}</p>
             )}
 
-            {/* 协议同意 */}
-            <label className="flex items-start gap-2 text-xs text-gray-600 select-none cursor-pointer">
-              <input
-                type="checkbox"
-                checked={agreedTerms}
-                onChange={(e) => setAgreedTerms(e.target.checked)}
-                disabled={isLoading}
-                className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-gray-900 focus:ring-gray-900 focus:ring-offset-0"
-              />
-              <span>
-                {t('auth.agree_prefix', '我已阅读并同意 ')}
-                <button type="button" onClick={() => setLegalType('terms')} className="text-gray-900 underline hover:text-gray-700">{t('auth.terms', '用户协议')}</button>
-                {t('auth.agree_and', ' 和 ')}
-                <button type="button" onClick={() => setLegalType('privacy')} className="text-gray-900 underline hover:text-gray-700">{t('auth.privacy', '隐私与保密条款')}</button>
-              </span>
-            </label>
-
             {error && (
               <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
@@ -307,6 +482,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               )}
             </button>
           </form>
+          )}
         </div>
       </div>
       <LegalModal type={legalType} onClose={() => setLegalType(null)} />

@@ -116,6 +116,48 @@ class AuthService {
         return data.data;
     }
 
+    /** 微信登录是否可用(没配凭据就不显示入口,免得用户点一个必然失败的按钮) */
+    async wechatEnabled(): Promise<boolean> {
+        try {
+            const r = await fetch(`${API_BASE_URL}/api/auth/wechat/status`);
+            if (!r.ok) return false;
+            const d = await r.json();
+            return !!d?.data?.enabled;
+        } catch {
+            return false;
+        }
+    }
+
+    /** 取微信二维码页地址,内嵌 iframe 展示 —— 不把用户跳走 */
+    async wechatQrUrl(): Promise<string> {
+        const ref = this.takeReferralCode();
+        const q = new URLSearchParams({ json: '1' });
+        if (ref) q.set('ref', ref);
+        const r = await fetch(`${API_BASE_URL}/api/auth/wechat/start?${q}`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.message || i18n.t('errors.wechat_start_failed', '微信登录暂不可用'));
+        return d.data.url as string;
+    }
+
+    /**
+     * 扫码回跳后,用一次性票换正式登录态。
+     * 票 60 秒有效、用后即废;正式令牌只走这条 POST 返回,不进 URL。
+     */
+    async wechatFinish(ticket: string): Promise<AuthResponse> {
+        const response = await fetch(`${API_BASE_URL}/api/auth/wechat/finish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticket }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || i18n.t('errors.login_failed', '登录失败'));
+        }
+        this.setToken(data.data.token);
+        try { localStorage.removeItem('docflow_ref'); } catch { /* 隐私模式下不可用,忽略 */ }
+        return data.data;
+    }
+
     /** 当前用户的邀请数据(码、链接、进度、规则) */
     async getReferral(): Promise<{
         code: string; link: string; bonusQuota: number; invited: number;

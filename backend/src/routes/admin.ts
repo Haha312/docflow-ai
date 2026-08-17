@@ -57,7 +57,7 @@ router.get('/stats', authenticate, requireAdmin, async (req: AuthRequest, res: R
             take: 50,
             where: { ...GEN_ONLY },
             orderBy: { createdAt: 'desc' },
-            include: { user: { select: { phone: true, email: true, subscriptionStatus: true } } }
+            include: { user: { select: { phone: true, email: true, wxNickname: true, subscriptionStatus: true } } }
         });
 
         // 4. Daily History (Dynamic days) for line chart
@@ -256,7 +256,7 @@ router.get('/orders', authenticate, requireAdmin, async (req: AuthRequest, res: 
                     planType: true,
                     status: true,
                     createdAt: true,
-                    user: { select: { phone: true, email: true, subscriptionStatus: true } },
+                    user: { select: { phone: true, email: true, wxNickname: true, subscriptionStatus: true } },
                 },
             }),
         ]);
@@ -292,7 +292,7 @@ router.get('/logs', authenticate, requireAdmin, async (req: AuthRequest, res: Re
                 skip,
                 take: limit,
                 orderBy: { createdAt: 'desc' },
-                include: { user: { select: { phone: true, email: true, subscriptionStatus: true } } }
+                include: { user: { select: { phone: true, email: true, wxNickname: true, subscriptionStatus: true } } }
             })
         ]);
 
@@ -322,10 +322,12 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
         const search = req.query.search as string;
         const skip = (page - 1) * limit;
 
+        // 微信用户没有手机号/邮箱,只按这两项搜等于搜不到他们
         const whereClause = search ? {
             OR: [
                 { phone: { contains: search } },
                 { email: { contains: search } },
+                { wxNickname: { contains: search } },
             ],
         } : {};
 
@@ -344,6 +346,8 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
                     subscriptionEndDate: true,
                     bonusQuota: true,
                     quotaPeriodStart: true,
+                    wxNickname: true,
+                    wxOpenid: true,
                     createdAt: true,
                     usageLogs: {
                         select: { id: true } // just to eventually get count if needed, or we compute in separate query
@@ -392,6 +396,9 @@ router.get('/users', authenticate, requireAdmin, async (req: AuthRequest, res: R
                 subscriptionStatus: u.subscriptionStatus,
                 subscriptionEndDate: u.subscriptionEndDate,
                 bonusQuota: u.bonusQuota,
+                wxNickname: u.wxNickname,
+                // 登录方式:后台要一眼看出这人是从哪来的。两者都有 = 手机号注册后绑了微信
+                loginMethods: [u.phone ? 'phone' : null, u.wxOpenid ? 'wechat' : null].filter(Boolean),
                 createdAt: u.createdAt,
                 usageCount: usageMap.get(u.id) ?? 0,        // 历史累计(所有周期)
                 quotaUsed: used,                            // 计入当前额度的用量

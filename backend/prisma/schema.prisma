@@ -18,10 +18,24 @@ model User {
   quotaPeriodStart    DateTime?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
-  /** 邀请奖励累计获得的次数(与档位额度相加)。上限见 referralConfig.maxBonusPerUser */
+  /**
+   * 邀请奖励累计获得的次数(与档位额度相加)。上限见 referralConfig.maxBonusPerUser
+   */
   bonusQuota          Int                @default(0)
-  /** 本人的邀请码,首次访问邀请页时生成 */
+  /**
+   * 本人的邀请码,首次访问邀请页时生成
+   */
   referralCode        String?            @unique
+  /**
+   * 微信扫码登录。openid 是「本应用内」的唯一标识,登录匹配用它
+   */
+  wxOpenid            String?            @unique
+  /**
+   * unionid 是「同一开放平台账号下所有应用」共享的标识。当前不参与匹配,
+   * 但先存下来 —— 日后若要与 FlowAI 打通「同一个人」,没有它就再也补不回来。
+   */
+  wxUnionid           String?            @unique
+  wxNickname          String?
   documents           Document[]
   orders              Order[]
   usageLogs           UsageLog[]
@@ -35,18 +49,20 @@ model User {
  * 否则注册即薅:开个小号传一句话就能刷。
  */
 model Referral {
-  id          String         @id @default(uuid())
-  referrerId  String
-  inviteeId   String         @unique
-  code        String
-  status      ReferralStatus @default(PENDING)
-  /** 绑定时的来源 IP,用于识别自邀(同 IP 短时间内反复邀请) */
-  signupIp    String?
+  id           String         @id @default(uuid())
+  referrerId   String
+  inviteeId    String         @unique
+  code         String
+  status       ReferralStatus @default(PENDING)
+  /**
+   * 绑定时的来源 IP,用于识别自邀(同 IP 短时间内反复邀请)
+   */
+  signupIp     String?
   rejectReason String?
-  rewardedAt  DateTime?
-  createdAt   DateTime       @default(now())
-  referrer    User           @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
-  invitee     User           @relation("Invitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+  rewardedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  referrer     User           @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  invitee      User           @relation("Invitee", fields: [inviteeId], references: [id], onDelete: Cascade)
 
   @@index([referrerId, status])
   @@index([createdAt])

@@ -34,7 +34,21 @@
         "agree_prefix": "I have read and agree to the ",
         "terms": "Terms of Service",
         "agree_and": " and ",
-        "privacy": "Privacy & Confidentiality Terms"
+        "privacy": "Privacy & Confidentiality Terms",
+        "tab_sms": "Phone",
+        "tab_wechat": "WeChat QR",
+        "qr_loading": "Loading QR code…",
+        "use_sms_instead": "Use phone number instead",
+        "wechat_hint": "Scanning means you agree to the Terms and Privacy Policy. A new account is created on first scan.",
+        "wxerr_expired": "QR code expired. Please scan again.",
+        "wxerr_cancelled": "Sign-in was not completed. Please scan again.",
+        "wxerr_exchange": "WeChat authorization failed. Please scan again.",
+        "wxerr_unconfigured": "WeChat sign-in is not available yet",
+        "wxerr_generic": "WeChat sign-in failed. Please try again.",
+        "agree_before_scan": "Please accept the terms above before scanning",
+        "qr_expired": "QR code expired",
+        "qr_refresh": "Refresh",
+        "refresh_captcha": "Refresh"
     },
     "not_found": {
         "title": "Page not found",
@@ -353,7 +367,8 @@
         "refund_failed": "Refund failed",
         "change_password_failed": "Failed to change password",
         "change_email_failed": "Failed to change email",
-        "delete_account_failed": "Failed to delete account"
+        "delete_account_failed": "Failed to delete account",
+        "wechat_start_failed": "WeChat login is unavailable"
     },
     "backend_errors": {
         "AUTH_MISSING_FIELDS": "Email, password and verification code are required",
@@ -599,7 +614,18 @@
         "request_refund": "Request refund",
         "refund_warning": "Requesting a refund will fully refund this order (1-3 business days), immediately downgrade your account to Free, and forfeit remaining membership days. This action cannot be undone. Continue?",
         "refund_success": "Refund requested. Funds will return to your original payment account within 1-3 business days.",
-        "refund_failed": "Refund failed"
+        "refund_failed": "Refund failed",
+        "phone": "Phone",
+        "phone_unbound": "Not linked",
+        "bind_phone": "Link",
+        "change_phone": "Change",
+        "bind_phone_why": "Link a phone number so you can also sign in with it — and recover your account and remaining quota if you lose access to WeChat.",
+        "bind_done": "Phone linked",
+        "confirm_bind": "Link phone",
+        "confirm_change": "Change phone",
+        "enter_code": "Enter the code",
+        "bind_failed": "Could not link the phone. Please try again.",
+        "captcha_load_failed": "Could not load the image code. Please try again."
     },
     "styles": {
         "title": "Advanced Style Options",
