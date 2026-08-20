@@ -11,7 +11,10 @@ interface AuthContextType {
     /** 微信扫码失败的原因(回跳带回)。有值时首页会自动弹出登录框并展示,
         否则用户扫完码只看到页面刷新一下、毫无反应,会以为产品坏了。 */
     wechatError: string | null;
+    /** 扫码绑定的回跳结果:ok / already / taken / err(用完由消费方清掉) */
+    wechatBind: string | null;
     clearWechatError: () => void;
+    clearWechatBind: () => void;
     login: (phone: string, code: string) => Promise<void>;
     logout: () => void;
     refreshUser: () => Promise<void>;
@@ -25,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [quotaTotal, setQuotaTotal] = useState<number>(0);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [wechatError, setWechatError] = useState<string | null>(null);
+    const [wechatBind, setWechatBind] = useState<string | null>(null);
 
     // 加载用户信息
     const loadUser = async () => {
@@ -56,11 +60,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 const params = new URLSearchParams(window.location.search);
                 const ticket = params.get('wxlogin');
                 const wxerr = params.get('wxerr');
-                if (ticket || wxerr) {
+                const wxbind = params.get('wxbind');
+                if (ticket || wxerr || wxbind) {
                     // 无论成败都先把参数从地址栏抹掉:票是一次性的,留在 URL 里
                     // 会随刷新/分享泄漏,也会让用户看到一串没有意义的乱码
                     params.delete('wxlogin');
                     params.delete('wxerr');
+                    params.delete('wxbind');
                     const q = params.toString();
                     window.history.replaceState(
                         {}, '',
@@ -73,6 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     console.warn('[wxlogin] 扫码登录未完成:', wxerr);
                     setWechatError(wxerr);
                 }
+                // 绑定回跳:登录态没变(绑定不发票),只要把结果亮给用户看
+                if (wxbind) setWechatBind(wxbind);
             } catch (e) {
                 console.error('微信登录失败:', e);
                 // 票据过期/被用过时后端返回 400,这里也要让用户看见
@@ -110,6 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         refreshUser,
         wechatError,
+        wechatBind,
+        clearWechatBind: () => setWechatBind(null),
         clearWechatError: () => setWechatError(null),
     };
 

@@ -52,7 +52,7 @@ vi.mock('../redis', () => ({ default: redisMock }));
 
 import {
     signState, verifyState, buildQrUrl, issueTicket, consumeTicket,
-    findOrCreateByWechat, getWechatConfig,
+    findOrCreateByWechat, getWechatConfig, bindWechatToUser, unbindWechat,
 } from '../wechatLogin';
 
 beforeEach(() => {
@@ -179,5 +179,69 @@ describe('凭据读取', () => {
 
     it('都没配就是空(前端据此隐藏入口)', async () => {
         expect(await getWechatConfig()).toEqual({ appid: '', secret: '' });
+    });
+});
+
+describe('绑定微信', () => {
+    it('绑到没绑过的账号上', async () => {
+        const u = await prismaMock.user.create({ data: { phone: '13800000001' } });
+        const r = await bindWechatToUser(u.id, { openid: 'o1', unionid: 'un1', nickname: '小明' });
+        expect(r).toEqual({ ok: true, alreadyMine: false });
+        expect(db.users.get(u.id).wxOpenid).toBe('o1');
+        expect(db.users.get(u.id).wxNickname).toBe('小明');
+    });
+
+    it('这个微信已经是别人的账号 → 拒绝(否则两个账号会互串)', async () => {
+        const other = await prismaMock.user.create({ data: { phone: '13800000002', wxOpenid: 'o1' } });
+        const me = await prismaMock.user.create({ data: { phone: '13800000003' } });
+        const r = await bindWechatToUser(me.id, { openid: 'o1' });
+        expect(r).toEqual({ ok: false, reason: 'taken_by_other' });
+        expect(db.users.get(me.id).wxOpenid ?? null).toBeNull();      // 我这边没被改
+        expect(db.users.get(other.id).wxOpenid).toBe('o1');           // 别人那边也没被动
+    });
+
+    it('本账号已绑了另一个微信 → 拒绝,不默默顶掉', async () => {
+        const me = await prismaMock.user.create({ data: { phone: '13800000004', wxOpenid: 'old' } });
+        const r = await bindWechatToUser(me.id, { openid: 'new' });
+        expect(r).toEqual({ ok: false, reason: 'already_other_wx' });
+        expect(db.users.get(me.id).wxOpenid).toBe('old');
+    });
+
+    it('重复绑同一个微信 → 当成功,并补全昵称', async () => {
+        const me = await prismaMock.user.create({ data: { phone: '13800000005', wxOpenid: 'o1' } });
+        const r = await bindWechatToUser(me.id, { openid: 'o1', nickname: '新昵称' });
+        expect(r).toEqual({ ok: true, alreadyMine: true });
+        expect(db.users.get(me.id).wxNickname).toBe('新昵称');
+    });
+});
+
+describe('解绑微信', () => {
+    it('有手机号 → 可以解绑', async () => {
+        const me = await prismaMock.user.create({ data: { phone: '13800000006', wxOpenid: 'o1', wxNickname: 'A' } });
+        expect(await unbindWechat(me.id)).toEqual({ ok: true });
+        expect(db.users.get(me.id).wxOpenid).toBeNull();
+    });
+
+    it('没手机号 → 拒绝,否则人被永久锁在门外', async () => {
+        const me = await prismaMock.user.create({ data: { wxOpenid: 'o1', wxNickname: 'A' } });
+        expect(await unbindWechat(me.id)).toEqual({ ok: false, reason: 'would_lock_out' });
+        expect(db.users.get(me.id).wxOpenid).toBe('o1');   // 原样保留
+    });
+
+    it('本来就没绑 → 明确告知', async () => {
+        const me = await prismaMock.user.create({ data: { phone: '13800000007' } });
+        expect(await unbindWechat(me.id)).toEqual({ ok: false, reason: 'not_bound' });
+    });
+});
+
+describe('state 里的 bind', () => {
+    it('绑定发起方的用户 id 能原样带回', () => {
+        const r = verifyState(signState({ bind: 'user-123' }));
+        expect(r.ok).toBe(true);
+        expect(r.bind).toBe('user-123');
+    });
+
+    it('登录用的 state 不带 bind', () => {
+        expect(verifyState(signState({ ref: 'ABC' })).bind).toBeUndefined();
     });
 });

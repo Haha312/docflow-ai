@@ -49,22 +49,29 @@ export const isWechatLoginConfigured = async (): Promise<boolean> => {
  * state 防 CSRF:签一个 5 分钟的 JWT,回调时验签。
  * 邀请码也塞进 state —— 微信只回传 state 这一个自定义参数,放 query 里会丢。
  */
-export const signState = (payload: { ref?: string }): string => {
+export const signState = (payload: { ref?: string; bind?: string }): string => {
     const secret = process.env.JWT_SECRET;
     if (!secret) throw new Error('JWT_SECRET 未配置');
-    return jwt.sign({ t: 'wxstate', ref: payload.ref || undefined }, secret, {
-        expiresIn: STATE_TTL,
-        algorithm: 'HS256',
-    });
+    // bind = 要把这个微信绑到哪个账号。必须签进 state,不能放明文 query ——
+    // 否则任何人改一下参数,就能把自己的微信绑到别人账号上,等于账号被接管。
+    return jwt.sign(
+        { t: 'wxstate', ref: payload.ref || undefined, bind: payload.bind || undefined },
+        secret,
+        { expiresIn: STATE_TTL, algorithm: 'HS256' },
+    );
 };
 
-export const verifyState = (state: string): { ok: boolean; ref?: string } => {
+export const verifyState = (state: string): { ok: boolean; ref?: string; bind?: string } => {
     try {
         const secret = process.env.JWT_SECRET;
         if (!secret) return { ok: false };
         const p = jwt.verify(state, secret, { algorithms: ['HS256'] }) as jwt.JwtPayload;
         if (p.t !== 'wxstate') return { ok: false };
-        return { ok: true, ref: typeof p.ref === 'string' ? p.ref : undefined };
+        return {
+            ok: true,
+            ref: typeof p.ref === 'string' ? p.ref : undefined,
+            bind: typeof p.bind === 'string' ? p.bind : undefined,
+        };
     } catch {
         return { ok: false };
     }
@@ -176,4 +183,59 @@ export const findOrCreateByWechat = async (
         },
     });
     return { userId: created.id, isNew: true };
+};
+
+/** 绑定结果。每种失败都要能对用户说清楚原因,不能笼统报「绑定失败」 */
+export type BindResult =
+    | { ok: true; alreadyMine: boolean }
+    | { ok: false; reason: 'no_user' | 'taken_by_other' | 'already_other_wx' };
+
+/**
+ * 把微信身份绑到指定账号。
+ * 三种拒绝各有各的说法:
+ *  - taken_by_other:这个微信已经是别人的账号了,再绑过来等于账号互串
+ *  - already_other_wx:本账号已绑了另一个微信,要换得先解绑(避免默默顶掉)
+ */
+export const bindWechatToUser = async (
+    userId: string,
+    id: WechatIdentity,
+): Promise<BindResult> => {
+    const me = await prisma.user.findUnique({ where: { id: userId } });
+    if (!me) return { ok: false, reason: 'no_user' };
+
+    if (me.wxOpenid === id.openid) {
+        // 重复扫同一个微信 —— 当成功处理,顺手补全可能缺失的昵称
+        if (id.nickname && id.nickname !== me.wxNickname) {
+            await prisma.user.update({ where: { id: userId }, data: { wxNickname: id.nickname } });
+        }
+        return { ok: true, alreadyMine: true };
+    }
+    if (me.wxOpenid) return { ok: false, reason: 'already_other_wx' };
+
+    const other = await prisma.user.findUnique({ where: { wxOpenid: id.openid } });
+    if (other && other.id !== userId) return { ok: false, reason: 'taken_by_other' };
+
+    await prisma.user.update({
+        where: { id: userId },
+        data: { wxOpenid: id.openid, wxUnionid: id.unionid || null, wxNickname: id.nickname || null },
+    });
+    return { ok: true, alreadyMine: false };
+};
+
+/**
+ * 解绑微信。必须留下至少一种能登回来的方式 ——
+ * 只用微信注册、没绑手机号的账号一旦解绑,人就被永久锁在门外了。
+ */
+export const unbindWechat = async (
+    userId: string,
+): Promise<{ ok: true } | { ok: false; reason: 'no_user' | 'not_bound' | 'would_lock_out' }> => {
+    const me = await prisma.user.findUnique({ where: { id: userId } });
+    if (!me) return { ok: false, reason: 'no_user' };
+    if (!me.wxOpenid) return { ok: false, reason: 'not_bound' };
+    if (!me.phone) return { ok: false, reason: 'would_lock_out' };
+    await prisma.user.update({
+        where: { id: userId },
+        data: { wxOpenid: null, wxUnionid: null, wxNickname: null },
+    });
+    return { ok: true };
 };

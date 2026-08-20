@@ -301,3 +301,118 @@ describe('微信用户在后台的可管理性', () => {
         expect(u.id).toBeTruthy();          // 封禁/加次数/统计全按 id,与登录方式无关
     });
 });
+
+describe('绑定微信(老用户扫码不再凭空多号)', () => {
+    const jwtlib = require('jsonwebtoken');
+
+    /** 造一个已登录的手机号用户,返回 { user, token } */
+    const loggedInUser = async (phone = '13800001111') => {
+        const user = await prismaMock.user.create({ data: { phone, subscriptionStatus: 'FREE', tokenVersion: 0 } });
+        const token = jwtlib.sign(
+            { userId: user.id, phone, tokenVersion: 0 },
+            process.env.JWT_SECRET!, { expiresIn: '1h', algorithm: 'HS256' },
+        );
+        return { user, token };
+    };
+
+    const authed = (path: string, token?: string, method = 'GET'): Promise<{ status: number; headers: any; json: () => any }> =>
+        new Promise((resolve, reject) => {
+            const u = new URL(base + path);
+            const req = http.request({
+                hostname: u.hostname, port: u.port, path: u.pathname + u.search, method,
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            }, (res) => {
+                let t = '';
+                res.on('data', (c) => { t += c; });
+                res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, json: () => JSON.parse(t) }));
+            });
+            req.on('error', reject);
+            req.end();
+        });
+
+    /** 拿绑定专用的 state(签过名,手造不了) */
+    const bindState = async (token: string) => {
+        const d = (await authed('/api/auth/wechat/bind/start', token)).json();
+        return new URL(d.data.url).searchParams.get('state')!;
+    };
+
+    it('没登录不能发起绑定 —— 否则等于给了别人往我账号上绑的入口', async () => {
+        configure();
+        expect((await authed('/api/auth/wechat/bind/start')).status).toBe(401);
+    });
+
+    it('老用户扫码 → 绑到本账号,不再新建账号', async () => {
+        configure();
+        const { user, token } = await loggedInUser();
+        mockWechatApi({ openid: 'openid-B', unionid: 'union-B' });
+        const before = db.users.size;
+        const r = await get(`/api/auth/wechat/callback?code=ok&state=${encodeURIComponent(await bindState(token))}`);
+        expect(r.headers['location']).toContain('wxbind=ok');
+        expect(db.users.size).toBe(before);                       // 关键:没多出账号
+        expect(db.users.get(user.id).wxOpenid).toBe('openid-B');
+        expect(db.users.get(user.id).phone).toBe('13800001111');  // 手机号还在,额度/订单都跟着这个号
+    });
+
+    it('绑完再扫码登录 → 直接进老账号,而不是新号', async () => {
+        configure();
+        const { user, token } = await loggedInUser();
+        mockWechatApi({ openid: 'openid-B' });
+        await get(`/api/auth/wechat/callback?code=ok&state=${encodeURIComponent(await bindState(token))}`);
+        // 换成普通登录 state 再走一遍
+        const s = (await get('/api/auth/wechat/start?json=1')).json();
+        const loginState = new URL(s.data.url).searchParams.get('state')!;
+        const r = await get(`/api/auth/wechat/callback?code=ok2&state=${encodeURIComponent(loginState)}`);
+        const ticket = new URL(r.headers['location']!).searchParams.get('wxlogin')!;
+        expect(db.users.size).toBe(1);
+        expect(await redisMock.get(`wxticket:${ticket}`)).toBe(user.id);   // 票指向老账号
+    });
+
+    it('这个微信已属于别人 → 拒绝,两个账号都不动', async () => {
+        configure();
+        const other = await prismaMock.user.create({ data: { phone: '13800002222', wxOpenid: 'openid-B' } });
+        const { user, token } = await loggedInUser();
+        mockWechatApi({ openid: 'openid-B' });
+        const r = await get(`/api/auth/wechat/callback?code=ok&state=${encodeURIComponent(await bindState(token))}`);
+        expect(r.headers['location']).toContain('wxbind=taken');
+        expect(db.users.get(user.id).wxOpenid ?? null).toBeNull();
+        expect(db.users.get(other.id).wxOpenid).toBe('openid-B');
+    });
+
+    it('本账号已绑了别的微信 → 拒绝,不默默顶掉', async () => {
+        configure();
+        const { user, token } = await loggedInUser();
+        db.users.get(user.id).wxOpenid = 'openid-old';
+        mockWechatApi({ openid: 'openid-new' });
+        const r = await get(`/api/auth/wechat/callback?code=ok&state=${encodeURIComponent(await bindState(token))}`);
+        expect(r.headers['location']).toContain('wxbind=already');
+        expect(db.users.get(user.id).wxOpenid).toBe('openid-old');
+    });
+
+    it('绑定回调不发登录票 —— 扫码的人不会因此拿到该账号的登录态', async () => {
+        configure();
+        const { token } = await loggedInUser();
+        mockWechatApi({ openid: 'openid-B' });
+        const r = await get(`/api/auth/wechat/callback?code=ok&state=${encodeURIComponent(await bindState(token))}`);
+        expect(r.headers['location']).not.toContain('wxlogin=');
+        expect([...store.keys()].some((k) => k.startsWith('wxticket:'))).toBe(false);
+    });
+
+    it('解绑:有手机号可以解,没手机号拒绝(否则登不回来)', async () => {
+        configure();
+        const { user, token } = await loggedInUser();
+        db.users.get(user.id).wxOpenid = 'openid-B';
+        expect((await authed('/api/auth/wechat/unbind', token, 'POST')).status).toBe(200);
+        expect(db.users.get(user.id).wxOpenid).toBeNull();
+
+        // 微信独苗账号
+        const wxOnly = await prismaMock.user.create({ data: { phone: null, wxOpenid: 'openid-C', tokenVersion: 0 } });
+        const t2 = jwtlib.sign({ userId: wxOnly.id, phone: null, tokenVersion: 0 }, process.env.JWT_SECRET!, { expiresIn: '1h', algorithm: 'HS256' });
+        const r = await authed('/api/auth/wechat/unbind', t2, 'POST');
+        expect(r.status).toBe(400);
+        expect(db.users.get(wxOnly.id).wxOpenid).toBe('openid-C');
+    });
+
+    it('未登录不能解绑', async () => {
+        expect((await authed('/api/auth/wechat/unbind', undefined, 'POST')).status).toBe(401);
+    });
+});

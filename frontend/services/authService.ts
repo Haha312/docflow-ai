@@ -175,6 +175,26 @@ class AuthService {
         return data.data;
     }
 
+    /** 已登录用户「绑定微信」的二维码地址 —— 与登录用的是同一个页面,只是 state 里带了本人 id */
+    async wechatBindQrUrl(): Promise<string> {
+        const r = await fetch(`${API_BASE_URL}/api/auth/wechat/bind/start`, {
+            headers: this.authHeaders(),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.message || i18n.t('errors.wechat_start_failed', '微信登录暂不可用'));
+        return d.data.url as string;
+    }
+
+    /** 解绑微信。后端会拦住「解绑后无法登录」的情况,这里如实把原因抛给用户 */
+    async wechatUnbind(): Promise<void> {
+        const r = await fetch(`${API_BASE_URL}/api/auth/wechat/unbind`, {
+            method: 'POST',
+            headers: this.authHeaders(),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.message || i18n.t('errors.unknown', '操作失败'));
+    }
+
     /** 当前用户的邀请数据(码、链接、进度、规则) */
     async getReferral(): Promise<{
         code: string; link: string; bonusQuota: number; invited: number;

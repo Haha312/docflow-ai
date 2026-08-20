@@ -15,6 +15,7 @@ import { isAdmin } from '../utils/admin';
 import {
     getWechatConfig, isWechatLoginConfigured, signState, verifyState, buildQrUrl,
     issueTicket, consumeTicket, exchangeCodeForIdentity, findOrCreateByWechat,
+    bindWechatToUser, unbindWechat,
 } from '../utils/wechatLogin';
 
 const svgCaptcha = require('svg-captcha');
@@ -471,6 +472,50 @@ router.get('/wechat/start', async (req: Request, res: Response): Promise<void> =
 });
 
 /**
+ * GET /api/auth/wechat/bind/start — 已登录用户发起「绑定微信」。
+ * 与 /start 同一条链路,区别只在 state 里带上当前用户 id;回调据此走绑定而非登录。
+ */
+router.get('/wechat/bind/start', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const cfg = await getWechatConfig();
+        if (!cfg.appid || !cfg.secret) {
+            res.status(404).json(errorResponse('微信登录未配置', 404));
+            return;
+        }
+        const url = buildQrUrl({
+            appid: cfg.appid,
+            callbackUrl: `${publicBase(req)}/api/auth/wechat/callback`,
+            state: signState({ bind: req.user!.id }),
+            styleHref: `${publicBase(req)}/wxqr.css`,
+        });
+        res.json(successResponse({ url, expiresIn: 300 }));
+    } catch (error) {
+        console.error('WeChat bind start error:', error);
+        res.status(500).json(errorResponse('发起绑定失败', 500));
+    }
+});
+
+/**
+ * POST /api/auth/wechat/unbind — 解绑微信。
+ */
+router.post('/wechat/unbind', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const r = await unbindWechat(req.user!.id);
+        if (r.ok) { res.json(successResponse(null, '已解绑微信')); return; }
+        const MSG: Record<string, [string, number]> = {
+            no_user: ['用户不存在', 404],
+            not_bound: ['当前账号未绑定微信', 400],
+            would_lock_out: ['解绑后就没有任何登录方式了,请先绑定手机号', 400],
+        };
+        const [msg, code] = MSG[r.reason];
+        res.status(code).json(errorResponse(msg, code));
+    } catch (error) {
+        console.error('WeChat unbind error:', error);
+        res.status(500).json(errorResponse('解绑失败', 500));
+    }
+});
+
+/**
  * GET /api/auth/wechat/callback — 微信扫码后回跳到这里。
  * 一律 302 回首页(带票或带错误码),不返回 JSON —— 这个地址是用户浏览器直接访问的。
  */
@@ -487,6 +532,17 @@ router.get('/wechat/callback', async (req: Request, res: Response): Promise<void
 
         const identity = await exchangeCodeForIdentity(String(code), cfg);
         if (!identity) { res.redirect(`${home}/?wxerr=exchange`); return; }
+
+        // 绑定分支:不建号、不换登录态,只把 openid 挂到发起绑定的那个账号上
+        if (st.bind) {
+            const r = await bindWechatToUser(st.bind, identity);
+            if (r.ok) { res.redirect(`${home}/?wxbind=ok`); return; }
+            const CODE: Record<string, string> = {
+                no_user: 'err', taken_by_other: 'taken', already_other_wx: 'already',
+            };
+            res.redirect(`${home}/?wxbind=${CODE[r.reason]}`);
+            return;
+        }
 
         const { userId, isNew } = await findOrCreateByWechat(identity);
 

@@ -217,12 +217,16 @@ function Home() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [tick, setTick] = useState(0); // 每秒递增,驱动倒计时重渲染
 
-  const { isAuthenticated, user, refreshUser, wechatError } = useAuth();
+  const { isAuthenticated, user, refreshUser, wechatError, wechatBind } = useAuth();
   // 扫码失败(二维码过期、票据失效等)回跳后自动把登录框弹回来。
   // 不这么做的话用户扫完只看到页面刷新一下、毫无反应,会以为是产品坏了。
   React.useEffect(() => {
     if (wechatError) setShowAuthModal(true);
   }, [wechatError]);
+  // 绑定微信同理:扫完码整页跳回来,得把账号设置重新打开,结果才有地方显示
+  React.useEffect(() => {
+    if (wechatBind) setShowProfileModal(true);
+  }, [wechatBind]);
 
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);

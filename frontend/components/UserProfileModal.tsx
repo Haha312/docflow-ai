@@ -6,6 +6,7 @@ import { cancelSubscription, getUserUsage } from '../services/backendApiService'
 import { useTranslation } from 'react-i18next';
 import { AccountTone, UserAvatar } from './UserAvatar';
 import { BindPhoneSection } from './BindPhoneSection';
+import { BindWechatSection } from './BindWechatSection';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -180,6 +181,8 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
               {/* 手机号:微信注册的账号没有手机号,给一个自愿绑定的入口。
                   不强制 —— 强制会把还在观望的新用户挡在门外。 */}
               <BindPhoneSection />
+
+              <BindWechatSection />
 
               {/* 本月用量统计 */}
               {monthlyCount !== null && (
