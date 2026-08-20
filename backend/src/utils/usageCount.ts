@@ -94,3 +94,37 @@ export async function invalidateUsageCount(userId: string): Promise<void> {
         await redis.del(cacheKey(userId));
     } catch { /* 失效失败最多延迟 60s 刷新,不致命 */ }
 }
+
+/**
+ * 记一条用量并让缓存失效。**永不抛异常。**
+ *
+ * 调用它的地方(generate.ts)是在文档已经生成完、但还没 res.write 出去之前。
+ * 早先这里是裸 await:插日志一失败就跳进 catch,把内存里已经排好的整篇文档丢掉,
+ * 改发 15 字的兜底基础版 —— AI 的钱已经花了,成稿却没送出去。线上真发生过一次
+ * (userId 指向的账号已被删除,外键冲突 P2003)。
+ *
+ * 少记一条账 = 少扣一次额度,是小事;悄悄丢一篇文档才是大事。
+ * 所以这里吞掉所有异常,只留一条 error 日志供排查。
+ *
+ * @returns 记账是否成功。调用方可以不管,但拿得到。
+ */
+export async function recordUsage(
+    userId: string,
+    actionType: string,
+    presetUsed: string,
+    tokenUsage: number,
+): Promise<boolean> {
+    try {
+        await prisma.usageLog.create({
+            data: { userId, actionType, presetUsed, tokenUsage },
+        });
+        await invalidateUsageCount(userId);
+        return true;
+    } catch (err) {
+        console.error(
+            `[USAGE_LOG_FAILED] 记账失败,文档照常交付 —— 本次生成可能未计入额度/统计 (user=${userId}):`,
+            err,
+        );
+        return false;
+    }
+}

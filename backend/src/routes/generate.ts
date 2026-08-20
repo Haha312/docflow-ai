@@ -410,7 +410,7 @@ const estimateSafeChunkSize = (modelKey: string | undefined, userTier: keyof typ
 
 
 import { TIER_LIMITS, getContentLimit } from '../config/tierConfig';
-import { invalidateUsageCount } from '../utils/usageCount';
+import { recordUsage } from '../utils/usageCount';
 import { normalizePreset } from '../utils/preset';
 import { splitContentBySemantics, splitContentIntoStructuredChunks, extractFirstHeading, compressChunksByCoverage, type StructuredContentChunk } from '../utils/chunking';
 const env = (...names: string[]): string | undefined => names.map((name) => process.env[name]).find(Boolean);
@@ -1785,15 +1785,16 @@ ${Object.entries(headingCounterState).sort(([a],[b])=>+a-+b).map(([l,t])=>`     
         // 无论质量是否达标,只要文档已经发给用户,就记录一条 UsageLog(让后台反映真实使用量)。
         // 低质量结果用不同的 actionType 标记:额度计数器(usageCount.ts)只统计 'generate_document',
         // 因此低质量生成会出现在后台日志/统计里,但不占用户额度(保留"质量不达标不计费"的原有行为)。
-        await prisma.usageLog.create({
-            data: {
-                userId: user.id,
-                actionType: lowQuality ? 'generate_document_lowquality' : 'generate_document',
-                presetUsed: preset,
-                tokenUsage: finalReportedTokens
-            }
-        });
-        await invalidateUsageCount(user.id);
+        //
+        // recordUsage 永不抛异常(见 usageCount.ts)。成稿是在这几步之后才 res.write
+        // 出去的 —— 早先这里是裸 await,一抛异常就跳进 catch,把已经排好的整篇文档
+        // 丢掉、改发 15 字兜底版。与下面的发奖同理:记账绝不能挡住交付。
+        await recordUsage(
+            user.id,
+            lowQuality ? 'generate_document_lowquality' : 'generate_document',
+            preset,
+            finalReportedTokens,
+        );
 
         // 邀请奖励:被邀请人完成一次「够长的」真实生成后才发奖。
         // 低质量结果不计额度,自然也不算真实使用,不发奖。整段静默失败 —— 发奖出问题
