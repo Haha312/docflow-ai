@@ -491,6 +491,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
         } catch { setStatusMsg(t('admin.save_error')); }
     };
 
+    const closeUserEdit = () => { setEditingUser(null); setEditSaveResult(null); };
+
+    // 绿色在深浅两套底上要用不同深度:emerald-400 放白底上对比度只有 1.8,几乎看不见。
+    const emerald = isDark
+        ? { strong: 'text-emerald-400', dim: 'text-emerald-500/80' }
+        : { strong: 'text-emerald-700', dim: 'text-emerald-800' };
+
+    // Esc 关闭:弹窗盖住了整张用户表,没有键盘出口的话只能去够右上角那个 × ,很别扭
+    useEffect(() => {
+        if (!editingUser) return;
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeUserEdit(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [editingUser]);
+
     const saveUserEdit = async () => {
         if (!editingUser) return;
         try {
@@ -502,7 +517,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
             if (res.ok) {
                 setEditSaveResult('success');
                 fetchUsers();
-                setTimeout(() => { setEditingUser(null); setEditSaveResult(null); }, 1200);
+                setTimeout(closeUserEdit, 1200);
             } else {
                 setEditSaveResult('error');
             }
@@ -966,8 +981,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                     </thead>
                                     <tbody className={T.tableDivide}>
                                         {users.map(u => (
-                                            <React.Fragment key={u.id}>
-                                            <tr className={T.tableHover}>
+                                            <tr key={u.id} className={T.tableHover}>
                                                 <td className={`px-5 py-3.5 text-sm ${T.t4}`}>{formatDateOnly(u.createdAt)}</td>
                                                 <td className={`px-5 py-3.5 text-sm ${T.t1} font-medium`}>
                                                     <span className={u.banned ? 'line-through opacity-60' : ''}>{userLabel(u)}</span>
@@ -1002,13 +1016,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 <td className="px-5 py-3.5 text-right space-x-2">
                                                     <button
                                                         onClick={() => {
-                                                            if (editingUser?.id === u.id) { setEditingUser(null); setEditSaveResult(null); return; }
                                                             setEditStatus(u.subscriptionStatus); setEditDays(0); setEditQuota(0);
                                                             setEditSaveResult(null); setEditingUser(u);
                                                         }}
                                                         className={`text-xs ${T.editBtn} px-3 py-1.5 rounded transition-colors`}
                                                     >
-                                                        {editingUser?.id === u.id ? t('admin.collapse', '收起') : t('admin.edit_status')}
+                                                        {t('admin.edit_status')}
                                                     </button>
                                                     <button onClick={() => toggleBanUser(u)} className={`text-xs px-3 py-1.5 rounded transition-colors ${u.banned ? T.unbanBtn : T.banBtn}`}>
                                                         {u.banned ? t('admin.unban', '解封') : t('admin.ban', '封禁')}
@@ -1016,93 +1029,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                                                 </td>
                                             </tr>
 
-                                            {/* 行内展开面板:改次数是高频小动作,弹窗太重、还会挡住其他用户的数据。
-                                                展开在当前行下方 —— 左边现状、中间改动、下方实时算出「调整后」。 */}
-                                            {editingUser?.id === u.id && (
-                                                <tr className={isDark ? 'bg-white/[0.03]' : 'bg-gray-50'}>
-                                                    <td colSpan={7} className="px-5 py-4">
-                                                        <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
-                                                            <div>
-                                                                <label className={`block text-[11px] ${T.t5} mb-1.5`}>{t('admin.subscription_tier')}</label>
-                                                                <select
-                                                                    className={`rounded-lg px-3 py-1.5 text-sm focus:outline-none ${T.modalInput}`}
-                                                                    value={editStatus}
-                                                                    onChange={e => setEditStatus(e.target.value)}
-                                                                >
-                                                                    <option value="FREE">{t('admin.tier_free_label')}</option>
-                                                                    <option value="PLUS">{t('admin.tier_plus_label')}</option>
-                                                                    <option value="PRO">{t('admin.tier_pro_label')}</option>
-                                                                    <option value="ULTRA">{t('admin.tier_ultra_label')}</option>
-                                                                </select>
-                                                            </div>
-
-                                                            {editStatus !== 'FREE' && (
-                                                                <div>
-                                                                    <label className={`block text-[11px] ${T.t5} mb-1.5`}>{t('admin.add_days')}</label>
-                                                                    <input
-                                                                        type="number"
-                                                                        value={editDays}
-                                                                        onChange={e => setEditDays(Number(e.target.value))}
-                                                                        className={`w-24 rounded-lg px-3 py-1.5 text-sm focus:outline-none ${T.modalInput}`}
-                                                                    />
-                                                                </div>
-                                                            )}
-
-                                                            <div>
-                                                                <label className={`block text-[11px] ${T.t5} mb-1.5`}>{t('admin.add_quota', '加次数')}</label>
-                                                                <div className="flex items-center gap-1.5">
-                                                                    <input
-                                                                        type="number"
-                                                                        value={editQuota}
-                                                                        onChange={e => setEditQuota(Number(e.target.value))}
-                                                                        className={`w-24 rounded-lg px-3 py-1.5 text-sm focus:outline-none ${T.modalInput}`}
-                                                                    />
-                                                                    {[5, 10, 50].map(n => (
-                                                                        <button key={n} onClick={() => setEditQuota(q => q + n)}
-                                                                            className={`text-xs px-2 py-1.5 rounded ${T.editBtn} transition-colors`}>+{n}</button>
-                                                                    ))}
-                                                                    {editQuota !== 0 && (
-                                                                        <button onClick={() => setEditQuota(0)}
-                                                                            className={`text-xs px-2 py-1.5 rounded ${T.t5} transition-colors`}>{t('admin.reset_zero', '清零')}</button>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-
-                                                            {/* 「调整后」实时算给管理员看 —— 不能让人心算「档位 + 赠送 − 已用」 */}
-                                                            <div className={`text-xs ${T.t4} leading-relaxed`}>
-                                                                <div>
-                                                                    {t('admin.quota_now', '当前')}
-                                                                    <span className="font-mono ml-1">{u.quotaRemaining ?? 0} / {u.quotaTotal ?? 0}</span>
-                                                                    <span className={T.t5}> ({t('admin.quota_used', '已用 {{n}}', { n: u.quotaUsed ?? 0 })})</span>
-                                                                </div>
-                                                                {(() => {
-                                                                    const nextBonus = Math.max(0, (u.bonusQuota ?? 0) + editQuota);
-                                                                    const nextTotal = (TIER_LIMITS[editStatus] ?? TIER_LIMITS.FREE) + nextBonus;
-                                                                    const nextRemaining = Math.max(0, nextTotal - (u.quotaUsed ?? 0));
-                                                                    const changed = editQuota !== 0 || editStatus !== u.subscriptionStatus;
-                                                                    return changed ? (
-                                                                        <div className="text-emerald-400 mt-0.5">
-                                                                            {t('admin.quota_after', '调整后')}
-                                                                            <span className="font-mono ml-1">{nextRemaining} / {nextTotal}</span>
-                                                                            <span className="ml-1">({t('admin.quota_bonus', '赠送 {{n}}', { n: nextBonus })})</span>
-                                                                        </div>
-                                                                    ) : null;
-                                                                })()}
-                                                            </div>
-
-                                                            <div className="flex items-center gap-3 ml-auto">
-                                                                {editSaveResult === 'success' && <span className="text-sm text-green-500">{t('admin.saved')}</span>}
-                                                                {editSaveResult === 'error' && <span className="text-sm text-red-400">{t('admin.save_error')}</span>}
-                                                                <button onClick={() => { setEditingUser(null); setEditSaveResult(null); }}
-                                                                    className={`px-3 py-1.5 text-xs ${T.t4}`}>{t('admin.cancel')}</button>
-                                                                <button onClick={saveUserEdit} disabled={editSaveResult === 'success'}
-                                                                    className="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg">{t('admin.confirm_edit')}</button>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                            </React.Fragment>
                                         ))}
                                     </tbody>
                                 </table>
@@ -1243,6 +1169,143 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onClose }) => {
                     )}
                 </div>
             </div>
+
+
+            {/* 改用户信息的弹窗。之前试过行内展开:一排控件挤在表格行下面,和上下几十行数据搅在一起,
+                根本看不出在改谁 —— 弹窗把注意力收到一个人身上,反而更清楚。 */}
+            {editingUser && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                    <div className={`absolute inset-0 ${T.overlay}`} onClick={closeUserEdit} />
+                    <div className={`relative w-full max-w-md rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto ${T.modal}`}>
+                        <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4">
+                            <div className="min-w-0">
+                                <h3 className={`text-base font-semibold ${T.t1}`}>{t('admin.edit_user_title', '修改用户')}</h3>
+                                <p className={`text-sm ${T.t4} mt-0.5 truncate`}>{userLabel(editingUser)}</p>
+                            </div>
+                            <button
+                                onClick={closeUserEdit}
+                                aria-label={t('admin.cancel')}
+                                className={`shrink-0 -mr-1.5 -mt-1 p-1.5 rounded-lg transition-colors ${T.modalClose}`}
+                            >
+                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div className="px-6 pb-5 space-y-5">
+                            {/* 先把现状摆明白,再让人动手改 */}
+                            <div className={`rounded-xl px-4 py-3 flex items-center justify-between ${isDark ? 'bg-white/[0.04]' : 'bg-gray-50'}`}>
+                                <div>
+                                    <div className={`text-[11px] ${T.modalLabel}`}>{t('admin.quota_now', '当前')}</div>
+                                    <div className={`text-sm font-mono mt-0.5 ${T.t1}`}>
+                                        {editingUser.quotaRemaining ?? 0} / {editingUser.quotaTotal ?? 0}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className={`inline-flex text-[10px] font-bold tracking-wider px-2 py-1 rounded uppercase ${T.tierBadge(editingUser.subscriptionStatus)}`}>
+                                        {getTierLabel(editingUser.subscriptionStatus, t)}
+                                    </span>
+                                    {/* 用 t4 而非最淡的 t5:「已用多少」是管理员据以决定加多少的依据,
+                                        深色下 t5 只有 2.7 的对比度,等于把关键数字调成灰底噪点。 */}
+                                    <div className={`text-[11px] mt-1 ${T.t4}`}>
+                                        {t('admin.quota_used', '已用 {{n}}', { n: editingUser.quotaUsed ?? 0 })}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className={`block text-[11px] mb-1.5 ${T.modalLabel}`}>{t('admin.subscription_tier')}</label>
+                                <select
+                                    className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none ${T.modalInput}`}
+                                    value={editStatus}
+                                    onChange={e => setEditStatus(e.target.value)}
+                                >
+                                    <option value="FREE">{t('admin.tier_free_label')}</option>
+                                    <option value="PLUS">{t('admin.tier_plus_label')}</option>
+                                    <option value="PRO">{t('admin.tier_pro_label')}</option>
+                                    <option value="ULTRA">{t('admin.tier_ultra_label')}</option>
+                                </select>
+                            </div>
+
+                            {editStatus !== 'FREE' && (
+                                <div>
+                                    <label className={`block text-[11px] mb-1.5 ${T.modalLabel}`}>{t('admin.add_days')}</label>
+                                    <input
+                                        type="number"
+                                        value={editDays}
+                                        onChange={e => setEditDays(Number(e.target.value))}
+                                        className={`w-full rounded-lg px-3 py-2 text-sm focus:outline-none ${T.modalInput}`}
+                                    />
+                                </div>
+                            )}
+
+                            <div>
+                                {/* 「清零」放在标签行右侧,而不是跟在快捷按钮后面 ——
+                                    跟在后面的话它一出现就把整排按钮往左挤,手指会点错。 */}
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className={`text-[11px] ${T.modalLabel}`}>{t('admin.add_quota', '加次数')}</label>
+                                    {editQuota !== 0 && (
+                                        <button onClick={() => setEditQuota(0)} className={`text-[11px] ${T.t4} hover:underline`}>
+                                            {t('admin.reset_zero', '清零')}
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="number"
+                                        value={editQuota}
+                                        onChange={e => setEditQuota(Number(e.target.value))}
+                                        className={`flex-1 min-w-0 rounded-lg px-3 py-2 text-sm focus:outline-none ${T.modalInput}`}
+                                    />
+                                    {[5, 10, 50].map(n => (
+                                        <button
+                                            key={n}
+                                            onClick={() => setEditQuota(q => q + n)}
+                                            className={`shrink-0 px-2.5 py-2 text-xs rounded-lg transition-colors ${T.editBtn}`}
+                                        >+{n}</button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* 「调整后」实时算给管理员看 —— 不能让人心算「档位 + 赠送 − 已用」 */}
+                            {(() => {
+                                const changed = editQuota !== 0 || editStatus !== editingUser.subscriptionStatus;
+                                if (!changed) return null;
+                                const nextBonus = Math.max(0, (editingUser.bonusQuota ?? 0) + editQuota);
+                                const nextTotal = (TIER_LIMITS[editStatus] ?? TIER_LIMITS.FREE) + nextBonus;
+                                const nextRemaining = Math.max(0, nextTotal - (editingUser.quotaUsed ?? 0));
+                                return (
+                                    <div className={`rounded-xl px-4 py-3 flex items-center justify-between border ${isDark ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-emerald-600/30 bg-emerald-50'}`}>
+                                        <div>
+                                            <div className={`text-[11px] ${emerald.dim}`}>{t('admin.quota_after', '调整后')}</div>
+                                            <div className={`text-sm font-mono mt-0.5 ${emerald.strong}`}>{nextRemaining} / {nextTotal}</div>
+                                        </div>
+                                        <div className={`text-[11px] ${emerald.dim}`}>
+                                            {t('admin.quota_bonus', '赠送 {{n}}', { n: nextBonus })}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+
+                        <div className={`px-6 py-4 flex items-center justify-end gap-3 ${isDark ? 'border-t border-white/[0.08]' : 'border-t border-gray-200'}`}>
+                            {editSaveResult === 'success' && <span className={`mr-auto text-sm ${isDark ? 'text-green-400' : 'text-green-700'}`}>{t('admin.saved')}</span>}
+                            {editSaveResult === 'error' && <span className={`mr-auto text-sm ${isDark ? 'text-red-400' : 'text-red-600'}`}>{t('admin.save_error')}</span>}
+                            <button onClick={closeUserEdit} className={`px-4 py-2 text-sm rounded-lg transition-colors ${T.t4}`}>
+                                {t('admin.cancel')}
+                            </button>
+                            <button
+                                onClick={saveUserEdit}
+                                disabled={editSaveResult === 'success'}
+                                className="px-5 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white transition-colors"
+                            >
+                                {t('admin.confirm_edit')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div>
     );
